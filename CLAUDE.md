@@ -109,24 +109,32 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 ```
 work_thesis_2026/
 ├── CLAUDE.md               ← this file
-├── THESIS_STRUCTURE.md     ← folder conventions
+├── README.md               ← setup instructions for the team
+├── requirements.txt
+├── .env.example            ← template for API keys (.env is git-ignored)
 ├── code/
 │   ├── src/                ← production modules (importable, tested)
+│   │   ├── config.py       ← ALL paths + shared constants; import, never hardcode
+│   │   └── prompts/        ← prompt templates as files, logged with every run
 │   ├── scripts/            ← one-off analysis and pipeline scripts
 │   └── notebooks/          ← exploratory work; not used in production
-├── data/
+├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/
 │   │   ├── govinfo/
 │   │   └── dw_nominate/
 │   └── processed/          ← cleaned, merged, ready for models
 ├── results/
-│   ├── plots/              ← all figures (named descriptively)
-│   └── metrics/            ← tables, evaluation summaries (CSV or JSON)
+│   ├── plots/              ← all figures (named descriptively) — committed
+│   ├── metrics/            ← tables, evaluation summaries (CSV/JSON) — committed
+│   └── scores/             ← raw per-model LLM output — git-ignored (large)
 ├── docs/
 │   └── notes/              ← meeting notes, design decisions, ideas
 └── thesis/
-    └── chapters/           ← written thesis content (Markdown or LaTeX)
+    ├── chapters/           ← 01_introduction … 07_conclusion
+    ├── figures/            ← final figures, copied from results/plots/
+    ├── references/         ← bibliography
+    └── appendix/
 ```
 
 **Rules:**
@@ -134,6 +142,8 @@ work_thesis_2026/
 - Processed outputs go to `data/processed/` or `results/`
 - Figures used in the thesis go to `thesis/figures/` (copy from `results/plots/`)
 - Notebooks are for exploration only — production logic belongs in `code/src/`
+- Raw per-model LLM output goes to `results/scores/` before any aggregation
+- Empty folders are held in git by `.gitkeep`; data and model outputs are not committed
 
 ---
 
