@@ -216,3 +216,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------
+# Thesis project specific
+# ---------------------------------------------------------------
+
+# Data: raw corpora and processed derivatives are never committed
+# (Stanford + govinfo speeches, DW-NOMINATE dumps). Keep folders only.
+data/raw/**
+data/processed/**
+!data/**/
+!data/**/.gitkeep
+
+# Raw per-model LLM outputs can reach GBs — keep locally / in shared storage.
+# Aggregated metrics and plots in results/ ARE committed on purpose.
+results/scores/**
+!results/**/
+!results/**/.gitkeep
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.synctex.gz
+*.toc
