@@ -37,23 +37,102 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 
 ## Data Sources
 
-### 2001–2016: Stanford Dataset (Gentzkow, Shapiro & Taddy)
-- Pre-structured; speeches linked to member / party / chamber / date
-- Path: `data/raw/stanford/`
+> Status marks: **[verified]** = confirmed against the actual dataset and
+> documented in `docs/notes/`. **[assumed]** = planning estimate, not yet
+> checked against data. Do not treat an [assumed] value as a fact in code or
+> in the thesis — verify it first, then update this file and drop the mark.
+
+### Jan 2001 – Jan 3, 2017: Stanford Dataset (Gentzkow, Shapiro & Taddy)
+
+**[verified]** — built and documented by Konsti, see
+[`docs/notes/2026-09-15_stanford_dataset.md`](docs/notes/2026-09-15_stanford_dataset.md)
+
+- **Coverage:** 107th–114th Congress, January 2001 through **January 3, 2017**
+  (end of the 114th Congress) — NOT through the end of calendar year 2017.
+  The break falls on a clean Congress boundary (114th → 115th), which is
+  convenient: govinfo can start at the 115th. But it is 3 days into calendar
+  2017, so any year-level aggregation puts those 3 days of Stanford data into
+  the 2017 bucket alongside govinfo data. Decide once whether to aggregate by
+  Congress (clean) or by calendar year (3 mixed days in 2017) and say so.
+- **Source:** `hein-daily.zip` from data.stanford.edu/congress_text, sessions
+  107–114, speech text + metadata + speaker map merged per session on `speech_id`
+- **Form:** one parquet file, ~650 MB, one row per speech. Not in the repo —
+  stored on the team drive (link in the note above). `data/raw/stanford/` is
+  where it goes locally.
+
+**Actual columns** (raw, before renaming to the corpus schema):
+
+| Column | Notes |
+|---|---|
+| `speech_id` | unique per speech |
+| `speech` | full text → becomes `text` in the merged corpus |
+| `chamber` | House / Senate |
+| `date` | **YYYYMMDD**, needs parsing to a date type |
+| `speaker` | last name as recorded |
+| `first_name` | |
+| `state` | |
+| `gender` | as recorded in source |
+| `word_count` | |
+| `speakerid` | Gentzkow's own ID system — **not** ICPSR, see DW-NOMINATE below |
+| `party` | **D / R / I** — independents are present, see open decision below |
+| `congress` | 107–114 |
+
+**Other facts:**
+
+- **Known filter:** speeches with no matched speaker were dropped during the
+  build (mostly procedural entries, e.g. the Clerk reading a bill title).
+  **[assumed]** how many — the drop count is not yet recorded. Quantify it
+  ("X of Y rows, Z%") before the methodology chapter is written.
+- **Not yet reproducible:** the build script is announced as
+  `code/scripts/build_stanford_dataset.py` but does not exist yet. Until it
+  does, the parquet cannot be rebuilt or independently checked.
 - Note: Yufei said we **can drop this** if our govinfo pipeline produces sufficient coverage
 
-### 2017–2025: Custom govinfo.gov Pipeline
+### Jan 2017 – 2025: Custom govinfo.gov Pipeline
+
+**[assumed]** — nothing verified against data yet; this whole section is a plan.
+
 - Path: `data/raw/govinfo/`
-- **Known issue:** Fewer speeches per year than the Stanford dataset — this creates a potential discontinuity around 2017. Address this in the methodology section; do NOT silently ignore it.
+- Must pick up at **January 3, 2017** where the Stanford data ends, i.e. with
+  the **115th Congress** — verify there is no gap and no double-counted overlap
+  in the first days of January 2017
+- **Known issue [assumed]:** fewer speeches per year than the Stanford dataset —
+  this creates a discontinuity at the 2017 break. Address this in the
+  methodology section; do NOT silently ignore it. Verify the actual per-year
+  counts on both sides of the break and record them in `results/metrics/`.
 
 ### Processed / Combined
+
 - Path: `data/processed/`
-- Final merged corpus: one row per speech, with columns: `speech_id`, `date`, `member_id`, `party`, `chamber`, `congress_number`, `text`, `source`
+- Final merged corpus: one row per speech, with columns: `speech_id`, `date`,
+  `member_id`, `party`, `chamber`, `congress_number`, `text`, `source`
+
+**This is a target schema, not what either source delivers.** The Stanford
+side needs an explicit mapping step:
+
+| Corpus column | Stanford source |
+|---|---|
+| `text` | `speech` |
+| `member_id` | `speakerid` — see the ICPSR problem below |
+| `congress_number` | `congress` |
+| `date` | `date`, parsed from YYYYMMDD |
+| `source` | **does not exist in either source — must be added at merge time** |
+
+`source` is what keeps the 2017 break visible in the data itself. Every row
+must carry `stanford` or `govinfo`. Do not merge without it.
 
 ### External Validation
+
 - **DW-NOMINATE scores** — voting-based ideological measure from VoteView.com
 - Used to validate LLM-derived ideological scores against a non-ML, voting-based benchmark
 - Path: `data/raw/dw_nominate/`
+- **Open blocker:** VoteView identifies members by **ICPSR** number; the Stanford
+  data carries `speakerid`, Gentzkow's own identifier. There is currently no
+  join path between our speeches and DW-NOMINATE. A crosswalk
+  (`speakerid` → ICPSR, e.g. via the Stanford speaker map plus name/state/congress
+  matching) has to be built and its match rate reported. Since CLAUDE.md treats
+  the DW-NOMINATE check as the primary methodological defense, this blocks the
+  validation entirely — resolve it early, not at the end.
 
 ### RQ5 Data (not yet committed to)
 - Check govinfo.gov for press releases / official statements pre-2010 before starting
@@ -90,6 +169,11 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 
 - **Prompting vs. fine-tuning:** Still open. Continuous scoring strongly favors prompting (zero-shot or few-shot); fine-tuning would lock us into a binary setup and requires labeled data. Do not build infrastructure that assumes one approach without flagging the trade-off in a comment.
 - **Which models to include in the ensemble:** Candidates are GPT-4o, GPT-4o-mini, Llama 3.3 / Llama 4, DeepSeek R1, Gemini 2.5 Flash. The exact ensemble composition is to be decided after a pilot run comparing model outputs on the same sample.
+- **How to handle independents:** the Stanford data has `party` values D / R / **I**
+  (e.g. Sanders, King). The primary RQ compares Democrats vs. Republicans, so
+  independents must either be dropped or assigned to the party they caucus with.
+  Either is defensible; the choice must be made once, applied in the merge, and
+  stated in the methodology. Do not let different scripts handle it differently.
 - **Reinforcement fine-tuning:** Now more mature than a year ago and requires less labeled data than traditional fine-tuning. Worth evaluating if a supervised component turns out to be needed, but not the default path.
 
 ### If manual labeling is done
@@ -99,7 +183,14 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 - Do not rely solely on "own judgment with peer review"
 
 ### Key boundaries
-- The 2017 pipeline discontinuity must be addressed in the methodology section — flag it in code comments and make it visible in every time-series plot (e.g. vertical dashed line at 2017)
+- The source discontinuity sits at **January 3, 2017** (end of the 114th Congress,
+  where the Stanford data stops and the govinfo pipeline takes over). It must be
+  addressed in the methodology section — flag it in code comments and make it
+  visible in every time-series plot (e.g. vertical dashed line at the 2017 break).
+  `SOURCE_BREAK_YEAR = 2017` in `code/src/config.py` is the year-level constant;
+  use the exact date wherever daily resolution matters.
+- Every row in the merged corpus carries a `source` column, so the break is
+  recoverable from the data and not just from a note
 - Do not fabricate or impute data to paper over coverage gaps
 
 ---
@@ -224,4 +315,8 @@ work_thesis_2026/
 
 ---
 
-*Last updated: September 2026. Update this file when major decisions are made.*
+*Last updated: September 16, 2026 — Stanford dataset section rewritten from the
+actual data (see `docs/notes/2026-09-15_stanford_dataset.md`); everything still
+marked **[assumed]** is a planning estimate awaiting verification. Update this
+file when major decisions are made, and drop an [assumed] mark only once the
+value has been checked against data.*
