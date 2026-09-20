@@ -172,14 +172,18 @@ Scoring ideological position requires chaining inferences: "what policy position
 **6. Structural validation via DW-NOMINATE**
 LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideological scores from VoteView.com). This is not optional — it is the primary methodological defense of our approach. Expect the correlation to be imperfect (floor speech rhetoric vs. actual votes are different signals), but it should be positive and meaningful. A weak or inverse correlation would be a red flag requiring investigation, not suppression.
 
+### Decided — data decisions
+
+- **Independents:** assign to the party they caucus with — Sanders → D, King → D,
+  Jeffords → D. Applied once at corpus build time (`code/scripts/build_corpus.py`),
+  never handled differently in any other script. Stated in the methodology.
+- **Aggregation granularity:** by **Congress** (107th through 114th for the Stanford
+  data). Clean 2-year periods aligned with the data structure. Calendar year is
+  not used for primary aggregation.
+
 ### What is NOT yet decided — do not hardcode
 
 - **Prompting vs. fine-tuning:** Still open. Continuous scoring strongly favors prompting (zero-shot or few-shot); fine-tuning would lock us into a binary setup and requires labeled data. Do not build infrastructure that assumes one approach without flagging the trade-off in a comment.
-- **How to handle independents:** the Stanford data has `party` values D / R / **I**
-  (e.g. Sanders, King). The primary RQ compares Democrats vs. Republicans, so
-  independents must either be dropped or assigned to the party they caucus with.
-  Either is defensible; the choice must be made once, applied in the merge, and
-  stated in the methodology. Do not let different scripts handle it differently.
 - **Reinforcement fine-tuning:** Now more mature than a year ago and requires less labeled data than traditional fine-tuning. Worth evaluating if a supervised component turns out to be needed, but not the default path.
 
 ### If manual labeling is done
