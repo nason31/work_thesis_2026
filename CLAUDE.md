@@ -153,8 +153,15 @@ Each speech gets scored on two independent dimensions:
 - **Ideological position** — continuous left-right score (this is the primary measure)
 - **Tone / hostility** — emotional charge of the language, independent of ideological content
 
-**3. Ensemble across multiple models**
-Run at least two or three LLMs and combine their outputs (e.g. average for continuous scores, or majority vote for any categorical decisions). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
+**3. Ensemble across multiple models — composition decided**
+Run three LLMs and combine their outputs (average for continuous scores). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
+
+The ensemble is fixed at three models from distinct providers and training paradigms:
+- **DeepSeek R1** (`deepseek-reasoner`) — reasoning model, open-weight; selected for explicit chain-of-thought reasoning prior to scoring, well-suited to the multi-step ideological inference required
+- **GPT-4o** (`gpt-4o-2024-11-20`) — industry-standard baseline (OpenAI); widely cited in NLP research, enables direct comparison with prior work
+- **Claude 3.5 Sonnet** (`claude-3-5-sonnet-20241022`) — Constitutional AI paradigm (Anthropic); provides architectural and training diversity
+
+This combination covers: one reasoning model + two instruction-following models; one open-weight model (reproducible checkpoint); three independent training approaches. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else.
 
 **4. Feed full speeches, not fragments**
 Do not split speeches into short chunks unless a model's context window absolutely requires it. Chunking breaks cross-sentence rhetorical context, which matters for detecting ideological framing. Current frontier models (GPT-4o, Llama 4, Gemini 2.5, DeepSeek R1) all handle full congressional speeches comfortably. Verify context length per model before deciding.
@@ -168,7 +175,6 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 ### What is NOT yet decided — do not hardcode
 
 - **Prompting vs. fine-tuning:** Still open. Continuous scoring strongly favors prompting (zero-shot or few-shot); fine-tuning would lock us into a binary setup and requires labeled data. Do not build infrastructure that assumes one approach without flagging the trade-off in a comment.
-- **Which models to include in the ensemble:** Candidates are GPT-4o, GPT-4o-mini, Llama 3.3 / Llama 4, DeepSeek R1, Gemini 2.5 Flash. The exact ensemble composition is to be decided after a pilot run comparing model outputs on the same sample.
 - **How to handle independents:** the Stanford data has `party` values D / R / **I**
   (e.g. Sanders, King). The primary RQ compares Democrats vs. Republicans, so
   independents must either be dropped or assigned to the party they caucus with.
