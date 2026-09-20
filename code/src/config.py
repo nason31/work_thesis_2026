@@ -49,13 +49,16 @@ FIGURES_DIR: Path = THESIS_DIR / "figures"  # final figures, copied from PLOTS_D
 SOURCE_BREAK_YEAR: int = 2017
 YEAR_RANGE: tuple[int, int] = (2001, 2025)
 
-# OPEN DECISION (CLAUDE.md): ensemble composition is undecided until the pilot
-# run. Models are listed in one place so nothing downstream hardcodes them.
-CANDIDATE_MODELS: tuple[str, ...] = (
-    "gpt-4o",
-    "gpt-4o-mini",
-    "deepseek-reasoner",
-    "gemini-2.5-flash",
+# Ensemble composition decided — three models from distinct providers and
+# training paradigms. Pin specific snapshot versions for reproducibility;
+# update these constants (and CLAUDE.md) if a version is changed mid-project.
+#   deepseek-reasoner  — DeepSeek R1, reasoning model, open-weight (RL-trained)
+#   gpt-4o-2024-11-20  — GPT-4o snapshot, industry-standard baseline (OpenAI)
+#   claude-3-5-sonnet  — Claude 3.5 Sonnet, Constitutional AI paradigm (Anthropic)
+ENSEMBLE_MODELS: tuple[str, ...] = (
+    "deepseek-reasoner",           # DeepSeek R1 — reasoning model, open-weight
+    "gpt-4o-2024-11-20",           # GPT-4o — industry-standard baseline
+    "claude-3-5-sonnet-20241022",  # Claude 3.5 Sonnet — Constitutional AI
 )
 
 # Prompt templates live as files next to this module so every run can log the
