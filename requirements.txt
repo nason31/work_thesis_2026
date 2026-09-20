@@ -1,5 +1,14 @@
 # Python 3.11+
-# Install:  python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# Direct dependencies only, with the loosest range that works. This file says
+# WHAT the project needs; requirements.lock.txt says which exact versions the
+# team is running. Install from the lock, not from here:
+#
+#     make setup                    # or, by hand:
+#     python -m venv .venv && source .venv/bin/activate
+#     pip install -r requirements.lock.txt
+#
+# Adding a dependency: add it here, then `make lock` and commit both files.
 
 # --- core data handling ---
 pandas>=2.2
@@ -17,10 +26,9 @@ seaborn>=0.13
 scipy>=1.13
 statsmodels>=0.14
 
-# --- LLM APIs (ensemble; final composition still open, see CLAUDE.md) ---
-openai>=1.40
-anthropic>=0.34
-google-genai>=0.3
+# --- LLM APIs (ensemble fixed: DeepSeek R1 / GPT-4o / Claude 3.5 Sonnet) ---
+openai>=1.40           # GPT-4o, and DeepSeek via its OpenAI-compatible API
+anthropic>=0.34        # Claude 3.5 Sonnet
 tiktoken>=0.7          # token counting for cost estimates
 
 # --- data acquisition ---
