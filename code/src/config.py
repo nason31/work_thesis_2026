@@ -69,16 +69,76 @@ CONGRESS_RANGE_STANFORD: tuple[int, int] = (107, 114)
 # full rebuild to undo.
 MIN_WORD_COUNT: int = 50
 
+# --- corpus membership rules -------------------------------------------
+# Keyed on `speakerid`, NOT on any name column. Names in this file are damaged
+# by OCR: `speaker` carries an honorific plus noise on 99.7% of rows
+# ("Mr. JEFFORDS", "LR. JEFFORDS", "Mr.. JEFFORDS"), and even the cleaner
+# `last_name` has spelling variants on 30.6% of speakerids (JEFFORD/JEFFORDS,
+# LIEBERMAN/LIEDERMAN/LISBERMAN/LIEBERMANN, SANDERS/SANDERR/SA.NDERS).
+# `speakerid` is exact, and `state_map` is consistent within every speakerid
+# (0 exceptions in 823,341 rows).
+#
+# speakerid encodes the congress in its first three digits, so a member serving
+# several congresses needs one entry per congress. The lists below are complete
+# for the 107th-114th: they were enumerated from the data, not guessed.
+# See docs/notes/2026-09-21_stanford_data_reality.md.
+
 # Independents -> the party they caucus with. CLAUDE.md "Decided" section.
-# Keyed by (UPPERCASE last name, state) and applied ONLY to party == "I" rows,
-# so e.g. Rep. Steve King (R-IA) is never touched. A party == "I" row that is
-# not in here makes the build raise rather than guess -- extending this dict is
-# a deliberate, documented act, and the methodology section must match it.
-CAUCUS_PARTY: dict[tuple[str, str], str] = {
-    ("SANDERS", "VT"): "D",
-    ("KING", "ME"): "D",
-    ("JEFFORDS", "VT"): "D",
+# Applied ONLY to party == "I" rows. A party == "I" row matching no rule here
+# makes the build raise rather than guess.
+CAUCUS_PARTY: dict[str, str] = {
+    # Jim Jeffords (VT, Senate) — left the GOP in May 2001, caucused with D
+    "107113101": "D",
+    "108113101": "D",
+    "109113101": "D",
+    # Bernie Sanders (VT) — House 107-109, Senate 110-114; caucuses with D
+    "107118220": "D",
+    "108118220": "D",
+    "109118220": "D",
+    "110118221": "D",
+    "111118221": "D",
+    "112118221": "D",
+    "113118221": "D",
+    "114118221": "D",
+    # Joe Lieberman (CT, Senate) — Independent Democrat, caucused with Senate D
+    "110116471": "D",
+    "111116471": "D",
+    "112116471": "D",
+    # Angus King (ME, Senate) — caucuses with D
+    "113122291": "D",
+    "114122291": "D",
 }
+
+# Party labels in the raw file that are wrong, corrected here with the reason.
+# Applied ONLY to party == "I" rows. Keep this as close to empty as possible:
+# every entry overrides the source on outside knowledge.
+PARTY_CORRECTIONS: dict[str, str] = {
+    # Ander Crenshaw (FL-4, House, 107th) represented his district as a
+    # Republican for his entire career (2001-2017); the "I" coding is a source
+    # error. 34 rows.
+    "107119090": "R",
+}
+
+# Members excluded entirely, because the caucus rule has no answer for them.
+EXCLUDED_MEMBERS: frozenset[str] = frozenset(
+    {
+        # Dean Barkley (MN, Senate, 107th) — appointed Nov 2002 to fill
+        # Wellstone's seat for ~2 months, Minnesota Independence Party,
+        # caucused with neither party, so any assignment is arbitrary. 6 rows.
+        "107113431",
+    }
+)
+
+# Non-voting delegates and resident commissioners, dropped corpus-wide. They
+# cannot vote on final passage, so DW-NOMINATE -- the validation anchor -- does
+# not score them comparably, leaving their speeches with no benchmark. 5,665
+# rows, 0.69%. Dropping them also removes the stray "A"/"P" party codes, which
+# belong solely to Acevedo-Vila, Resident Commissioner of Puerto Rico.
+# Keyed on state_map, which is clean and consistent for every speakerid.
+DELEGATE_STATES: frozenset[str] = frozenset({"DC", "PR", "VI", "GU", "AS", "MP"})
+
+# After the rules above, party must be exactly this set, or the build raises.
+EXPECTED_PARTIES: frozenset[str] = frozenset({"D", "R"})
 
 # Ensemble composition decided — three models from distinct providers and
 # training paradigms. Pin specific snapshot versions for reproducibility;
