@@ -359,6 +359,11 @@ work_thesis_2026/
 ## What the Agent Should and Should Not Do
 
 ### DO
+- **Record every data/model/methodology decision in
+  [`docs/decisions.md`](docs/decisions.md)** — what was chosen, what was
+  rejected, and why. Add the entry in the same session the decision is made.
+  The methodology chapter is written from that file; anything not in it will be
+  forgotten by December.
 - Work within the existing folder structure
 - Flag in a comment when a methodological decision is still open
 - Log all key parameters and results to `results/metrics/`
