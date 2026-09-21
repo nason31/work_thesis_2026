@@ -67,6 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     """Run the build and report what it produced."""
     args = parse_args(argv)
 
+    # A --limit run produces a partial corpus. Never let it land on the real
+    # corpus path, where a later reader would have no way to tell it apart
+    # from a full build.
+    if args.limit is not None and args.output == CORPUS_PATH:
+        args.output = args.output.with_suffix(".smoke.parquet")
+        print(f"--limit run: writing partial corpus to {args.output}\n")
+
     try:
         stats = build_stanford_corpus(
             src=args.input,
@@ -86,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     stats_path = stats.write(args.stats_path) if args.limit is None else None
 
     print(f"read     {stats.rows_read:>10,} raw rows")
+    print(f"dropped  {stats.rows_dropped_delegate:>10,} non-voting delegates")
+    print(f"dropped  {stats.rows_dropped_excluded_member:>10,} excluded members")
     print(f"dropped  {stats.rows_dropped_short:>10,} under {args.min_words} words")
     print(f"dropped  {stats.rows_dropped_empty_text:>10,} empty text")
     print(f"dropped  {stats.rows_dropped_duplicate_id:>10,} duplicate speech_id")
@@ -93,6 +102,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"party            {stats.party_counts}")
     print(
         f"independents     {stats.independents_reassigned:,} reassigned to caucus party"
+    )
+    print(
+        f"corrections      {stats.party_corrections_applied:,} party labels corrected"
     )
     print(f"congresses       {stats.congress_counts}")
     print(f"date range       {stats.date_min} .. {stats.date_max}")

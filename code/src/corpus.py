@@ -13,6 +13,17 @@ reads metadata only and fails fast -- in seconds, before a single byte of
 output is written -- and pass 2 streams the text row group by row group
 through a single writer, keeping peak memory at roughly one batch.
 
+Which raw columns to trust
+--------------------------
+The file carries both dirty and clean versions of the speaker fields, and only
+the clean ones are usable. ``speaker`` has an honorific plus OCR damage on
+99.7% of rows ("Mr. JEFFORDS", "LR. JEFFORDS", "Mr.. JEFFORDS", "Mr. JEFFORD"),
+``state`` and ``first_name`` are the literal string "Unknown" on many rows
+(``first_name`` on 97.2% of them), and ``chamber`` has 97 nulls. Their
+counterparts ``last_name``, ``state_map`` and ``chamber_map`` have zero nulls
+and zero "Unknown" across all 823,341 rows, so this module uses those and
+ignores the dirty ones. See docs/notes/2026-09-21_stanford_data_reality.md.
+
 The 2017 source break
 ---------------------
 This loader covers the Stanford side only: the 107th-114th Congress, ending
@@ -25,6 +36,7 @@ check the ``source`` column before reading a trend off it.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Iterator
@@ -39,42 +51,35 @@ from src.config import (
     BUILD_STATS_PATH,
     CAUCUS_PARTY,
     CORPUS_PATH,
+    DELEGATE_STATES,
+    EXCLUDED_MEMBERS,
+    EXPECTED_PARTIES,
     MIN_WORD_COUNT,
+    PARTY_CORRECTIONS,
     STANFORD_PARQUET,
 )
 
 # --- schemas -----------------------------------------------------------
 
-#: Raw Stanford columns, in the order the source file carries them.
-RAW_COLUMNS: tuple[str, ...] = (
+#: Raw columns the build reads. The file carries 20; the rest
+#: (number_within_file, line_start, line_end, file, char_count, and the dirty
+#: speaker/state/first_name/chamber variants) are not used.
+REQUIRED_RAW_COLUMNS: tuple[str, ...] = (
     "speech_id",
     "speech",
-    "chamber",
     "date",
-    "speaker",
-    "first_name",
-    "state",
-    "gender",
+    "last_name",
+    "state_map",
+    "chamber_map",
     "word_count",
     "speakerid",
     "party",
     "congress",
 )
 
-#: Columns the build cannot proceed without. ``gender`` is deliberately absent:
-#: it is carried by the source but unused here.
-REQUIRED_RAW_COLUMNS: tuple[str, ...] = tuple(c for c in RAW_COLUMNS if c != "gender")
-
 #: Pass 1 reads these and skips ``speech`` -- that is what makes it cheap.
-METADATA_COLUMNS: tuple[str, ...] = (
-    "speech_id",
-    "date",
-    "speaker",
-    "state",
-    "word_count",
-    "speakerid",
-    "party",
-    "congress",
+METADATA_COLUMNS: tuple[str, ...] = tuple(
+    c for c in REQUIRED_RAW_COLUMNS if c != "speech"
 )
 
 #: Value of the ``source`` column for every row this loader writes.
@@ -82,9 +87,10 @@ SOURCE_TAG = "stanford"
 
 #: The first eight fields are the corpus schema from CLAUDE.md. The rest are
 #: retained deliberately: the speakerid -> ICPSR crosswalk needed for
-#: DW-NOMINATE validation is built from name + state + congress, and
-#: ``party_original`` keeps the caucus reassignment auditable. Without them,
-#: either job means re-streaming the whole raw file.
+#: DW-NOMINATE validation is built from last_name + state + congress + chamber,
+#: and ``party_original`` keeps the party reassignment auditable. Without them,
+#: either job means re-streaming the whole raw file. ``first_name`` is NOT
+#: retained: it is "Unknown" on 97.2% of rows, so it carries no information.
 CORPUS_SCHEMA = pa.schema(
     [
         pa.field("speech_id", pa.string()),
@@ -95,8 +101,7 @@ CORPUS_SCHEMA = pa.schema(
         pa.field("congress_number", pa.int16()),
         pa.field("text", pa.string()),
         pa.field("source", pa.string()),
-        pa.field("speaker", pa.string()),
-        pa.field("first_name", pa.string()),
+        pa.field("last_name", pa.string()),
         pa.field("state", pa.string()),
         pa.field("word_count", pa.int32()),
         pa.field("party_original", pa.string()),
@@ -121,6 +126,7 @@ class BuildStats:
 
     source_path: str
     source_bytes: int
+    source_sha256: str
     output_path: str
     built_at: str
     min_word_count: int
@@ -129,10 +135,13 @@ class BuildStats:
     raw_schema: dict[str, str] = field(default_factory=dict)
     rows_read: int = 0
     rows_written: int = 0
+    rows_dropped_delegate: int = 0
+    rows_dropped_excluded_member: int = 0
     rows_dropped_short: int = 0
     rows_dropped_empty_text: int = 0
     rows_dropped_duplicate_id: int = 0
     independents_reassigned: int = 0
+    party_corrections_applied: int = 0
     party_counts: dict[str, int] = field(default_factory=dict)
     party_counts_original: dict[str, int] = field(default_factory=dict)
     congress_counts: dict[str, int] = field(default_factory=dict)
@@ -156,18 +165,33 @@ class BuildStats:
 # --- helpers -----------------------------------------------------------
 
 
+def _fingerprint(src: Path) -> str:
+    """SHA-256 of the raw file.
+
+    The Stanford parquet is provisional -- it may be rebuilt or replaced. This
+    ties a corpus, and every count in the stats JSON, to the exact raw file it
+    came from, so a swapped dataset is visible rather than silent.
+    """
+    digest = hashlib.sha256()
+    with src.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _probe_schema(src: Path) -> dict[str, str]:
     """Return the raw file's arrow schema, raising if a needed column is absent.
 
-    The exact dtypes of the Stanford file are not documented anywhere, so they
-    are recorded in the stats rather than assumed.
+    The raw dtypes are not what CLAUDE.md's table implies -- ``word_count`` and
+    ``date`` are both strings, for instance -- so they are recorded in the
+    stats rather than assumed.
     """
     schema = pq.ParquetFile(src).schema_arrow
     missing = [c for c in REQUIRED_RAW_COLUMNS if c not in schema.names]
     if missing:
         raise ValueError(
             f"{src} is missing required column(s): {', '.join(missing)}. "
-            f"Expected the raw Stanford layout: {', '.join(RAW_COLUMNS)}"
+            f"Expected at least: {', '.join(REQUIRED_RAW_COLUMNS)}"
         )
     return {name: str(schema.field(name).type) for name in schema.names}
 
@@ -202,6 +226,18 @@ def _parse_yyyymmdd(column: pa.Array) -> pa.Array:
     return pc.cast(pc.strptime(column, format="%Y%m%d", unit="s"), pa.date32())
 
 
+def _as_int(column: pa.Array, target: pa.DataType) -> pa.Array:
+    """Cast a numeric-looking column to ``target``.
+
+    ``word_count`` and several other numeric fields are stored as strings in
+    the raw file, so this goes through a string-aware cast rather than assuming
+    an integer type.
+    """
+    if pa.types.is_string(column.type) or pa.types.is_large_string(column.type):
+        column = pc.cast(pc.utf8_trim_whitespace(column), pa.int64())
+    return pc.cast(column, target)
+
+
 def _normalize_text(column: pa.Array) -> pa.Array:
     """Collapse whitespace runs to single spaces and trim the ends.
 
@@ -213,34 +249,6 @@ def _normalize_text(column: pa.Array) -> pa.Array:
     return pc.utf8_trim_whitespace(
         pc.replace_substring_regex(column, pattern=r"\s+", replacement=" ")
     )
-
-
-def _resolve_parties(
-    party: list[str | None], speaker: list[str | None], state: list[str | None]
-) -> tuple[list[str | None], int]:
-    """Map independents to the party they caucus with.
-
-    Only ``party == "I"`` rows are touched, so a Republican named King is left
-    alone. Returns the resolved parties and how many rows were reassigned.
-    Callers must have validated the roster in pass 1; anything unmatched here
-    is passed through unchanged rather than guessed at.
-    """
-    resolved: list[str | None] = []
-    reassigned = 0
-    for row_party, row_speaker, row_state in zip(party, speaker, state):
-        if row_party == "I":
-            caucus = CAUCUS_PARTY.get(_roster_key(row_speaker, row_state))
-            if caucus is not None:
-                resolved.append(caucus)
-                reassigned += 1
-                continue
-        resolved.append(row_party)
-    return resolved, reassigned
-
-
-def _roster_key(speaker: str | None, state: str | None) -> tuple[str, str]:
-    """Normalize a (last name, state) pair to the CAUCUS_PARTY key form."""
-    return ((speaker or "").strip().upper(), (state or "").strip().upper())
 
 
 def _true_count(mask: pa.Array) -> int:
@@ -255,6 +263,62 @@ def _count_values(column: pa.Array) -> Counter[str]:
     )
 
 
+def _keep_member_mask(batch: pa.RecordBatch) -> pa.Array:
+    """Mask dropping non-voting delegates and explicitly excluded members."""
+    keep = [
+        (state or "").strip().upper() not in DELEGATE_STATES
+        and (member_id or "") not in EXCLUDED_MEMBERS
+        for state, member_id in zip(
+            batch.column("state_map").to_pylist(),
+            pc.cast(batch.column("speakerid"), pa.string()).to_pylist(),
+        )
+    ]
+    return pa.array(keep, type=pa.bool_())
+
+
+def _delegate_and_excluded_counts(batch: pa.RecordBatch) -> tuple[int, int]:
+    """Count delegate rows and excluded-member rows separately, for the stats."""
+    delegates = excluded = 0
+    for state, member_id in zip(
+        batch.column("state_map").to_pylist(),
+        pc.cast(batch.column("speakerid"), pa.string()).to_pylist(),
+    ):
+        if (state or "").strip().upper() in DELEGATE_STATES:
+            delegates += 1
+        elif (member_id or "") in EXCLUDED_MEMBERS:
+            excluded += 1
+    return delegates, excluded
+
+
+def _resolve_parties(
+    party: list[str | None], member_id: list[str | None]
+) -> tuple[list[str | None], int, int]:
+    """Resolve ``party == "I"`` rows to a declared party, keyed on speakerid.
+
+    A correction in ``PARTY_CORRECTIONS`` wins over the caucus roster, since a
+    correction says the source label itself is wrong. Everything that is not
+    ``"I"`` passes through untouched, so a Republican named King is left alone.
+    Returns the resolved parties, the caucus-reassignment count and the
+    correction count.
+    """
+    resolved: list[str | None] = []
+    reassigned = corrected = 0
+    for row_party, row_id in zip(party, member_id):
+        if row_party == "I":
+            key = row_id or ""
+            if key in PARTY_CORRECTIONS:
+                resolved.append(PARTY_CORRECTIONS[key])
+                corrected += 1
+                continue
+            caucus = CAUCUS_PARTY.get(key)
+            if caucus is not None:
+                resolved.append(caucus)
+                reassigned += 1
+                continue
+        resolved.append(row_party)
+    return resolved, reassigned, corrected
+
+
 # --- pass 1: metadata ---------------------------------------------------
 
 
@@ -267,15 +331,16 @@ class _MetadataScan:
 
 
 def _scan_metadata(src: Path, limit: int | None) -> _MetadataScan:
-    """Validate the independents roster and find duplicate ids, without text.
+    """Validate party handling and find duplicate ids, without reading text.
 
-    Raises before any output exists if the file contains an independent that
-    CLAUDE.md's roster does not cover -- see ``_raise_unrostered``.
+    Raises before any output exists if the file contains an independent that no
+    config rule covers, or a party code that survives the rules unrecognized.
     """
     rows_read = 0
     seen_ids: set[str] = set()
     duplicates: set[str] = set()
-    unrostered: dict[tuple[str, str], set[tuple[int | None, str]]] = {}
+    unhandled: dict[str, set[tuple[int | None, str]]] = {}
+    stray_parties: Counter[str] = Counter()
 
     for batch in _iter_batches(src, METADATA_COLUMNS, limit):
         rows_read += batch.num_rows
@@ -287,67 +352,87 @@ def _scan_metadata(src: Path, limit: int | None) -> _MetadataScan:
             else:
                 seen_ids.add(speech_id)
 
-        independents = batch.filter(
-            pc.fill_null(pc.equal(batch.column("party"), "I"), False)
-        )
-        if independents.num_rows == 0:
+        batch = batch.filter(_keep_member_mask(batch))
+        if batch.num_rows == 0:
             continue
-        speakers = independents.column("speaker").to_pylist()
-        states = independents.column("state").to_pylist()
-        congresses = independents.column("congress").to_pylist()
-        member_ids = pc.cast(independents.column("speakerid"), pa.string()).to_pylist()
-        for speaker, state, congress, member_id in zip(
-            speakers, states, congresses, member_ids
-        ):
-            key = _roster_key(speaker, state)
-            if key not in CAUCUS_PARTY:
-                unrostered.setdefault(key, set()).add((congress, member_id or ""))
 
-    if unrostered:
-        _raise_unrostered(unrostered)
+        parties = batch.column("party").to_pylist()
+        names = batch.column("last_name").to_pylist()
+        states = batch.column("state_map").to_pylist()
+        congresses = batch.column("congress").to_pylist()
+        member_ids = pc.cast(batch.column("speakerid"), pa.string()).to_pylist()
+
+        for party, name, state, congress, member_id in zip(
+            parties, names, states, congresses, member_ids
+        ):
+            key = member_id or ""
+            if party == "I":
+                if key not in CAUCUS_PARTY and key not in PARTY_CORRECTIONS:
+                    unhandled.setdefault(key, set()).add(
+                        (congress, f"{name} ({state})")
+                    )
+            elif party not in EXPECTED_PARTIES:
+                stray_parties[f"{party} ({name}, {state})"] += 1
+
+    if unhandled:
+        _raise_unhandled_independents(unhandled)
+    if stray_parties:
+        raise ValueError(
+            "Found party codes outside "
+            f"{sorted(EXPECTED_PARTIES)} that no rule resolves:\n"
+            + "\n".join(f"  {k}: {v} rows" for k, v in sorted(stray_parties.items()))
+            + "\n\nDecide how each should be handled and encode it in "
+            "code/src/config.py, then record it in CLAUDE.md."
+        )
 
     return _MetadataScan(rows_read=rows_read, duplicate_id_candidates=duplicates)
 
 
-def _raise_unrostered(
-    unrostered: dict[tuple[str, str], set[tuple[int | None, str]]],
+def _raise_unhandled_independents(
+    unhandled: dict[str, set[tuple[int | None, str]]],
 ) -> None:
-    """Fail with the members that need adding to CAUCUS_PARTY.
+    """Fail with the members that need a rule in config.py.
 
     Deliberately fatal rather than a silent fallback: CLAUDE.md fixes the
     handling of independents once, at build time, so an unlisted independent is
     a decision for a human to make and document -- not something to guess.
     """
     lines = []
-    for (speaker, state), occurrences in sorted(unrostered.items()):
+    for member_id, occurrences in sorted(unhandled.items()):
         congresses = sorted(
             {congress for congress, _ in occurrences if congress is not None}
         )
-        member_ids = sorted({member_id for _, member_id in occurrences if member_id})
+        names = sorted({label for _, label in occurrences})
         lines.append(
-            f"  {speaker} ({state}) — congress(es) "
-            f"{', '.join(str(c) for c in congresses) or 'unknown'}; "
-            f"speakerid(s) {', '.join(member_ids) or 'unknown'}"
+            f"  speakerid {member_id} — {', '.join(names)} — congress(es) "
+            f"{', '.join(str(c) for c in congresses) or 'unknown'}"
         )
     raise ValueError(
-        "Found party == 'I' speeches by members not in CAUCUS_PARTY:\n"
+        "Found party == 'I' speeches by speakerids no rule covers:\n"
         + "\n".join(lines)
-        + "\n\nAdd each one to CAUCUS_PARTY in code/src/config.py with the party "
-        "they caucus with, and record the addition in CLAUDE.md's 'Decided — "
-        "data decisions' section. The build refuses to guess."
+        + "\n\nAdd each speakerid to CAUCUS_PARTY (caucus assignment), "
+        "PARTY_CORRECTIONS (the source label is wrong) or EXCLUDED_MEMBERS "
+        "(no defensible assignment) in code/src/config.py, and record the "
+        "choice in CLAUDE.md's 'Decided — data decisions' section. The build "
+        "refuses to guess.\n"
+        "Note: speakerid encodes the congress, so a member serving several "
+        "congresses needs one entry per congress."
     )
 
 
 # --- pass 2: stream and write ------------------------------------------
 
 
-def _project_batch(batch: pa.RecordBatch) -> tuple[pa.RecordBatch, int]:
-    """Map a raw batch onto CORPUS_SCHEMA. Returns the batch and reassign count."""
+def _project_batch(batch: pa.RecordBatch) -> tuple[pa.RecordBatch, int, int]:
+    """Map a raw batch onto CORPUS_SCHEMA.
+
+    Returns the projected batch, the caucus-reassignment count and the
+    party-correction count.
+    """
     party_original = batch.column("party")
-    resolved, reassigned = _resolve_parties(
+    resolved, reassigned, corrected = _resolve_parties(
         party_original.to_pylist(),
-        batch.column("speaker").to_pylist(),
-        batch.column("state").to_pylist(),
+        pc.cast(batch.column("speakerid"), pa.string()).to_pylist(),
     )
     projected = pa.RecordBatch.from_arrays(
         [
@@ -355,19 +440,18 @@ def _project_batch(batch: pa.RecordBatch) -> tuple[pa.RecordBatch, int]:
             _parse_yyyymmdd(batch.column("date")),
             pc.cast(batch.column("speakerid"), pa.string()),
             pa.array(resolved, type=pa.string()),
-            pc.cast(batch.column("chamber"), pa.string()),
-            pc.cast(batch.column("congress"), pa.int16()),
+            pc.cast(batch.column("chamber_map"), pa.string()),
+            _as_int(batch.column("congress"), pa.int16()),
             pc.cast(batch.column("text_clean"), pa.string()),
             pa.array([SOURCE_TAG] * batch.num_rows, type=pa.string()),
-            pc.cast(batch.column("speaker"), pa.string()),
-            pc.cast(batch.column("first_name"), pa.string()),
-            pc.cast(batch.column("state"), pa.string()),
-            pc.cast(batch.column("word_count"), pa.int32()),
+            pc.cast(batch.column("last_name"), pa.string()),
+            pc.cast(batch.column("state_map"), pa.string()),
+            _as_int(batch.column("word_count"), pa.int32()),
             pc.cast(party_original, pa.string()),
         ],
         schema=CORPUS_SCHEMA,
     )
-    return projected, reassigned
+    return projected, reassigned, corrected
 
 
 def _count_words(column: pa.Array) -> pa.Array:
@@ -390,7 +474,7 @@ def build_stanford_corpus(
         min_word_count: Speeches shorter than this are dropped (inclusive
             bound, so ``min_word_count`` words is kept).
         limit: Read at most this many raw rows. For smoke runs -- it validates
-            the real schema and the roster in seconds.
+            the real schema and the party rules in seconds.
         overwrite: Required to replace an existing ``dst``.
 
     Returns:
@@ -400,8 +484,8 @@ def build_stanford_corpus(
     Raises:
         FileNotFoundError: ``src`` does not exist.
         FileExistsError: ``dst`` exists and ``overwrite`` is False.
-        ValueError: a required raw column is missing, or an independent is not
-            covered by ``CAUCUS_PARTY``.
+        ValueError: a required raw column is missing, an independent is not
+            covered by any config rule, or an unexpected party code survives.
     """
     src, dst = Path(src), Path(dst)
     if not src.exists():
@@ -418,6 +502,7 @@ def build_stanford_corpus(
     stats = BuildStats(
         source_path=str(src),
         source_bytes=src.stat().st_size,
+        source_sha256=_fingerprint(src),
         output_path=str(dst),
         built_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         min_word_count=min_word_count,
@@ -442,8 +527,18 @@ def build_stanford_corpus(
     try:
         # Pass 2: stream the text through, filtering before it is materialized.
         for batch in _iter_batches(src, REQUIRED_RAW_COLUMNS, limit):
+            delegates, excluded = _delegate_and_excluded_counts(batch)
+            stats.rows_dropped_delegate += delegates
+            stats.rows_dropped_excluded_member += excluded
+            batch = batch.filter(_keep_member_mask(batch))
+            if batch.num_rows == 0:
+                continue
+
             long_enough = pc.fill_null(
-                pc.greater_equal(batch.column("word_count"), min_word_count), False
+                pc.greater_equal(
+                    _as_int(batch.column("word_count"), pa.int32()), min_word_count
+                ),
+                False,
             )
             stats.rows_dropped_short += batch.num_rows - _true_count(long_enough)
             batch = batch.filter(long_enough)
@@ -479,14 +574,16 @@ def build_stanford_corpus(
 
             mismatches = pc.fill_null(
                 pc.not_equal(
-                    _count_words(batch.column("text_clean")), batch.column("word_count")
+                    _count_words(batch.column("text_clean")),
+                    _as_int(batch.column("word_count"), pa.int32()),
                 ),
                 True,
             )
             stats.word_count_mismatch_rows += _true_count(mismatches)
 
-            projected, reassigned = _project_batch(batch)
+            projected, reassigned, corrected = _project_batch(batch)
             stats.independents_reassigned += reassigned
+            stats.party_corrections_applied += corrected
             stats.rows_written += projected.num_rows
 
             party_counts += _count_values(projected.column("party"))
