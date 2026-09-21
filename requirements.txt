@@ -30,6 +30,7 @@ statsmodels>=0.14
 openai>=1.40           # GPT-4o, and DeepSeek via its OpenAI-compatible API
 anthropic>=0.34        # Claude 3.5 Sonnet
 tiktoken>=0.7          # token counting for cost estimates
+tenacity>=8.2          # retry/backoff on rate limits and transient errors
 
 # --- data acquisition ---
 requests>=2.32

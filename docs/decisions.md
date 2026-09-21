@@ -387,6 +387,103 @@ through unnoticed.
 
 ---
 
+## Scoring
+
+### S1 — Pilot sample: 200 speeches, stratified party × Congress, seed 42
+**Date:** 2026-09-21 · **Status:** active
+
+Equal allocation over 2 parties × 8 Congresses = 16 strata, 12–13 each, exactly
+100 D and 100 R.
+
+**Why stratified rather than random:** a simple random draw would over-represent
+the 110th (66,727 rows) against the 114th (36,661) and Democrats against
+Republicans, so a per-Congress or per-party comparison on the pilot would be
+measuring sample composition rather than rhetoric. Every stratum holds ≥17,354
+rows, so equal allocation costs nothing.
+
+**Why 200:** CLAUDE.md requires a 100–500 speech pilot before any full run.
+
+**Consequence:** seed 42 is logged in the run manifest, and the draw is
+reproducible — verified identical across runs and different under another seed.
+
+---
+
+### S2 — `deepseek-reasoner` runs without a temperature setting
+**Date:** 2026-09-21 · **Status:** active
+
+GPT-4o and Claude get `temperature=0.1`. The parameter is **omitted** for
+`deepseek-reasoner`.
+
+**Why:** DeepSeek documents that the reasoner ignores `temperature`, and some API
+versions reject it outright. A 400 there would have lost all 200 calls for that
+model.
+
+**Consequence — this one matters for the write-up.** The three models are not
+identically configured, so the methodology chapter must not claim they are.
+`ModelSpec.effective_temperature` reports `0.1` for two models and
+`"provider default"` for the reasoner, and the run manifest records it per model.
+
+---
+
+### S3 — Out-of-range scores are failures, not clipped
+**Date:** 2026-09-21 · **Status:** active
+
+An `ideology_score` outside [−1, 1] or a `tone_score` outside [0, 1] is recorded
+as null with the error, not clamped to the boundary.
+
+**Why:** a model returning 1.5 has ignored the scale the prompt defined. Clipping
+would turn that into a plausible-looking maximum score and hide a real problem
+with the instrument. The pilot exists to surface exactly this.
+
+---
+
+### S4 — A failed model averages over the survivors, with `n_models` recorded
+**Date:** 2026-09-21 · **Status:** active
+
+If one of the three models fails on a speech, the ensemble row is built from the
+two that succeeded, and every row carries `n_models`.
+
+**Rejected:** nulling the whole row (throws away two valid scores over one
+failure, and a flaky provider silently shrinks the pilot); averaging with no
+marker (a 2-model average becomes indistinguishable from a 3-model one, which
+would quietly bias the cross-model disagreement statistic).
+
+**Related:** standard deviation is `null` below two models rather than 0.0 — one
+model agreeing with itself is not agreement.
+
+---
+
+### S5 — Spending requires confirmation
+**Date:** 2026-09-21 · **Status:** active
+
+The pilot estimates cost with `tiktoken`, prints it, and waits for `y` before
+calling anything. `--dry-run` stops after the estimate; `--yes` skips the prompt
+for unattended runs.
+
+**Why:** 600 calls including a reasoning model is real money, and CLAUDE.md
+requires logging cost before and after large API calls. Estimated at **~$2.45**
+for the 200-speech pilot.
+
+**Caveat recorded in the output:** the estimate is a floor. The tokenizer is
+OpenAI's and only approximates the other two providers, and `deepseek-reasoner`
+bills hidden reasoning tokens as output that the estimate cannot see. Extrapolate
+the full run from the *billed* usage in the closing summary, not from this.
+
+---
+
+### S6 — Scoring logic lives in `src/`, not in the script
+**Date:** 2026-09-21 · **Status:** active
+
+`code/src/scoring.py` holds the provider clients, prompt rendering, JSON
+extraction, validation and retry; `code/scripts/pilot_run.py` holds sampling,
+orchestration and reporting.
+
+**Why:** the full run needs the same clients. CLAUDE.md puts production logic in
+`src/` with scripts calling it, and `corpus.py`/`build_corpus.py` already follow
+that split.
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
