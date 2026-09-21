@@ -1,5 +1,11 @@
 # Stanford dataset (2001–2017)
 
+> **Superseded in part (2026-09-21).** This note describes the file from the
+> build recipe. Measured against the actual data, the schema has 20 columns (not
+> 12), the documented `speaker`/`state`/`first_name`/`chamber` columns are the
+> OCR-damaged versions, and coverage ends **2016-09-09**, not January 3, 2017.
+> See [`2026-09-21_stanford_data_reality.md`](2026-09-21_stanford_data_reality.md).
+
 ## What this is
 
 Congressional Record speeches from the 107th through 114th Congress

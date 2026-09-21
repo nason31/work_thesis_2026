@@ -42,40 +42,65 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 > checked against data. Do not treat an [assumed] value as a fact in code or
 > in the thesis — verify it first, then update this file and drop the mark.
 
-### Jan 2001 – Jan 3, 2017: Stanford Dataset (Gentzkow, Shapiro & Taddy)
+### Jan 2001 – Sep 2016: Stanford Dataset (Gentzkow, Shapiro & Taddy)
 
-**[verified]** — built and documented by Konsti, see
-[`docs/notes/2026-09-15_stanford_dataset.md`](docs/notes/2026-09-15_stanford_dataset.md)
+Built by Konsti ([`docs/notes/2026-09-15_stanford_dataset.md`](docs/notes/2026-09-15_stanford_dataset.md));
+**that note's schema and coverage claims are superseded** by
+[`docs/notes/2026-09-21_stanford_data_reality.md`](docs/notes/2026-09-21_stanford_data_reality.md),
+which was measured against the file rather than the build recipe.
 
-- **Coverage:** 107th–114th Congress, January 2001 through **January 3, 2017**
-  (end of the 114th Congress) — NOT through the end of calendar year 2017.
-  The break falls on a clean Congress boundary (114th → 115th), which is
-  convenient: govinfo can start at the 115th. But it is 3 days into calendar
-  2017, so any year-level aggregation puts those 3 days of Stanford data into
-  the 2017 bucket alongside govinfo data. Decide once whether to aggregate by
-  Congress (clean) or by calendar year (3 mixed days in 2017) and say so.
+- **PROVISIONAL DATASET.** This parquet is a starting point for building the
+  code, not the final corpus — it may be rebuilt or replaced. Every measured
+  figure below is tied to the specific file recorded as `source_sha256` in
+  `results/metrics/corpus_build_stats.json`. **When the dataset is replaced,
+  re-run `make smoke`, then `make corpus`, and re-check this section against the
+  new stats file.** The build is designed to fail loudly rather than drift: an
+  unrecognized independent, an unexpected party code or a missing column all
+  stop it with a message naming the problem.
+- **Coverage:** 107th–114th Congress, **January 3, 2001 – September 9, 2016**.
+  **[verified 2026-09-21]** against all 823,341 raw rows — see
+  [`docs/notes/2026-09-21_stanford_data_reality.md`](docs/notes/2026-09-21_stanford_data_reality.md).
+  This corrects an earlier claim that coverage ran to January 3, 2017: it does
+  not. The 114th Congress ran to January 3, 2017, but the data stops nearly
+  four months early, so the 114th is **incomplete** in this corpus.
+- **The break is NOT a clean Congress boundary.** If the govinfo pipeline starts
+  at the 115th Congress as planned, there is a **~4 month hole from 2016-09-10
+  to 2017-01-02**, covering the run-up to the November 2016 election — directly
+  relevant to RQ4. **OPEN DECISION:** either govinfo starts at 2016-09-10
+  instead of the Congress boundary, or the gap is documented as a known
+  limitation. Do not let this be discovered late.
 - **Source:** `hein-daily.zip` from data.stanford.edu/congress_text, sessions
   107–114, speech text + metadata + speaker map merged per session on `speech_id`
 - **Form:** one parquet file, ~650 MB, one row per speech. Not in the repo —
   stored on the team drive (link in the note above). `data/raw/stanford/` is
   where it goes locally.
 
-**Actual columns** (raw, before renaming to the corpus schema):
+**Actual columns:** the file has **20**, not the 12 once listed here. Critically,
+it carries both a dirty and a clean version of the speaker fields, and the
+previously documented ones were the dirty version. **Use the clean ones.**
 
-| Column | Notes |
-|---|---|
-| `speech_id` | unique per speech |
-| `speech` | full text → becomes `text` in the merged corpus |
-| `chamber` | House / Senate |
-| `date` | **YYYYMMDD**, needs parsing to a date type |
-| `speaker` | last name as recorded |
-| `first_name` | |
-| `state` | |
-| `gender` | as recorded in source |
-| `word_count` | |
-| `speakerid` | Gentzkow's own ID system — **not** ICPSR, see DW-NOMINATE below |
-| `party` | **D / R / I** — independents are present, see open decision below |
-| `congress` | 107–114 |
+| Need | Do NOT use | Use | Why |
+|---|---|---|---|
+| member name | `speaker` | `last_name` | `speaker` has an honorific + OCR damage on **99.7%** of rows (`Mr. JEFFORDS`, `LR. JEFFORDS`, `Mr.. JEFFORDS`) |
+| state | `state` | `state_map` | `state` is the literal string `"Unknown"` on many rows |
+| chamber | `chamber` | `chamber_map` | `chamber` has 97 nulls |
+| first name | `first_name` | — | `"Unknown"` on **97.2%** of rows; carries no information, not retained |
+
+**Identify members by `speakerid`, not by name.** Even `last_name` has spelling
+variants on **30.6%** of speakerids (`JEFFORD`/`JEFFORDS`,
+`LIEBERMAN`/`LIEDERMAN`/`LISBERMAN`). `speakerid` is exact and `state_map` is
+consistent within every speakerid (0 exceptions). Note `speakerid` encodes the
+congress in its first three digits, so it is unique per member **per congress**,
+not per member.
+
+Other dtype and value facts, all **[verified 2026-09-21]**:
+
+- `word_count` and `date` are **strings**, not integers
+- `party` has **five** values — `D`, `R`, `I`, plus `A` (17 rows) and `P` (37
+  rows), both belonging solely to Acevedo-Vilá, Resident Commissioner of PR
+- `speech_id` is genuinely unique — 0 duplicates across 823,341 rows
+- the source `word_count` matches a recomputed token count on 100% of retained
+  rows, so it can be trusted for filtering
 
 **Other facts:**
 
@@ -93,9 +118,12 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 **[assumed]** — nothing verified against data yet; this whole section is a plan.
 
 - Path: `data/raw/govinfo/`
-- Must pick up at **January 3, 2017** where the Stanford data ends, i.e. with
-  the **115th Congress** — verify there is no gap and no double-counted overlap
-  in the first days of January 2017
+- **Start date is an OPEN DECISION.** The Stanford data ends **2016-09-09**, not
+  January 2017, so starting govinfo at the 115th Congress leaves a ~4 month hole
+  over the 2016 election run-up. Either start at **2016-09-10** (closes the gap,
+  but the handover no longer sits on a Congress boundary) or start at the 115th
+  and document the hole. Decide before building, and verify afterwards that
+  there is no gap and no double-counted overlap at the seam.
 - **Known issue [assumed]:** fewer speeches per year than the Stanford dataset —
   this creates a discontinuity at the 2017 break. Address this in the
   methodology section; do NOT silently ignore it. Verify the actual per-year
@@ -106,12 +134,12 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 - Path: `data/processed/`
 - Final merged corpus: one row per speech, with columns: `speech_id`, `date`,
   `member_id`, `party`, `chamber`, `congress_number`, `text`, `source`
-- **Plus five retained columns** — `speaker`, `first_name`, `state`,
-  `word_count`, `party_original`. Not decoration: the `speakerid` → ICPSR
-  crosswalk needed for DW-NOMINATE validation is built from name + state +
-  congress, and `party_original` preserves the pre-reassignment party so the
-  independents mapping stays auditable and a robustness check can exclude them.
-  Without these, either job means re-streaming the 681 MB raw file.
+- **Plus four retained columns** — `last_name`, `state`, `word_count`,
+  `party_original`. Not decoration: the `speakerid` → ICPSR crosswalk needed for
+  DW-NOMINATE validation is built from name + state + congress + chamber, and
+  `party_original` preserves the pre-reassignment party so the party rules stay
+  auditable. Without these, either job means re-streaming the 681 MB raw file.
+  `first_name` is deliberately NOT retained — `"Unknown"` on 97.2% of rows.
 - Built by `code/scripts/build_corpus.py` (logic in `code/src/corpus.py`).
   Row counts, drop counts and distributions for every full build land in
   `results/metrics/corpus_build_stats.json` — quote that file, not a guess.
@@ -119,13 +147,17 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 **This is a target schema, not what either source delivers.** The Stanford
 side needs an explicit mapping step:
 
-| Corpus column | Stanford source |
-|---|---|
-| `text` | `speech` |
-| `member_id` | `speakerid` — see the ICPSR problem below |
-| `congress_number` | `congress` |
-| `date` | `date`, parsed from YYYYMMDD |
-| `source` | **does not exist in either source — must be added at merge time** |
+| Corpus column | Stanford source | Note |
+|---|---|---|
+| `text` | `speech` | whitespace-normalized only |
+| `member_id` | `speakerid` | see the ICPSR problem below |
+| `congress_number` | `congress` | |
+| `date` | `date` | string YYYYMMDD → `date32` |
+| `chamber` | `chamber_map` | **not** `chamber`, which has nulls |
+| `state` | `state_map` | **not** `state`, which is `"Unknown"` |
+| `last_name` | `last_name` | **not** `speaker`, which is OCR-damaged |
+| `word_count` | `word_count` | string → `int32` |
+| `source` | **does not exist in either source — added at build time** | |
 
 `source` is what keeps the 2017 break visible in the data itself. Every row
 must carry `stanford` or `govinfo`. Do not merge without it.
@@ -315,7 +347,8 @@ work_thesis_2026/
 - Store ensemble inputs and outputs separately so individual model behavior can be inspected
 
 ### Cost awareness
-- The corpus spans 25 years and millions of speeches
+- The Stanford side is **823,341 raw speeches → 426,718 after filtering**, not
+  millions. Budget from the real number; see `results/metrics/corpus_build_stats.json`
 - Always run on a small sample (100–500 speeches) before any full run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
