@@ -155,3 +155,36 @@ ENSEMBLE_MODELS: tuple[str, ...] = (
 # Prompt templates live as files next to this module so every run can log the
 # exact template text it used.
 PROMPTS_DIR: Path = Path(__file__).resolve().parent / "prompts"
+
+# Prompt template for the two-dimensional scoring call. Loaded at runtime and
+# logged verbatim with every run (CLAUDE.md reproducibility rule).
+SCORE_PROMPT_PATH: Path = PROMPTS_DIR / "score_speech.txt"
+
+# --- scoring run constants ---------------------------------------------
+# Seed for every sampling step, logged with each run so a pilot can be redrawn.
+RANDOM_SEED: int = 42
+
+# Pilot size. CLAUDE.md: always run 100-500 speeches before any full run.
+PILOT_SAMPLE_SIZE: int = 200
+
+# Low but non-zero: ideological scoring is a judgement task, and 0.0 on some
+# providers is not deterministic anyway. Logged with every run.
+SCORING_TEMPERATURE: float = 0.1
+
+# Score bounds the prompt promises. Responses outside these are recorded as
+# failures rather than clipped -- a model ignoring the scale is a finding.
+IDEOLOGY_SCORE_RANGE: tuple[float, float] = (-1.0, 1.0)
+TONE_SCORE_RANGE: tuple[float, float] = (0.0, 1.0)
+
+# Cross-model standard deviation above which a speech is flagged as one the
+# ensemble disagrees on. Provisional -- revisit once the pilot shows the
+# distribution of disagreement.
+ENSEMBLE_DISAGREEMENT_THRESHOLD: float = 0.3
+
+# USD per 1M tokens, list prices as of September 2026. Approximate and provider
+# pricing changes, so treat every cost figure as an estimate, not an invoice.
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
+    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+}
