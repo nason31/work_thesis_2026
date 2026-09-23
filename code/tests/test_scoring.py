@@ -187,6 +187,27 @@ def test_anthropic_uses_a_server_enforced_schema() -> None:
     assert RESPONSE_SCHEMA["schema"]["additionalProperties"] is False
 
 
+def test_reasoning_model_gets_more_output_headroom() -> None:
+    """Reasoning tokens are billed from the same budget as the answer.
+
+    At 1024 the reasoner spent the whole cap reasoning on a 623-word speech and
+    returned empty content.
+    """
+    reasoner = MODEL_SPECS["deepseek-reasoner"]
+
+    assert (
+        reasoner.max_output_tokens > MODEL_SPECS["gpt-4o-2024-11-20"].max_output_tokens
+    )
+    assert reasoner.max_output_tokens >= 8192
+
+
+def test_truncation_is_recorded_not_raised() -> None:
+    """A truncated response must become a null row, not end the run."""
+    from src.scoring import TruncatedResponseError
+
+    assert issubclass(TruncatedResponseError, ScoreParseError)
+
+
 def test_retired_model_is_gone_from_the_ensemble() -> None:
     """claude-3-5-sonnet-20241022 was retired (404) before the first run."""
     from src.config import ENSEMBLE_MODELS

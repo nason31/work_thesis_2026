@@ -53,9 +53,16 @@ from src.config import (
 SPEECH_PLACEHOLDER = "{speech_text}"
 
 #: Max tokens for the answer. The prompt asks for two floats and 1-2 sentences,
-#: so this is generous; `deepseek-reasoner` also spends hidden reasoning tokens
-#: that do not count against it.
+#: so this is ample for an instruction-following model.
 MAX_OUTPUT_TOKENS = 1024
+
+#: Reasoning models need far more headroom, because their reasoning tokens are
+#: spent from the SAME budget as the answer. At 1024 on a 623-word speech,
+#: `deepseek-reasoner` used the entire cap reasoning and returned empty content
+#: with finish_reason="length". Raising the cap also costs LESS: given room to
+#: finish, it reasoned to a natural stop in 486 tokens instead of being
+#: truncated at 1024. Billing is on tokens used, not the cap.
+REASONING_MAX_OUTPUT_TOKENS = 8192
 
 #: The answer shape, as a JSON schema. Anthropic enforces it server-side via
 #: `output_config.format`, so the reply is valid JSON by construction.
@@ -86,6 +93,8 @@ class ModelSpec:
     supports_json_mode: bool = False
     #: True where the provider supports a server-enforced JSON schema.
     supports_json_schema: bool = False
+    #: Output cap. Reasoning models need headroom for reasoning tokens.
+    max_output_tokens: int = MAX_OUTPUT_TOKENS
 
     @property
     def effective_temperature(self) -> str:
@@ -106,6 +115,8 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         base_url="https://api.deepseek.com",
         # Reasoning output precedes the answer, so JSON mode does not apply.
         supports_json_mode=False,
+        # Reasoning is billed from the same budget as the answer.
+        max_output_tokens=REASONING_MAX_OUTPUT_TOKENS,
     ),
     "gpt-4o-2024-11-20": ModelSpec(
         model="gpt-4o-2024-11-20",
@@ -144,6 +155,10 @@ class ScoreResult:
 
 class ScoreParseError(ValueError):
     """A response could not be turned into two valid scores."""
+
+
+class TruncatedResponseError(ScoreParseError):
+    """The model hit its output cap before producing an answer."""
 
 
 # --- prompt ------------------------------------------------------------
@@ -302,18 +317,26 @@ async def _call_openai_compatible(
     kwargs: dict[str, Any] = {
         "model": spec.model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": MAX_OUTPUT_TOKENS,
+        "max_tokens": spec.max_output_tokens,
     }
     if spec.supports_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
     response = await client.chat.completions.create(**kwargs)
     usage = response.usage
-    return (
-        response.choices[0].message.content or "",
-        getattr(usage, "prompt_tokens", 0) or 0,
-        getattr(usage, "completion_tokens", 0) or 0,
-    )
+    choice = response.choices[0]
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+
+    # Say so explicitly. A reasoning model that runs out of budget returns
+    # empty content, which would otherwise surface as a confusing "no JSON
+    # object in response: ''".
+    if choice.finish_reason == "length":
+        raise TruncatedResponseError(
+            f"{spec.model} hit its {spec.max_output_tokens}-token cap before "
+            f"answering (used {completion_tokens}); raise max_output_tokens"
+        )
+    return choice.message.content or "", prompt_tokens, completion_tokens
 
 
 async def _call_anthropic(
@@ -329,7 +352,7 @@ async def _call_anthropic(
     """
     kwargs: dict[str, Any] = {
         "model": spec.model,
-        "max_tokens": MAX_OUTPUT_TOKENS,
+        "max_tokens": spec.max_output_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
     if spec.supports_json_schema:
@@ -337,6 +360,11 @@ async def _call_anthropic(
 
     response = await client.messages.create(**kwargs)
     text = "".join(block.text for block in response.content if block.type == "text")
+    if response.stop_reason == "max_tokens":
+        raise TruncatedResponseError(
+            f"{spec.model} hit its {spec.max_output_tokens}-token cap before "
+            f"answering; raise max_output_tokens"
+        )
     return text, response.usage.input_tokens, response.usage.output_tokens
 
 
