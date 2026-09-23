@@ -675,6 +675,63 @@ cost concentrated in Claude ($15.90) rather than the reasoner ($5.39).
 2026-09-23 pilot. Re-measure if the prompt, the models or the corpus change.
 
 ---
+### S10 — The output cap is per model: 8,192 for the reasoner, 1,024 for the rest
+**Date:** 2026-09-23 · **Status:** active · **Commit:** 586a3bd
+
+A reasoning model spends its reasoning tokens from the **same** budget as its
+answer. Under a shared 1,024-token cap, `deepseek-reasoner` spent the whole cap
+reasoning about a 623-word speech and returned empty content with
+`finish_reason="length"` — the full pilot died on its first speech. The two
+instruction-following models were nowhere near the cap.
+
+`MAX_OUTPUT_TOKENS = 1024` therefore applies to GPT-4o and Claude, and
+`REASONING_MAX_OUTPUT_TOKENS = 8192` to `deepseek-reasoner`
+(`code/src/scoring.py`, set per model on `ModelSpec`).
+
+**Measured on the 200-speech pilot** (`results/scores/pilot_*_20260923T103556Z.jsonl`),
+output tokens per speech:
+
+| Model | median | mean | max | over the old 1,024 cap |
+|---|---|---|---|---|
+| `deepseek-reasoner` | 427 | 532 | 3,792 | **16 of 200 (8%)** |
+| `claude-sonnet-4-6` | 94 | 94 | 152 | 0 |
+| `gpt-4o-2024-11-20` | 66 | 69 | 123 | 0 |
+
+So the old cap would have lost roughly one speech in twelve from the reasoner,
+not one in two hundred. It is a **length-dependent** failure, which is why the
+6-speech smoke test passed and the 200-speech run did not: small samples hide it.
+
+**Raising the cap is also cheaper, not merely more correct.** Billing is on
+tokens *used*, not on the cap. Truncated at 1,024 the reasoner burned all 1,024
+and produced nothing to score; given room it stops naturally at a median of 427.
+A larger cap buys a usable answer for fewer tokens than a small cap wastes.
+
+**Rejected:**
+
+- *One uniform cap for all three* — the configuration that broke. It treats
+  reasoning tokens and answer tokens as the same resource across models that
+  bill them differently.
+- *Raising all three to 8,192* — free in billing terms, but the measured maxima
+  for GPT-4o and Claude are 123 and 152, so 1,024 is already ~7× headroom and a
+  cheap guard against a runaway response. There is no reason to remove it.
+- *Splitting long speeches to fit the cap* — forbidden by [M4]: chunking breaks
+  the cross-sentence context the ideology score depends on.
+- *Keeping whatever partial text came back* — a truncated reasoner emits
+  reasoning, not an answer. Scoring it would invent a number the model never
+  gave, the same error [S3] rejects for out-of-range scores.
+
+**On truncation:** `TruncatedResponseError` names the model and its cap, instead
+of surfacing as `no JSON object in response: ''` three layers from the cause. It
+subclasses `ScoreParseError`, so a truncation becomes a null row under [S4] and
+the surviving models still average — it never ends a run that has already been
+paid for. One speech still hits the raised cap; see [O6].
+
+**Follow-up:** the run manifest records `effective_temperature` per model but not
+`max_output_tokens`, so the cap that decides whether a model answers at all is
+not yet in the run record. Add it to the manifest in `pilot_run.py` before the
+full run.
+
+---
 
 ## Open questions
 
@@ -710,13 +767,20 @@ subsample, reporting the agreement from the subsample. Decide before the full
 run, and record the reasoning here.
 
 ### O6 — DeepSeek still truncates on long speeches
-**Raised:** 2026-09-23 · **Status:** 1 speech in 200
+**Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]
 
-Speech `1110041041` (732 words) hit even the raised 8,192-token cap and returned
-no answer, so its ensemble row has `n_models=2`. Raising the cap further is
-cheap (billing is on tokens used), but 0.5% at pilot scale is ~2,100 speeches
-over the full corpus. Measure the cap against the word-count distribution before
-the full run rather than guessing again.
+Speech `1110041041` (732 words) hit even the raised 8,192-token cap set in [S10]
+and returned no answer, so its ensemble row has `n_models=2`. Raising the cap
+further is cheap (billing is on tokens used), but 0.5% at pilot scale is ~2,100
+speeches over the full corpus.
+
+The pilot gives the headroom to reason from: across the other 199 speeches the
+reasoner's output peaked at 3,792 tokens, well under 8,192, so this is a tail
+case rather than a cap set too low across the board. Note the failure does not
+scale with word count in any simple way — 732 words is unremarkable in a corpus
+filtered at 50 words — so it is the reasoning that runs long, not the input.
+Measure output tokens against the word-count distribution before the full run
+rather than guessing again.
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup
