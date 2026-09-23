@@ -43,10 +43,13 @@ from src.config import (
     ENSEMBLE_MODELS,
     METRICS_DIR,
     MIN_WORD_COUNT,
-    PILOT_SAMPLE_SIZE,
+    PILOT_MEASURED_TOKENS,
+    PILOT_PER_CELL,
+    PILOT_TIKTOKEN_INPUT_PER_SPEECH,
     RANDOM_SEED,
     SCORE_PROMPT_PATH,
     SCORES_DIR,
+    STRATIFY_BY,
 )
 from src.scoring import (
     ScoreResult,
@@ -58,14 +61,9 @@ from src.scoring import (
     specs_for,
 )
 
-#: Assumed answer length for the pre-flight estimate. The prompt asks for two
-#: floats and 1-2 sentences; deepseek-reasoner also bills hidden reasoning
-#: tokens this cannot see, which is why the estimate is a floor.
-ASSUMED_COMPLETION_TOKENS = 250
-
-#: Columns needed to choose the sample. `text` is deliberately excluded -- see
-#: `load_sample`.
-SAMPLING_COLUMNS = ("speech_id", "party", "congress_number", "word_count")
+#: Columns needed to choose the sample, beyond the stratification keys. `text` is
+#: deliberately excluded -- see `load_sample`.
+SAMPLING_COLUMNS = ("speech_id", "word_count")
 
 BATCH_SIZE = 50_000
 
@@ -108,30 +106,57 @@ def allocate(
 
 
 def load_sample(
-    corpus_path: Path, sample_size: int, seed: int, min_words: int
+    corpus_path: Path,
+    seed: int,
+    min_words: int,
+    per_cell: int | None = None,
+    sample_size: int | None = None,
+    strata: tuple[str, ...] = STRATIFY_BY,
 ) -> list[dict[str, Any]]:
-    """Draw a party x congress stratified sample, then fetch its text.
+    """Draw a stratified sample over `strata`, then fetch its text.
 
-    Two passes on purpose. The corpus is 426,718 rows and ~618 MB with text; a
-    single read to pick 200 speeches would pull several GB into memory. Pass one
-    reads only the small columns, pass two streams batches and keeps the matched
-    rows.
+    Two allocation modes. `per_cell` takes a fixed number from every cell, which
+    is what a balanced design wants: each cell contributes equally regardless of
+    how large it is in the corpus. `sample_size` instead splits a total as evenly
+    as it can, falling back on `allocate` when a cell is short. Exactly one must
+    be given.
+
+    Two passes on purpose. The corpus is 426,718 rows and ~624 MB with text; a
+    single read to pick a few thousand speeches would pull several GB into
+    memory. Pass one reads only the small columns, pass two streams batches and
+    keeps the matched rows.
     """
+    if (per_cell is None) == (sample_size is None):
+        raise ValueError("give exactly one of per_cell or sample_size")
     if not corpus_path.exists():
         raise FileNotFoundError(
             f"Corpus not found at {corpus_path}. Build it first: make corpus"
         )
 
-    frame = pq.read_table(corpus_path, columns=list(SAMPLING_COLUMNS)).to_pandas()
+    columns = list(dict.fromkeys(SAMPLING_COLUMNS + strata))
+    frame = pq.read_table(corpus_path, columns=columns).to_pandas()
     # Currently a no-op: the corpus is already filtered at MIN_WORD_COUNT. Kept
     # because the dataset is provisional and may be rebuilt at a lower bound.
     frame = frame[frame["word_count"] >= min_words]
     if frame.empty:
         raise ValueError(f"No speeches with word_count >= {min_words} in {corpus_path}")
 
-    groups = {key: group for key, group in frame.groupby(["congress_number", "party"])}
+    # Explicit comprehension, not dict(frame.groupby(...)): pandas 3.0 raises
+    # "'list' object is not callable" when a GroupBy over several keys is fed
+    # straight to dict().
+    groups = {key: group for key, group in frame.groupby(list(strata))}
     available = {key: len(group) for key, group in groups.items()}
-    quota = allocate(list(groups), available, sample_size)
+    if per_cell is not None:
+        short = {k: n for k, n in available.items() if n < per_cell}
+        if short:
+            raise ValueError(
+                f"{len(short)} stratum/strata hold fewer than {per_cell} speeches: "
+                + ", ".join(f"{k}={n}" for k, n in sorted(short.items())[:5])
+                + ". Lower --per-cell, or use --sample-size to split a total."
+            )
+        quota = {k: per_cell for k in groups}
+    else:
+        quota = allocate(list(groups), available, sample_size)
 
     picked = []
     for stratum in sorted(groups):
@@ -167,6 +192,7 @@ def load_sample(
         {
             "speech_id": row.speech_id,
             "party": row.party,
+            "chamber": row.chamber,
             "congress_number": int(row.congress_number),
             "text": texts[row.speech_id],
         }
@@ -190,38 +216,66 @@ def count_prompt_tokens(prompts: list[str]) -> int:
 
 
 def preflight(prompts: list[str], models: tuple[str, ...]) -> dict[str, Any]:
-    """Estimate what this run will cost, per model and in total."""
-    prompt_tokens = count_prompt_tokens(prompts)
-    completion_tokens = ASSUMED_COMPLETION_TOKENS * len(prompts)
-    per_model = {
-        model: estimate_cost(model, prompt_tokens, completion_tokens)
-        for model in models
-    }
+    """Estimate what this run will cost, per model and in total.
+
+    Grounded in the 200-speech pilot's measured usage rather than a flat guess.
+    tiktoken counts this sample's prompts and the result is scaled against the
+    pilot's tiktoken-per-speech figure, so a sample of longer or shorter speeches
+    moves the estimate. Each model then uses its own measured input and output
+    tokens per speech -- the providers differ by ~30% on input for identical text
+    because their tokenizers differ, and the reasoner emits ~7x the output.
+    """
+    n = len(prompts)
+    tiktoken_total = count_prompt_tokens(prompts)
+    # How much longer or shorter this sample is than the pilot's speeches.
+    length_ratio = (tiktoken_total / n) / PILOT_TIKTOKEN_INPUT_PER_SPEECH if n else 1.0
+
+    per_model: dict[str, dict[str, Any]] = {}
+    for model in models:
+        measured = PILOT_MEASURED_TOKENS.get(model)
+        if measured is None:
+            raise KeyError(
+                f"no measured token usage for {model!r}; add it to "
+                "PILOT_MEASURED_TOKENS in config.py, or re-run the 200-speech pilot"
+            )
+        prompt_tokens = round(measured["input"] * length_ratio * n)
+        completion_tokens = round(measured["output"] * length_ratio * n)
+        per_model[model] = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "cost_usd": estimate_cost(model, prompt_tokens, completion_tokens),
+        }
     return {
-        "speeches": len(prompts),
-        "prompt_tokens_per_model": prompt_tokens,
-        "assumed_completion_tokens_per_model": completion_tokens,
-        "estimated_cost_usd": per_model,
-        "estimated_total_usd": sum(per_model.values()),
+        "speeches": n,
+        "tiktoken_input_tokens": tiktoken_total,
+        "length_ratio_vs_pilot": round(length_ratio, 3),
+        "per_model": per_model,
+        "estimated_total_usd": sum(m["cost_usd"] for m in per_model.values()),
     }
 
 
 def print_preflight(estimate: dict[str, Any]) -> None:
-    """Show the estimate, with its caveats stated rather than implied."""
+    """Show the estimate, with its basis stated rather than implied."""
     print(f"\n  speeches            {estimate['speeches']:,}")
-    print(f"  input tokens/model  {estimate['prompt_tokens_per_model']:,}")
     print(
-        f"  assumed output      {estimate['assumed_completion_tokens_per_model']:,}"
-        f" tokens/model ({ASSUMED_COMPLETION_TOKENS}/speech)"
+        f"  speech length       {estimate['length_ratio_vs_pilot']:.2f}x the "
+        "200-speech pilot's average"
     )
     print()
-    for model, cost in estimate["estimated_cost_usd"].items():
-        print(f"  {model:<30} ~${cost:7.3f}")
-    print(f"  {'TOTAL':<30} ~${estimate['estimated_total_usd']:7.3f}")
+    print(f"  {'model':<30}{'in tokens':>12}{'out tokens':>12}{'cost':>10}")
+    for model, m in estimate["per_model"].items():
+        print(
+            f"  {model:<30}{m['prompt_tokens']:>12,}{m['completion_tokens']:>12,}"
+            f"{'$' + format(m['cost_usd'], '.2f'):>10}"
+        )
     print(
-        "\n  This is a floor, not a forecast: the tokenizer is OpenAI's and only\n"
-        "  approximates the other two, and deepseek-reasoner bills hidden\n"
-        "  reasoning tokens as output that this cannot see."
+        f"  {'TOTAL':<30}{'':>12}{'':>12}"
+        f"{'$' + format(estimate['estimated_total_usd'], '.2f'):>10}"
+    )
+    print(
+        "\n  Based on measured per-model usage from the 200-speech pilot, scaled\n"
+        "  by this sample's length. Far better than a flat guess, but still an\n"
+        "  estimate: reasoning length varies per speech and list prices change."
     )
 
 
@@ -233,6 +287,7 @@ def _row(speech: dict[str, Any], result: ScoreResult) -> dict[str, Any]:
     return {
         "speech_id": speech["speech_id"],
         "party": speech["party"],
+        "chamber": speech.get("chamber"),
         "congress_number": speech["congress_number"],
         "ideology_score": result.ideology_score,
         "tone_score": result.tone_score,
@@ -321,6 +376,7 @@ def build_ensemble(
             {
                 "speech_id": speech["speech_id"],
                 "party": speech["party"],
+                "chamber": speech.get("chamber"),
                 "congress_number": speech["congress_number"],
                 "ideology_score_mean": ideology_mean,
                 "ideology_score_std": ideology_std,
@@ -432,7 +488,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--corpus", type=Path, default=CORPUS_PATH)
-    parser.add_argument("--sample-size", type=int, default=PILOT_SAMPLE_SIZE)
+    parser.add_argument(
+        "--per-cell",
+        type=int,
+        default=PILOT_PER_CELL,
+        help=f"speeches per {' x '.join(STRATIFY_BY)} cell (default {PILOT_PER_CELL})",
+    )
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="total speeches split evenly over cells, instead of --per-cell",
+    )
     parser.add_argument("--seed", type=int, default=RANDOM_SEED)
     parser.add_argument("--min-words", type=int, default=MIN_WORD_COUNT)
     parser.add_argument("--output-dir", type=Path, default=SCORES_DIR)
@@ -456,14 +523,22 @@ async def main(argv: list[str] | None = None) -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     template = load_prompt_template(SCORE_PROMPT_PATH)
-    speeches = load_sample(args.corpus, args.sample_size, args.seed, args.min_words)
+    speeches = load_sample(
+        args.corpus,
+        seed=args.seed,
+        min_words=args.min_words,
+        per_cell=None if args.sample_size else args.per_cell,
+        sample_size=args.sample_size,
+    )
     prompts = [render_prompt(template, s["text"]) for s in speeches]
 
-    strata = defaultdict(int)
+    cells: dict[tuple[Any, ...], int] = defaultdict(int)
     for speech in speeches:
-        strata[(speech["congress_number"], speech["party"])] += 1
+        cells[tuple(speech[k] for k in STRATIFY_BY)] += 1
     print(
-        f"sampled {len(speeches)} speeches across {len(strata)} strata (seed {args.seed})"
+        f"sampled {len(speeches):,} speeches across {len(cells)} "
+        f"{' x '.join(STRATIFY_BY)} cells "
+        f"({min(cells.values())}-{max(cells.values())} per cell, seed {args.seed})"
     )
 
     estimate = preflight(prompts, ENSEMBLE_MODELS)
@@ -494,6 +569,8 @@ async def main(argv: list[str] | None = None) -> int:
         "timestamp": timestamp,
         "corpus_path": str(args.corpus),
         "sample_size": len(speeches),
+        "stratify_by": list(STRATIFY_BY),
+        "per_cell": args.per_cell if not args.sample_size else None,
         "random_seed": args.seed,
         "min_word_count": args.min_words,
         "models": {

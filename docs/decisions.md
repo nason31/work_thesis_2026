@@ -639,6 +639,43 @@ table in a slide before then.
 
 ---
 
+### S8 — Sampling stratifies by party × congress × chamber, 100 per cell
+**Date:** 2026-09-23 · **Status:** active · extends [S1]
+
+32 cells (2 parties × 8 congresses × 2 chambers) at 100 each = **3,200 speeches**,
+seed 42. Estimated **$30.86**.
+
+**Why chamber was added:** House and Senate floor rhetoric differ in length and
+formality, and the chamber mix drifts across congresses in the corpus (Senate
+share falls from ~52% in the 107th to ~35% in the 114th). Without balancing on
+it, a per-Congress comparison would partly measure that drift rather than
+rhetoric. Every cell holds at least 5,865 speeches, so 100 each costs nothing.
+
+**Consequence:** this is no longer a pilot in CLAUDE.md's sense (it specifies
+100–500 speeches) — it is a first measurement run. The 200-speech pilot [P1]
+remains the pipeline gate.
+
+---
+
+### S9 — Cost is estimated from measured usage, not a flat assumption
+**Date:** 2026-09-23 · **Status:** active · supersedes the estimator in [S5]
+
+The pre-flight estimate uses each model's **measured** per-speech token counts
+from the 200-speech pilot, scaled by the current sample's length, instead of a
+flat 250-token guess for every model.
+
+**Why it matters:** the flat assumption was wrong per model, not just in total.
+Providers differ by ~30% on input tokens for identical text because their
+tokenizers differ, and `deepseek-reasoner` emits ~7× the output of the other two
+because its reasoning is billed as output. The old estimator put the 3,200-speech
+run near $40 and misattributed the split; the measured one says $30.86, with the
+cost concentrated in Claude ($15.90) rather than the reasoner ($5.39).
+
+**Maintenance:** `PILOT_MEASURED_TOKENS` in `config.py` is pinned to the
+2026-09-23 pilot. Re-measure if the prompt, the models or the corpus change.
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
