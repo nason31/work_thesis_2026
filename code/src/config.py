@@ -168,7 +168,30 @@ SCORE_PROMPT_PATH: Path = PROMPTS_DIR / "score_speech.txt"
 RANDOM_SEED: int = 42
 
 # Pilot size. CLAUDE.md: always run 100-500 speeches before any full run.
+# The first pilot (2026-09-23) used 200, stratified party x congress.
 PILOT_SAMPLE_SIZE: int = 200
+
+# Stratification keys for the sample, and how many speeches per cell.
+# party x congress x chamber = 2 x 8 x 2 = 32 cells; at 100 each that is 3,200
+# speeches. Every cell holds at least 5,865 rows, so the quota is never short.
+# Chamber was added after the first pilot: House and Senate floor rhetoric differ
+# in length and formality, and an unbalanced split would confound a per-Congress
+# comparison with a drift in chamber mix.
+STRATIFY_BY: tuple[str, ...] = ("congress_number", "party", "chamber")
+PILOT_PER_CELL: int = 100
+
+# Measured per-speech token usage from the 200-speech pilot
+# (results/metrics/pilot_summary_20260923T103556Z.json). Used to estimate cost
+# from observation rather than a flat guess: the providers differ by ~30% on
+# input tokens for identical text because their tokenizers differ, and
+# deepseek-reasoner emits ~7x the output of the other two because its reasoning
+# is billed as output.
+PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 903.5
+PILOT_MEASURED_TOKENS: dict[str, dict[str, float]] = {
+    "deepseek-reasoner": {"input": 926.8, "output": 529.0},
+    "gpt-4o-2024-11-20": {"input": 909.1, "output": 69.1},
+    "claude-sonnet-4-6": {"input": 1172.2, "output": 93.7},
+}
 
 # NO TEMPERATURE IS SET. Not a preference -- the providers removed the control:
 # `deepseek-reasoner` ignores it, and the anthropic SDK dropped the parameter

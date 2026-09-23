@@ -240,6 +240,18 @@ def test_cost_for_unpriced_model_is_rejected() -> None:
 # --- stratified allocation ---------------------------------------------
 
 
+def test_three_way_strata_are_32_cells_at_100_each() -> None:
+    """party x congress x chamber, the design after the first pilot."""
+    from src.config import PILOT_PER_CELL, STRATIFY_BY
+
+    assert STRATIFY_BY == ("congress_number", "party", "chamber")
+    cells = [
+        (c, p, ch) for c in range(107, 115) for p in ("D", "R") for ch in ("H", "S")
+    ]
+    assert len(cells) == 32
+    assert len(cells) * PILOT_PER_CELL == 3200
+
+
 def test_allocation_sums_to_the_requested_total() -> None:
     strata = [(c, p) for c in range(107, 115) for p in ("D", "R")]
     available = dict.fromkeys(strata, 10_000)
@@ -320,7 +332,9 @@ def test_no_values_gives_nulls() -> None:
 
 
 def test_ensemble_averages_all_three_models() -> None:
-    speeches = [{"speech_id": "s1", "party": "R", "congress_number": 110}]
+    speeches = [
+        {"speech_id": "s1", "party": "R", "chamber": "H", "congress_number": 110}
+    ]
     by_speech = {
         "s1": [
             _result("m1", 0.2, 0.1),
@@ -334,6 +348,7 @@ def test_ensemble_averages_all_three_models() -> None:
     assert row["ideology_score_mean"] == pytest.approx(0.4)
     assert row["n_models"] == 3
     assert row["party"] == "R"
+    assert row["chamber"] == "H"
 
 
 def test_ensemble_averages_survivors_and_records_the_count() -> None:
