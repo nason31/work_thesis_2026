@@ -7,12 +7,12 @@ Congressional Record via the official govinfo.gov API. This is the
 second half of our combined dataset, covering the period the Stanford
 dataset does not (see `2026-09-15_stanford_dataset.md`): 2017 onward.
 
-## Where the file lives
+## Where the actual file lives
 
-Stored on the team Drive (not committed to this repo — see the
-`data/raw/` rule below): `congress_speeches_2017_2025.jsonl`, in the
-"Work Project 2026: Datasets" folder. Sharing set to "Anyone with the
-link — Viewer".
+Not committed to this repo (per our data policy — `data/raw/` stays
+read-only and git-ignored). The processed file is here:
+https://drive.google.com/drive/u/1/folders/1Eqq2K7dM9gFAldVEVSAZh_vLs9dOkrEB
+File: `congress_speeches_2017_2025.jsonl` (~530 MB)
 
 ## Time period covered
 
