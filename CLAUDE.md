@@ -200,9 +200,25 @@ Run three LLMs and combine their outputs (average for continuous scores). This r
 The ensemble is fixed at three models from distinct providers and training paradigms:
 - **DeepSeek R1** (`deepseek-reasoner`) — reasoning model, open-weight; selected for explicit chain-of-thought reasoning prior to scoring, well-suited to the multi-step ideological inference required
 - **GPT-4o** (`gpt-4o-2024-11-20`) — industry-standard baseline (OpenAI); widely cited in NLP research, enables direct comparison with prior work
-- **Claude 3.5 Sonnet** (`claude-3-5-sonnet-20241022`) — Constitutional AI paradigm (Anthropic); provides architectural and training diversity
+- **Claude Sonnet 4.6** (`claude-sonnet-4-6`) — Constitutional AI paradigm (Anthropic);
+  provides architectural and training diversity. **Replaced Claude 3.5 Sonnet on
+  2026-09-23**, which was retired by Anthropic and returns 404. Same tier and
+  same price ($3/$15 per 1M), so the budget and the diversity rationale are
+  unchanged — see `docs/decisions.md` M3a.
 
 This combination covers: one reasoning model + two instruction-following models; one open-weight model (reproducible checkpoint); three independent training approaches. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else.
+
+**No temperature is set on any model, and this is not a choice we made.** The
+providers removed the control: `deepseek-reasoner` ignores it, and the anthropic
+SDK dropped the parameter outright (current models answer "`temperature` is
+deprecated for this model"). All three run at their provider default, every run
+manifest records that per model, and the methodology chapter must say so rather
+than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
+
+**Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
+member in September 2026 and was already a 404 by the time the first call was
+made. Verify every pinned model still answers before a run that costs money —
+`make smoke` does this for free.
 
 **4. Feed full speeches, not fragments**
 Do not split speeches into short chunks unless a model's context window absolutely requires it. Chunking breaks cross-sentence rhetorical context, which matters for detecting ideological framing. Current frontier models (GPT-4o, Llama 4, Gemini 2.5, DeepSeek R1) all handle full congressional speeches comfortably. Verify context length per model before deciding.
