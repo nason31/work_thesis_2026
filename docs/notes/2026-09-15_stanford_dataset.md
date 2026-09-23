@@ -1,76 +1,54 @@
-# govinfo.gov Dataset — Congressional Record Speeches (2017–2026)
+# Stanford Congressional Record Dataset (2001–2017)
 
 ## What this is
 
-Congress floor speeches (House and Senate), extracted from the
-Congressional Record via the official govinfo.gov API. This is the
-second half of our combined dataset, covering the period the Stanford
-dataset does not (see `2026-09-15_stanford_dataset.md`): 2017 onward.
+Congress floor speeches (House and Senate), from the Gentzkow, Shapiro
+& Taddy Congressional Record dataset published by Stanford. This is
+the first half of our combined dataset, covering sessions 107–114
+(roughly 2001 through early 2017 — see known limitations below for a
+flagged discrepancy).
 
 ## Where the actual file lives
 
 Not committed to this repo (per our data policy — `data/raw/` stays
 read-only and git-ignored). The processed file is here:
 https://drive.google.com/drive/u/1/folders/1Eqq2K7dM9gFAldVEVSAZh_vLs9dOkrEB
-File: `congress_speeches_2017_2025.jsonl` (~530 MB)
+File: `congress_speeches_2001_2017.parquet` (~650 MB)
 
 ## Time period covered
 
-January 1, 2017 – September 17, 2026 (data collection date: September
-23, 2026). 2026 is a partial year, since the year itself was still in
-progress at the time of collection.
+107th–114th Congress. Stanford's own coverage is reported to end
+January 3, 2017 (end of the 114th Congress) — though a team member
+has separately reported the actual data may end around October 2016.
+This discrepancy is flagged and not yet resolved (see limitations).
 
 ## Columns
 
 | Column | Description |
 |---|---|
-| `date` | YYYY-MM-DD |
-| `speaker` | Extracted last name (or full name where needed for disambiguation) |
-| `party` | Democrat / Republican / null (see limitations below) |
-| `chamber` | HOUSE / SENATE |
+| `speech_id` | Unique speech identifier |
 | `speech` | Full text of the speech |
+| `chamber` | HOUSE / SENATE |
+| `date` | YYYYMMDD |
+| `speaker` | Speaker's last name |
+| `first_name` | Speaker's first name |
+| `state` | Speaker's state |
+| `gender` | Speaker's gender |
+| `word_count` | Word count of the speech |
+| `speakerid` | Unique speaker identifier |
+| `party` | D / R / I |
+| `congress` | Congress session number (107–114) |
 
 ## Method summary
 
-- Speaker names extracted via pattern-matching on the Congressional
-  Record's "Mr./Ms./Mrs. NAME." convention, refined over many rounds
-  of testing (hyphenated names, middle initials, disambiguation by
-  full name, procedural false positives, mid-sentence false positives).
-- Party assigned via date-aware lookup against the `congress-legislators`
-  project (github.com/unitedstates/congress-legislators), trying
-  first+last name, then full compound surname, then last name alone.
-- Speeches under 50 characters (procedural fragments) or over 30,000
-  words (likely mis-extractions or bill-text contamination) excluded.
-- "Extensions of Remarks" excluded, for consistency with the Stanford
-  dataset's methodology.
+Downloaded and merged from Stanford's `hein-daily.zip` (speeches,
+descr, and SpeakerMap files per session), sessions 107 through 114.
+Speeches with no matched speaker (mostly procedural entries) dropped.
 
 ## Known limitations
 
-- **~13.9% of speeches have no party assigned** (`party` is `null`).
-  This is by design: when a speaker's surname is shared by multiple
-  members serving at the same time, and the Congressional Record text
-  itself doesn't disambiguate (no first name/state given), we
-  deliberately don't guess rather than risk an incorrect assignment.
-- **Rare mid-term party switches are not reflected.** The underlying
-  legislator data records party per full term, not per day, so a
-  member who changed party mid-term (a rare event) shows their
-  end-of-term party for their whole term.
-- **Three years have small unexplained gaps** between originally
-  reported and finally saved record counts, traced to a Drive write-
-  sync timing issue found during collection (not a data extraction
-  problem): 2017 (−439 records), 2024 (−325), 2026 (−4,058, the
-  largest gap, on top of 2026 already being a partial year). Not yet
-  re-collected — flagged for the next dataset rebuild.
-- **2026 is a partial year** and should not be compared directly
-  against full years in any year-over-year analysis without noting
-  this.
-- 3,568 exact duplicate records (from repair/refetch cycles during
-  collection) were identified and removed before finalizing this file.
-
-## Validation
-
-Full dataset validated against: per-year record counts, duplicate
-detection, party-match rate (86.1%, consistent across 20+ diverse
-test weeks run before the full collection), speech length distribution
-(max 29,910 words, under the 30,000 cap), and manual spot-checks of
-random speech text for coherence and readability.
+- **Reported end date discrepancy**: a team member reports the actual
+  data may end around October 2016, not January 2017 as Stanford's
+  documentation states. Not yet independently re-verified against the
+  actual file's date range — flagged for follow-up.
+- Encoding is latin-1 (historical OCR-derived text), not UTF-8.
