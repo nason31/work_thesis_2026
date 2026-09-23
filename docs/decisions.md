@@ -550,6 +550,95 @@ DeepSeek still needs it — the reasoner emits reasoning before its answer.
 
 ---
 
+## Pilot findings (2026-09-23)
+
+### P1 — The pilot passed its gate; the instrument works
+**Date:** 2026-09-23 · **Status:** finding, not a decision
+**Data:** `results/metrics/pilot_summary_20260923T103556Z.json`
+
+200 speeches, 600 calls, **$1.911** (under the $2.45 estimate). 199 of 200 scored
+by all three models.
+
+**The party check passes decisively.** Ensemble R − D = **+0.590**
+(D −0.279, R +0.311; t=11.3, p=3e-23). Each model separates the parties on its
+own — R − D of +0.558 (Sonnet 4.6), +0.557 (DeepSeek), +0.658 (GPT-4o) — so the
+result does not depend on one member carrying the ensemble.
+
+**The scale is genuinely used**, not bunched at zero: deciles −0.65 / −0.33 /
+0.00 / +0.34 / +0.73, and 72 of 200 speeches score beyond ±0.5. The 41 speeches
+scored exactly 0.0 are procedural, which is what the prompt instructs. Excluding
+them raises separation to **+0.744** — worth a robustness check later, and note
+the procedural rate is similar across parties (D 18, R 23), so it is not a
+confound.
+
+**Tone**: D 0.289 vs R 0.231. Small, and the opposite direction from what a
+naive reading might expect. Not interpretable at this n.
+
+---
+
+### P2 — The three models agree at r ≈ 0.95, which cuts both ways
+**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+
+Mean pairwise Pearson r on ideology = **0.949** (DeepSeek–GPT-4o 0.935,
+DeepSeek–Sonnet 0.953, GPT-4o–Sonnet 0.961). Mean cross-model standard deviation
+0.082; only 2 of 200 speeches exceed 0.3.
+
+**Good news:** strong convergent validity. Three models from different providers
+and training paradigms measure substantially the same construct, which is
+evidence the construct is real and not a single model's artefact.
+
+**Bad news for [M3]'s rationale:** the ensemble exists to "reduce single-model
+bias". At r = 0.95 there is little independent error left to average away, so the
+ensemble buys less than the design assumed — while costing 3× to run. See [O5].
+
+**The 2 disagreements are substantive, not bugs.** Both are Democratic speeches
+attacking defence spending and corporate welfare on fiscal-restraint grounds.
+DeepSeek read the fiscal conservatism as right-leaning (+0.20, +0.40); GPT-4o
+read the criticism as left-leaning (−0.70, −0.70). That is a real ambiguity in
+the construct, and exactly the kind of case worth quoting in the thesis.
+
+---
+
+### P3 — Full-corpus cost is ~$4,100, not a rounding error
+**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+
+At $0.00955 per speech, all three models over 426,718 speeches extrapolates to
+**~$4,077**, or **~$2,038** with batch APIs at roughly half price.
+
+Per model, extrapolated: Sonnet 4.6 **$2,100**, GPT-4o **$1,265**, DeepSeek
+**$712**. The reasoner is the cheapest of the three despite emitting ~529 output
+tokens per speech against 69 and 94 — its per-token price is far lower.
+
+This is the number to budget from, and it is large enough that the ensemble
+question in [O5] is a financial decision, not only a methodological one.
+
+---
+
+### P4 — RQ2 preview: the Democratic mean moved, the Republican mean did not
+**Date:** 2026-09-23 · **Status:** **indicative only — do not cite**
+
+OLS of speech-level ensemble score on Congress number, 107th–114th:
+
+| Party | Slope / congress | Change over 107→114 | p |
+|---|---|---|---|
+| D | **−0.0383** | −0.268 | **0.012** |
+| R | +0.0148 | +0.104 | 0.379 (ns) |
+
+Signed extremity (each score oriented toward its own party) rises +0.0266 per
+congress, p=0.019. Per-congress D–R distance runs 0.33 → 0.43 → 0.59 → 0.52 →
+0.69 → **0.92** (112th) → 0.65 → 0.63.
+
+**This is the question Yufei cared most about in Meeting 1**, and the preliminary
+answer is that Democratic floor rhetoric moved left while Republican rhetoric
+held roughly flat.
+
+**Why it cannot be cited yet:** n = 12–13 per party-congress cell. The design was
+built to prove the pipeline works, not to estimate a trend. Treat the direction
+as a hypothesis the full run must test, and resist the temptation to put this
+table in a slide before then.
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
@@ -566,6 +655,31 @@ Stanford data ends 2016-09-09. Two options, both defensible:
   limitation.
 
 Decide **before** building the govinfo pipeline, not after.
+
+### O5 — Keep all three models, or trim the ensemble?
+**Raised:** 2026-09-23 (from [P2] and [P3]) · **Blocks:** the full-run budget
+
+The models agree at r ≈ 0.95, so averaging three buys little error reduction,
+and the full run costs ~$4,077 against ~$712 for DeepSeek alone or ~$1,977 for
+the cheapest two.
+
+Against trimming: [M3]'s cross-provider design is a genuine methodological
+defence, and three-model agreement is itself a validity result worth reporting.
+For trimming: $3,365 saved, and the pilot already establishes the agreement —
+it may not need re-establishing on 426,718 speeches.
+
+A middle path: run one model on the full corpus and all three on a large random
+subsample, reporting the agreement from the subsample. Decide before the full
+run, and record the reasoning here.
+
+### O6 — DeepSeek still truncates on long speeches
+**Raised:** 2026-09-23 · **Status:** 1 speech in 200
+
+Speech `1110041041` (732 words) hit even the raised 8,192-token cap and returned
+no answer, so its ensemble row has `n_models=2`. Raising the cap further is
+cheap (billing is on tokens used), but 0.5% at pilot scale is ~2,100 speeches
+over the full corpus. Measure the cap against the word-count distribution before
+the full run rather than guessing again.
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup

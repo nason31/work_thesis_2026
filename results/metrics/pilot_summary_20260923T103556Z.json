@@ -1,0 +1,43 @@
+{
+  "speeches_scored": 200,
+  "speeches_sampled": 200,
+  "per_model": {
+    "deepseek-reasoner": {
+      "calls": 200,
+      "failures": 1,
+      "prompt_tokens": 185362,
+      "completion_tokens": 105798,
+      "cost_usd": 0.33364671999999995
+    },
+    "gpt-4o-2024-11-20": {
+      "calls": 200,
+      "failures": 0,
+      "prompt_tokens": 181821,
+      "completion_tokens": 13827,
+      "cost_usd": 0.5928225
+    },
+    "claude-sonnet-4-6": {
+      "calls": 200,
+      "failures": 0,
+      "prompt_tokens": 234434,
+      "completion_tokens": 18734,
+      "cost_usd": 0.984312
+    }
+  },
+  "total_cost_usd": 1.91078122,
+  "ideology_by_party": {
+    "D": {
+      "n": 100,
+      "ideology_mean": -0.27923333333333333,
+      "ideology_std": 0.3537021945425875
+    },
+    "R": {
+      "n": 100,
+      "ideology_mean": 0.3108333333333333,
+      "ideology_std": 0.38296772932709144
+    }
+  },
+  "disagreement_threshold": 0.3,
+  "high_disagreement_speeches": 2,
+  "partial_ensemble_rows": 1
+}
