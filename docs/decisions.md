@@ -49,7 +49,7 @@ collapsed into one "extremeness" score.
 ---
 
 ### M3 — Ensemble of three models from different providers
-**Date:** 2026-09-16 · **Status:** active · **Commit:** 112343d
+**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member · **Commit:** 112343d
 
 DeepSeek R1 (`deepseek-reasoner`), GPT-4o (`gpt-4o-2024-11-20`), Claude 3.5
 Sonnet (`claude-3-5-sonnet-20241022`). Averaged for continuous scores, with all
@@ -409,7 +409,7 @@ reproducible — verified identical across runs and different under another seed
 ---
 
 ### S2 — `deepseek-reasoner` runs without a temperature setting
-**Date:** 2026-09-21 · **Status:** active
+**Date:** 2026-09-21 · **Status:** SUPERSEDED by [S2a] — no model gets a temperature
 
 GPT-4o and Claude get `temperature=0.1`. The parameter is **omitted** for
 `deepseek-reasoner`.
@@ -481,6 +481,72 @@ orchestration and reporting.
 **Why:** the full run needs the same clients. CLAUDE.md puts production logic in
 `src/` with scripts calling it, and `corpus.py`/`build_corpus.py` already follow
 that split.
+
+---
+
+### M3a — Claude Sonnet 4.6 replaces the retired Claude 3.5 Sonnet
+**Date:** 2026-09-23 · **Status:** active · supersedes the Anthropic half of [M3]
+
+`claude-3-5-sonnet-20241022` returns **404 — the model has been retired**. This
+was found on the very first API call, not by reading a deprecation notice.
+
+**Chosen:** `claude-sonnet-4-6`. Same Sonnet tier and the same $3/$15 per 1M as
+the retired model, so neither the budget nor M3's "architectural diversity"
+rationale changes. It is also the newest model that still accepts a temperature
+at the API level — though see [S2a], where that turned out not to matter.
+
+**Rejected:** `claude-sonnet-5` (cheaper per token at $2/$10, but adaptive
+thinking is on by default and used roughly twice the output tokens in a probe,
+so the saving largely washes out, and it rejects temperature outright);
+`claude-opus-5` (most capable but $5/$25, ~1.7× the old Anthropic cost, and no
+temperature either).
+
+**Lesson worth keeping:** a pinned model ID is not a guarantee of availability.
+`make smoke` verifies every model answers, for free, before a run that spends.
+
+---
+
+### S2a — No model gets a temperature; all three run at provider default
+**Date:** 2026-09-23 · **Status:** active · supersedes [S2]
+
+Temperature is not set anywhere. **This is not a methodological preference — the
+providers removed the control.**
+
+- `deepseek-reasoner` ignores it (the original [S2] finding).
+- The anthropic SDK 1.7.0 has **no `temperature` parameter at all**; passing it
+  is a `TypeError` before any request leaves the machine. Forced through
+  `extra_body`, Sonnet 4.6 accepts it but Sonnet 5 answers
+  `400 — "temperature is deprecated for this model"`.
+
+So the only model that could still take 0.1 was GPT-4o. Setting it on one model
+of three would imply an ensemble tuned alike, which would be false.
+
+**Rejected:** keeping 0.1 on GPT-4o and Sonnet 4.6 via an `extra_body`
+passthrough. It works today, but it forces a parameter the SDK deliberately
+removed and that the API already calls deprecated — it would likely break during
+the thesis, and it buys consistency on two models out of three.
+
+**Consequence for the write-up:** do not claim the ensemble was run at a
+controlled temperature. Every run manifest records `"provider default"` for all
+three, and that is what the methodology chapter should state. Repeat runs will
+be noisier than a temperature-0.1 design would have been; if that matters for a
+robustness claim, it has to be measured, not assumed.
+
+---
+
+### S7 — Anthropic returns JSON via structured outputs, not assistant prefill
+**Date:** 2026-09-23 · **Status:** active
+
+`output_config.format` with a server-enforced JSON schema.
+
+**Why not prefill:** seeding the assistant turn with `{` was the standard way to
+force JSON before structured outputs existed. It returns a **400 on all current
+Claude models**. The bug was invisible until the retired-model 404 was fixed,
+because the 404 came first.
+
+**Consequence:** Claude's replies are schema-valid by construction, so the
+brace-depth parser is a safety net for that model rather than the mechanism.
+DeepSeek still needs it — the reasoner emits reasoning before its answer.
 
 ---
 

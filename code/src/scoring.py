@@ -10,11 +10,16 @@ the prompt promised; anything outside it is recorded as a failure rather than
 clipped, because a model ignoring the scale is a finding and not something to
 quietly rescue.
 
-The three models are not configured identically, and cannot be. DeepSeek
-documents that `deepseek-reasoner` does not honour `temperature` -- some API
-versions reject it outright -- so it is omitted there and sent to the other two.
-`ModelSpec.effective_temperature` reports what each model actually ran with, and
-that value is what belongs in the methodology chapter.
+No temperature is set on any model. The providers removed the control rather
+than us declining to use it: `deepseek-reasoner` ignores it, and the anthropic
+SDK dropped the parameter outright (current models answer "`temperature` is
+deprecated for this model"). Setting it on GPT-4o alone would imply an ensemble
+tuned alike, so all three run at their provider default and every run manifest
+says so. `ModelSpec.effective_temperature` is what belongs in the write-up.
+
+Anthropic returns JSON through structured outputs (`output_config.format`).
+Assistant prefill -- the usual way to force JSON before structured outputs --
+returns a 400 on current Claude models and is not an option.
 """
 
 from __future__ import annotations
@@ -39,7 +44,6 @@ from src.config import (
     IDEOLOGY_SCORE_RANGE,
     MODEL_PRICING,
     SCORE_PROMPT_PATH,
-    SCORING_TEMPERATURE,
     TONE_SCORE_RANGE,
 )
 
@@ -53,6 +57,22 @@ SPEECH_PLACEHOLDER = "{speech_text}"
 #: that do not count against it.
 MAX_OUTPUT_TOKENS = 1024
 
+#: The answer shape, as a JSON schema. Anthropic enforces it server-side via
+#: `output_config.format`, so the reply is valid JSON by construction.
+RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "json_schema",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "ideology_score": {"type": "number"},
+            "tone_score": {"type": "number"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["ideology_score", "tone_score", "reasoning"],
+        "additionalProperties": False,
+    },
+}
+
 
 @dataclass(frozen=True)
 class ModelSpec:
@@ -62,15 +82,19 @@ class ModelSpec:
     provider: str  # "openai_compatible" | "anthropic"
     api_key_env: str
     base_url: str | None = None
-    #: False where the provider ignores or rejects `temperature`.
-    send_temperature: bool = True
     #: True where the provider supports OpenAI-style JSON mode.
     supports_json_mode: bool = False
+    #: True where the provider supports a server-enforced JSON schema.
+    supports_json_schema: bool = False
 
     @property
-    def effective_temperature(self) -> float | str:
-        """What this model actually runs at -- logged with every run."""
-        return SCORING_TEMPERATURE if self.send_temperature else "provider default"
+    def effective_temperature(self) -> str:
+        """What this model actually runs at -- logged with every run.
+
+        Always the provider default: no provider in the ensemble still accepts
+        a temperature through its current SDK.
+        """
+        return "provider default"
 
 
 #: Keyed by the entries of ENSEMBLE_MODELS in config.py. Change models there.
@@ -80,9 +104,6 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         provider="openai_compatible",
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com",
-        # DeepSeek documents that the reasoner ignores temperature, and some API
-        # versions 400 on it. Omitted rather than risk losing every call.
-        send_temperature=False,
         # Reasoning output precedes the answer, so JSON mode does not apply.
         supports_json_mode=False,
     ),
@@ -92,10 +113,13 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         api_key_env="OPENAI_API_KEY",
         supports_json_mode=True,
     ),
-    "claude-3-5-sonnet-20241022": ModelSpec(
-        model="claude-3-5-sonnet-20241022",
+    "claude-sonnet-4-6": ModelSpec(
+        model="claude-sonnet-4-6",
         provider="anthropic",
         api_key_env="ANTHROPIC_API_KEY",
+        # Server-enforced schema. Prefill, the pre-structured-outputs way to
+        # force JSON, returns a 400 on current Claude models.
+        supports_json_schema=True,
     ),
 }
 
@@ -280,8 +304,6 @@ async def _call_openai_compatible(
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
-    if spec.send_temperature:
-        kwargs["temperature"] = SCORING_TEMPERATURE
     if spec.supports_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
@@ -299,28 +321,23 @@ async def _call_anthropic(
 ) -> tuple[str, int, int]:
     """Call Anthropic; return (text, input_tok, output_tok).
 
-    The assistant turn is prefilled with `{` so the reply starts inside the JSON
-    object -- Anthropic has no JSON mode, and this is the documented substitute.
-    The brace is prepended again before parsing, since the API does not echo it.
+    JSON comes back through structured outputs, which the server enforces
+    against RESPONSE_SCHEMA. Assistant prefill -- the older trick for forcing
+    JSON -- returns a 400 on current Claude models. `thinking` is left off: the
+    task is a short judgement, and adaptive thinking would roughly double the
+    output tokens.
     """
     kwargs: dict[str, Any] = {
         "model": spec.model,
         "max_tokens": MAX_OUTPUT_TOKENS,
-        "messages": [
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": "{"},
-        ],
+        "messages": [{"role": "user", "content": prompt}],
     }
-    if spec.send_temperature:
-        kwargs["temperature"] = SCORING_TEMPERATURE
+    if spec.supports_json_schema:
+        kwargs["output_config"] = {"format": RESPONSE_SCHEMA}
 
     response = await client.messages.create(**kwargs)
     text = "".join(block.text for block in response.content if block.type == "text")
-    return (
-        "{" + text,
-        response.usage.input_tokens,
-        response.usage.output_tokens,
-    )
+    return text, response.usage.input_tokens, response.usage.output_tokens
 
 
 async def score_one(

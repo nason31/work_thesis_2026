@@ -164,15 +164,35 @@ def test_unknown_model_is_rejected() -> None:
         specs_for(("some-model-we-never-configured",))
 
 
-def test_reasoner_omits_temperature_and_says_so() -> None:
-    """DeepSeek ignores or rejects temperature on the reasoner."""
-    reasoner = MODEL_SPECS["deepseek-reasoner"]
-    gpt = MODEL_SPECS["gpt-4o-2024-11-20"]
+def test_no_model_claims_a_temperature() -> None:
+    """The providers removed the control; the manifest must not imply otherwise."""
+    from src.config import ENSEMBLE_MODELS
 
-    assert reasoner.send_temperature is False
-    assert reasoner.effective_temperature == "provider default"
-    assert gpt.send_temperature is True
-    assert gpt.effective_temperature == pytest.approx(0.1)
+    for model in ENSEMBLE_MODELS:
+        assert MODEL_SPECS[model].effective_temperature == "provider default"
+
+
+def test_anthropic_uses_a_server_enforced_schema() -> None:
+    """Prefill returns 400 on current Claude models, so the schema is required."""
+    from src.scoring import RESPONSE_SCHEMA
+
+    claude = MODEL_SPECS["claude-sonnet-4-6"]
+
+    assert claude.supports_json_schema is True
+    assert RESPONSE_SCHEMA["schema"]["required"] == [
+        "ideology_score",
+        "tone_score",
+        "reasoning",
+    ]
+    assert RESPONSE_SCHEMA["schema"]["additionalProperties"] is False
+
+
+def test_retired_model_is_gone_from_the_ensemble() -> None:
+    """claude-3-5-sonnet-20241022 was retired (404) before the first run."""
+    from src.config import ENSEMBLE_MODELS
+
+    assert "claude-3-5-sonnet-20241022" not in ENSEMBLE_MODELS
+    assert "claude-3-5-sonnet-20241022" not in MODEL_SPECS
 
 
 # --- cost --------------------------------------------------------------

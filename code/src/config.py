@@ -145,11 +145,14 @@ EXPECTED_PARTIES: frozenset[str] = frozenset({"D", "R"})
 # update these constants (and CLAUDE.md) if a version is changed mid-project.
 #   deepseek-reasoner  — DeepSeek R1, reasoning model, open-weight (RL-trained)
 #   gpt-4o-2024-11-20  — GPT-4o snapshot, industry-standard baseline (OpenAI)
-#   claude-3-5-sonnet  — Claude 3.5 Sonnet, Constitutional AI paradigm (Anthropic)
+#   claude-sonnet-4-6  — Claude Sonnet 4.6, Constitutional AI paradigm (Anthropic)
+# Claude 3.5 Sonnet was the original choice but was RETIRED (404) before the
+# first run; Sonnet 4.6 replaces it at the same tier and price. See
+# docs/decisions.md M3a.
 ENSEMBLE_MODELS: tuple[str, ...] = (
     "deepseek-reasoner",  # DeepSeek R1 — reasoning model, open-weight
     "gpt-4o-2024-11-20",  # GPT-4o — industry-standard baseline
-    "claude-3-5-sonnet-20241022",  # Claude 3.5 Sonnet — Constitutional AI
+    "claude-sonnet-4-6",  # Claude Sonnet 4.6 — Constitutional AI
 )
 
 # Prompt templates live as files next to this module so every run can log the
@@ -167,9 +170,13 @@ RANDOM_SEED: int = 42
 # Pilot size. CLAUDE.md: always run 100-500 speeches before any full run.
 PILOT_SAMPLE_SIZE: int = 200
 
-# Low but non-zero: ideological scoring is a judgement task, and 0.0 on some
-# providers is not deterministic anyway. Logged with every run.
-SCORING_TEMPERATURE: float = 0.1
+# NO TEMPERATURE IS SET. Not a preference -- the providers removed the control:
+# `deepseek-reasoner` ignores it, and the anthropic SDK dropped the parameter
+# entirely (current models return "`temperature` is deprecated for this model").
+# Rather than set it on one model of three and imply the ensemble is uniformly
+# configured, all three run at their provider default, and every run manifest
+# records that. See docs/decisions.md S2a.
+SCORING_TEMPERATURE = None
 
 # Score bounds the prompt promises. Responses outside these are recorded as
 # failures rather than clipped -- a model ignoring the scale is a finding.
@@ -186,5 +193,5 @@ ENSEMBLE_DISAGREEMENT_THRESHOLD: float = 0.3
 MODEL_PRICING: dict[str, dict[str, float]] = {
     "deepseek-reasoner": {"input": 0.55, "output": 2.19},
     "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }
