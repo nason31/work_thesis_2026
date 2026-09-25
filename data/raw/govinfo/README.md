@@ -14,10 +14,12 @@ stays read-only and git-ignored for actual data files). The dataset is
 produced and saved by `02_govinfo_dataset.ipynb`.
 
 - **Working copy** (written automatically by the notebook):
-  `Work Project 2026: Datasets (raw)/congress_speeches_2017_present.jsonl`
+  https://drive.google.com/drive/u/1/folders/1Eqq2K7dM9gFAldVEVSAZh_vLs9dOkrEB
+  File: `congress_speeches_2017_present.jsonl`
 - **Shared copy** (promoted manually once validated, for use by
   collaborators):
-  `Work Project 2026: Datasets (shared)/congress_speeches_2017_present.jsonl`
+  https://drive.google.com/drive/u/1/folders/1VLrhAbY5-09EoppbqigAaMcxbXNQacRs
+  File: `congress_speeches_2017_present.jsonl`
 
 ## Time period covered
 
