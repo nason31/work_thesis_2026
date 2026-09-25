@@ -9,6 +9,9 @@ pyarrow>=16.0          # parquet for the merged corpus
 # --- config / secrets ---
 python-dotenv>=1.0
 
+# --- parsing legislator reference data (congress-legislators YAML files) ---
+PyYAML>=6.0
+
 # --- plotting ---
 matplotlib>=3.8
 seaborn>=0.13
