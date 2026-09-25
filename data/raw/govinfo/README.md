@@ -1,11 +1,14 @@
-# govinfo.gov Dataset — Congressional Record Speeches (2017–present)
+# govinfo.gov Dataset — Congressional Record Speeches (2016–present)
 
 ## What this is
 
 Congress floor speeches (House and Senate), extracted from the
 Congressional Record via the official govinfo.gov API. This is the
 second half of the combined dataset, covering the period the Stanford
-dataset does not (see `data/raw/stanford/README.md`): 2017 onward.
+dataset does not (see `data/raw/stanford/README.md`): September 10,
+2016 onward. The September 10 – December 31, 2016 portion closes a gap
+found between Stanford's documented range and the actual end date
+present in its released data (confirmed: September 9, 2016).
 
 ## Where the actual file lives
 
@@ -15,17 +18,24 @@ produced and saved by `02_govinfo_dataset.ipynb`.
 
 - **Working copy** (written automatically by the notebook):
   https://drive.google.com/drive/u/1/folders/1Eqq2K7dM9gFAldVEVSAZh_vLs9dOkrEB
-  File: `congress_speeches_2017_present.jsonl`
+  File: `congress_speeches_2016_present.jsonl`
 - **Shared copy** (promoted manually once validated, for use by
   collaborators):
   https://drive.google.com/drive/u/1/folders/1VLrhAbY5-09EoppbqigAaMcxbXNQacRs
-  File: `congress_speeches_2017_present.jsonl`
+  File: `congress_speeches_2016_present.jsonl`
 
 ## Time period covered
 
-January 1, 2017 onward. The most recent year at any given time should
-be treated as partial (still in progress at the time of collection)
-rather than a complete year, in any year-over-year analysis.
+September 10, 2016 onward. The most recent year at any given time
+should be treated as partial (still in progress at the time of
+collection) rather than a complete year, in any year-over-year
+analysis.
+
+The September 10 – December 31, 2016 period was collected using a
+pipeline validated only against 2017 and later data (see
+`02_govinfo_dataset.ipynb`, Section 7). This period is checked
+separately in `03_validation.ipynb`, Section 5, before being treated
+as equivalent in quality to the rest of the dataset.
 
 ## Columns
 
@@ -69,6 +79,9 @@ rather than a complete year, in any year-over-year analysis.
   member who changed party mid-term (a rare event) shows their
   end-of-term party for their whole term.
 - **The most recent year is partial.** See "Time period covered" above.
+- **The September–December 2016 gap-filling period** was collected
+  with a pipeline validated only against 2017 onward; see "Time period
+  covered" above.
 - Prior versions of this dataset showed small, unexplained gaps
   between the number of records reported during collection and the
   number ultimately saved, traced to a Drive write-sync timing issue.
@@ -82,5 +95,5 @@ rather than a complete year, in any year-over-year analysis.
 
 See `03_validation.ipynb` for the full set of checks run against this
 file: per-year record counts, duplicate detection, party/ICPSR-match
-rate, speech length distribution, and manual spot-checks of random
-speech text for coherence and readability.
+rate, speech length distribution, gap-period-specific checks, and
+manual spot-checks of random speech text for coherence and readability.
