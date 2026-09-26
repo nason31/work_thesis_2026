@@ -5,7 +5,7 @@
 Congress floor speeches (House and Senate), from the Gentzkow, Shapiro
 & Taddy Congressional Record dataset published by Stanford. This is
 the first half of the combined dataset, covering sessions 107–114
-(2001 through the actual end date confirmed below).
+(2001 through the confirmed end date below).
 
 ## Where the actual file lives
 
@@ -23,17 +23,18 @@ produced and saved by `01_stanford_dataset.ipynb`.
 
 ## Time period covered
 
-107th–114th Congress. Stanford's documentation describes the daily
-edition as covering sessions 97–114 (1981–2017). A discrepancy has
-been reported between this documented range and the actual latest date
-present in the released data for session 114, possibly ending several
-months earlier than January 2017. `01_stanford_dataset.ipynb` includes
-a diagnostic step (Section 4) that checks the real date range directly
-— both in the processed output and in the raw session 114 source file
-— rather than relying on the documentation. Results of that check
-should be recorded here once available.
+107th–114th Congress: **2001-01-03 to 2016-09-09** (confirmed against
+both the processed output and the raw session 114 source file — see
+`01_stanford_dataset.ipynb`, Section 4). This is earlier than
+Stanford's documentation states (sessions 97–114, 1981–2017); the
+released data for session 114 stops several months before the
+session's actual close. This gap is closed by the govinfo dataset's
+gap-filling period (September 10 – December 31, 2016; see
+`data/raw/govinfo/README.md`).
 
 ## Columns
+
+Documented columns:
 
 | Column | Description |
 |---|---|
@@ -47,8 +48,20 @@ should be recorded here once available.
 | `gender` | Speaker's gender |
 | `word_count` | Word count of the speech |
 | `speakerid` | Stanford-internal speaker identifier (not a cross-dataset ID) |
-| `party` | D / R / I |
+| `party` | See "Party values" below |
 | `congress` | Congress session number (107–114) |
+
+The raw session files also carry additional columns not listed above:
+`number_within_file`, `last_name`, `line_start`, `line_end`, `file`,
+`char_count`, `state_map`, `chamber_map`. These pass through unchanged
+in the saved file; they are not currently used by any downstream step
+but are available if needed.
+
+**Party values are not limited to D/R/I.** A confirmed run of the full
+dataset showed: D (441,536), R (377,021), I (4,730), P (37), A (17).
+The rarer codes (P, A) correspond to minor historical parties. Any
+downstream analysis that assumes only three party values, or that maps
+party codes to full names, should account for these.
 
 Note: this dataset does not include ICPSR identifiers — Stanford's
 release does not provide one. The govinfo dataset (see
@@ -65,6 +78,14 @@ dropped. Full processing steps are documented in
 
 ## Known limitations
 
-- **Possible end-date discrepancy**: see "Time period covered" above —
-  not yet independently confirmed against the actual file.
+- **Actual coverage ends 2016-09-09**, earlier than Stanford's
+  documentation states. Closed by the govinfo dataset's gap-filling
+  period; see "Time period covered" above.
 - Encoding is latin-1 (historical OCR-derived text), not UTF-8.
+
+## Validation
+
+A confirmed run produced 823,341 rows with 0 duplicate speech IDs; see
+`03_validation.ipynb`, Section 2, for the full set of checks (session
+coverage, party distribution, date range, duplicate detection, and
+manual spot-checks of sample rows).
