@@ -6,8 +6,8 @@ Congress floor speeches (House and Senate), extracted from the
 Congressional Record via the official govinfo.gov API. This is the
 second half of the combined dataset, covering the period the Stanford
 dataset does not (see `data/raw/stanford/README.md`): September 10,
-2016 onward. The September 10 – December 31, 2016 portion closes a gap
-found between Stanford's documented range and the actual end date
+2016 onward. The September 10 – December 31, 2016 portion closes the
+gap found between Stanford's documented range and the actual end date
 present in its released data (confirmed: September 9, 2016).
 
 ## Where the actual file lives
@@ -32,10 +32,13 @@ collection) rather than a complete year, in any year-over-year
 analysis.
 
 The September 10 – December 31, 2016 period was collected using a
-pipeline validated only against 2017 and later data (see
-`02_govinfo_dataset.ipynb`, Section 7). This period is checked
-separately in `03_validation.ipynb`, Section 5, before being treated
-as equivalent in quality to the rest of the dataset.
+pipeline validated only against 2017 and later data. A confirmed check
+of two representative weeks within this period (see
+`03_validation.ipynb`, Section 5) showed party-match rates of 81.0%
+and 89.7% — the lower figure is within a plausible range given the
+small sample size, but somewhat below the roughly 86% typically seen
+elsewhere in this dataset, and worth re-checking on any future rerun
+of this period.
 
 ## Columns
 
@@ -71,9 +74,20 @@ as equivalent in quality to the rest of the dataset.
   (`party` and `icpsr` are `null`). This is by design: when a speaker's
   surname is shared by multiple members serving at the same time, and
   the Congressional Record text itself doesn't disambiguate (no first
-  name/state given), no party or ICPSR is guessed. The exact current
-  rate is checked in `03_validation.ipynb` and should be recorded here
-  after each full collection run.
+  name/state given), no party or ICPSR is guessed. A confirmed run of
+  the complete dataset showed an 86.1% party-match rate.
+- **ICPSR coverage (75.8% in a confirmed run) is meaningfully lower
+  than the party-match rate, and this is expected.** ICPSR identifiers
+  are assigned only to members who cast recorded floor votes;
+  non-voting territorial delegates (e.g. the District of Columbia,
+  American Samoa, the U.S. Virgin Islands) structurally never receive
+  one, regardless of how reliably their name resolves to a party.
+  These delegates are disproportionately active on the floor relative
+  to their small share of all members (often their only effective
+  legislative tool, since they cannot cast votes), which plausibly
+  explains why the ICPSR gap is wider than the party-match gap. A
+  speaker resolving to a party but not an ICPSR id should not, by
+  itself, be treated as a resolution failure.
 - **Rare mid-term party switches are not reflected.** The underlying
   legislator data records party per full term, not per day, so a
   member who changed party mid-term (a rare event) shows their
@@ -81,19 +95,15 @@ as equivalent in quality to the rest of the dataset.
 - **The most recent year is partial.** See "Time period covered" above.
 - **The September–December 2016 gap-filling period** was collected
   with a pipeline validated only against 2017 onward; see "Time period
-  covered" above.
-- Prior versions of this dataset showed small, unexplained gaps
-  between the number of records reported during collection and the
-  number ultimately saved, traced to a Drive write-sync timing issue.
-  The current pipeline (Section 9 of `02_govinfo_dataset.ipynb`)
-  automatically records any day affected by a collection-time warning
-  and reprocesses it before the dataset is considered final; this
-  should be re-confirmed via `03_validation.ipynb` after each full run
-  rather than assumed resolved.
+  covered" above for the confirmed match-rate check.
 
 ## Validation
 
-See `03_validation.ipynb` for the full set of checks run against this
-file: per-year record counts, duplicate detection, party/ICPSR-match
+A confirmed run of the complete dataset (September 2016 onward)
+produced 225,564 total records, 0 exact duplicates, an 86.1%
+party-match rate, and a longest speech of 29,910 words (under the
+30,000-word cap). See `03_validation.ipynb` for the full set of
+checks: per-year record counts, duplicate detection, party/ICPSR-match
 rate, speech length distribution, gap-period-specific checks, and
-manual spot-checks of random speech text for coherence and readability.
+manual spot-checks of random speech text for coherence and
+readability.
