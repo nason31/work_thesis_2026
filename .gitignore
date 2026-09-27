@@ -151,6 +151,8 @@ activemq-data/
 .env
 .envrc
 .venv
+# throwaway env that `make lock` builds to re-pin the lockfile
+.venv-lock
 env/
 venv/
 ENV/

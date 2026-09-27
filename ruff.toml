@@ -1,0 +1,4 @@
+# Import root, so ruff resolves `from src.config import ...` as first-party
+# rather than third-party. Mirrors `pythonpath = code` in pytest.ini and the
+# sys.path insert in code/scripts/.
+src = ["code"]

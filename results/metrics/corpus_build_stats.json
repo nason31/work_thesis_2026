@@ -1,0 +1,68 @@
+{
+  "source_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/raw/stanford/congress_speeches_2001_2017.parquet",
+  "source_bytes": 681029375,
+  "source_sha256": "292a0614f2173c475d9119beb7aceb579223866d0bc39c25986e7a75a52519b8",
+  "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+  "built_at": "2026-09-21T16:32:11+00:00",
+  "min_word_count": 50,
+  "limit": null,
+  "source_tag": "stanford",
+  "raw_schema": {
+    "speech_id": "string",
+    "speech": "string",
+    "chamber": "string",
+    "date": "string",
+    "number_within_file": "string",
+    "speaker": "string",
+    "first_name": "string",
+    "last_name": "string",
+    "state": "string",
+    "gender": "string",
+    "line_start": "string",
+    "line_end": "string",
+    "file": "string",
+    "char_count": "string",
+    "word_count": "string",
+    "speakerid": "string",
+    "party": "string",
+    "state_map": "string",
+    "chamber_map": "string",
+    "congress": "int64"
+  },
+  "rows_read": 823341,
+  "rows_written": 426718,
+  "rows_dropped_delegate": 5665,
+  "rows_dropped_excluded_member": 6,
+  "rows_dropped_short": 390952,
+  "rows_dropped_empty_text": 0,
+  "rows_dropped_duplicate_id": 0,
+  "independents_reassigned": 2515,
+  "party_corrections_applied": 31,
+  "party_counts": {
+    "D": 232498,
+    "R": 194220
+  },
+  "party_counts_original": {
+    "D": 229983,
+    "I": 2546,
+    "R": 194189
+  },
+  "congress_counts": {
+    "107": 58243,
+    "108": 64531,
+    "109": 60656,
+    "110": 66727,
+    "111": 49896,
+    "112": 48044,
+    "113": 41960,
+    "114": 36661
+  },
+  "chamber_counts": {
+    "H": 249286,
+    "S": 177432
+  },
+  "date_min": "2001-01-03",
+  "date_max": "2016-09-09",
+  "word_count_mismatch_rows": 0,
+  "word_count_mismatch_rate": 0.0
+}

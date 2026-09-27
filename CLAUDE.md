@@ -42,40 +42,64 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 > checked against data. Do not treat an [assumed] value as a fact in code or
 > in the thesis — verify it first, then update this file and drop the mark.
 
-### Jan 2001 – Jan 3, 2017: Stanford Dataset (Gentzkow, Shapiro & Taddy)
+### Jan 2001 – Sep 2016: Stanford Dataset (Gentzkow, Shapiro & Taddy)
 
-**[verified]** — built and documented by Konsti, see
-[`docs/notes/2026-09-15_stanford_dataset.md`](docs/notes/2026-09-15_stanford_dataset.md)
+Built by Konsti ([`data/raw/stanford/README.md`](data/raw/stanford/README.md)).
+Its coverage dates are correct, but **its column table documents the
+OCR-damaged `speaker`/`state`/`first_name` fields** — use the clean ones listed
+below, from
+[`docs/notes/2026-09-21_stanford_data_reality.md`](docs/notes/2026-09-21_stanford_data_reality.md),
+which was measured against the file rather than the build recipe.
 
-- **Coverage:** 107th–114th Congress, January 2001 through **January 3, 2017**
-  (end of the 114th Congress) — NOT through the end of calendar year 2017.
-  The break falls on a clean Congress boundary (114th → 115th), which is
-  convenient: govinfo can start at the 115th. But it is 3 days into calendar
-  2017, so any year-level aggregation puts those 3 days of Stanford data into
-  the 2017 bucket alongside govinfo data. Decide once whether to aggregate by
-  Congress (clean) or by calendar year (3 mixed days in 2017) and say so.
+- **PROVISIONAL DATASET.** This parquet is a starting point for building the
+  code, not the final corpus — it may be rebuilt or replaced. Every measured
+  figure below is tied to the specific file recorded as `source_sha256` in
+  `results/metrics/corpus_build_stats.json`. **When the dataset is replaced,
+  re-run `make smoke`, then `make corpus`, and re-check this section against the
+  new stats file.** The build is designed to fail loudly rather than drift: an
+  unrecognized independent, an unexpected party code or a missing column all
+  stop it with a message naming the problem.
+- **Coverage:** 107th–114th Congress, **January 3, 2001 – September 9, 2016**.
+  **[verified 2026-09-21]** against all 823,341 raw rows — see
+  [`docs/notes/2026-09-21_stanford_data_reality.md`](docs/notes/2026-09-21_stanford_data_reality.md).
+  This corrects an earlier claim that coverage ran to January 3, 2017: it does
+  not. The 114th Congress ran to January 3, 2017, but the data stops nearly
+  four months early, so the 114th is **incomplete** in this corpus.
+- **The break is NOT a clean Congress boundary.** Settled (D15): govinfo starts
+  2016-09-10, so the 114th Congress is built from both sources and the seam has
+  no gap and no overlap.
 - **Source:** `hein-daily.zip` from data.stanford.edu/congress_text, sessions
   107–114, speech text + metadata + speaker map merged per session on `speech_id`
 - **Form:** one parquet file, ~650 MB, one row per speech. Not in the repo —
   stored on the team drive (link in the note above). `data/raw/stanford/` is
   where it goes locally.
 
-**Actual columns** (raw, before renaming to the corpus schema):
+**Actual columns:** the file has **20**, not the 12 once listed here. Critically,
+it carries both a dirty and a clean version of the speaker fields, and the
+previously documented ones were the dirty version. **Use the clean ones.**
 
-| Column | Notes |
-|---|---|
-| `speech_id` | unique per speech |
-| `speech` | full text → becomes `text` in the merged corpus |
-| `chamber` | House / Senate |
-| `date` | **YYYYMMDD**, needs parsing to a date type |
-| `speaker` | last name as recorded |
-| `first_name` | |
-| `state` | |
-| `gender` | as recorded in source |
-| `word_count` | |
-| `speakerid` | Gentzkow's own ID system — **not** ICPSR, see DW-NOMINATE below |
-| `party` | **D / R / I** — independents are present, see open decision below |
-| `congress` | 107–114 |
+| Need | Do NOT use | Use | Why |
+|---|---|---|---|
+| member name | `speaker` | `last_name` | `speaker` has an honorific + OCR damage on **99.7%** of rows (`Mr. JEFFORDS`, `LR. JEFFORDS`, `Mr.. JEFFORDS`) |
+| state | `state` | `state_map` | `state` is the literal string `"Unknown"` on many rows |
+| chamber | `chamber` | `chamber_map` | `chamber` has 97 nulls |
+| first name | `first_name` | — | `"Unknown"` on **97.2%** of rows; carries no information, not retained |
+
+**Identify members by `speakerid`, not by name.** Even `last_name` has spelling
+variants on **30.6%** of speakerids (`JEFFORD`/`JEFFORDS`,
+`LIEBERMAN`/`LIEDERMAN`/`LISBERMAN`). `speakerid` is exact and `state_map` is
+consistent within every speakerid (0 exceptions). Note `speakerid` encodes the
+congress in its first three digits, so it is unique per member **per congress**,
+not per member.
+
+Other dtype and value facts, all **[verified 2026-09-21]**:
+
+- `word_count` and `date` are **strings**, not integers
+- `party` has **five** values — `D`, `R`, `I`, plus `A` (17 rows) and `P` (37
+  rows), both belonging solely to Acevedo-Vilá, Resident Commissioner of PR
+- `speech_id` is genuinely unique — 0 duplicates across 823,341 rows
+- the source `word_count` matches a recomputed token count on 100% of retained
+  rows, so it can be trusted for filtering
 
 **Other facts:**
 
@@ -88,35 +112,67 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
   does, the parquet cannot be rebuilt or independently checked.
 - Note: Yufei said we **can drop this** if our govinfo pipeline produces sufficient coverage
 
-### Jan 2017 – 2025: Custom govinfo.gov Pipeline
+### Sep 2016 – 2025: govinfo.gov (Konsti's pipeline)
 
-**[assumed]** — nothing verified against data yet; this whole section is a plan.
+**[verified 2026-09-27]** — see
+[`docs/notes/2026-09-27_govinfo_data_reality.md`](docs/notes/2026-09-27_govinfo_data_reality.md).
 
-- Path: `data/raw/govinfo/`
-- Must pick up at **January 3, 2017** where the Stanford data ends, i.e. with
-  the **115th Congress** — verify there is no gap and no double-counted overlap
-  in the first days of January 2017
-- **Known issue [assumed]:** fewer speeches per year than the Stanford dataset —
-  this creates a discontinuity at the 2017 break. Address this in the
-  methodology section; do NOT silently ignore it. Verify the actual per-year
-  counts on both sides of the break and record them in `results/metrics/`.
+- **Raw file:** `data/raw/govinfo/congress_speeches_2016_present.jsonl` (team
+  drive), built by Konsti's `02_govinfo_dataset.ipynb` — **not in the repo**, so
+  the raw file cannot be rebuilt here. 6 columns: `date`, `speaker` (surname),
+  `party`, `icpsr`, `chamber`, `speech`.
+- **Seam settled (D15):** the file starts 2016-09-12, Stanford ends 2016-09-09 —
+  no gap, no overlap. The build keeps 2016-09-10 → 2025-12-31 and drops 2026.
+- **Do not trust the file's `party`/`icpsr`, and do not use its text raw.** The
+  upstream parser ignored chamber in its party lookup, used end-of-term party
+  labels, and glued presiding-officer turns, narration, bill texts and HTML onto
+  speeches. `code/src/govinfo.py` repairs all of that (D16, D17): speakers are
+  re-resolved against `data/raw/congress_legislators/` (unitedstates/
+  congress-legislators JSON) by chamber and date, and text is cut to the
+  member's own words. Build with `make govinfo` →
+  `data/processed/corpus_govinfo.parquet`, stats in
+  `results/metrics/govinfo_build_stats.json`.
+- **`member_id` is the bioguide id** on this side (Stanford uses `speakerid`),
+  plus an extra `icpsr` column — the direct DW-NOMINATE join key, missing for
+  many members first elected 2021+.
+- **Not repairable here (O7):** the parser dropped the state from
+  `Mr. SMITH of Texas.`, so 23,075 House speeches cannot be attributed. They
+  lean Republican (~60/40), so House Republicans are under-represented.
+- **Discontinuity, measured:** ~11–15k speeches/year after filtering vs ~22k/year
+  in Stanford's 114th — about a third fewer at the break. Address it in the
+  methodology; it is not a political trend.
+- **Not yet merged** with the Stanford corpus. The two processed files share the
+  CLAUDE.md schema (govinfo adds `icpsr`); the merge is the next step.
 
 ### Processed / Combined
 
 - Path: `data/processed/`
 - Final merged corpus: one row per speech, with columns: `speech_id`, `date`,
   `member_id`, `party`, `chamber`, `congress_number`, `text`, `source`
+- **Plus four retained columns** — `last_name`, `state`, `word_count`,
+  `party_original`. Not decoration: the `speakerid` → ICPSR crosswalk needed for
+  DW-NOMINATE validation is built from name + state + congress + chamber, and
+  `party_original` preserves the pre-reassignment party so the party rules stay
+  auditable. Without these, either job means re-streaming the 681 MB raw file.
+  `first_name` is deliberately NOT retained — `"Unknown"` on 97.2% of rows.
+- Built by `code/scripts/build_corpus.py` (logic in `code/src/corpus.py`).
+  Row counts, drop counts and distributions for every full build land in
+  `results/metrics/corpus_build_stats.json` — quote that file, not a guess.
 
 **This is a target schema, not what either source delivers.** The Stanford
 side needs an explicit mapping step:
 
-| Corpus column | Stanford source |
-|---|---|
-| `text` | `speech` |
-| `member_id` | `speakerid` — see the ICPSR problem below |
-| `congress_number` | `congress` |
-| `date` | `date`, parsed from YYYYMMDD |
-| `source` | **does not exist in either source — must be added at merge time** |
+| Corpus column | Stanford source | Note |
+|---|---|---|
+| `text` | `speech` | whitespace-normalized only |
+| `member_id` | `speakerid` | see the ICPSR problem below |
+| `congress_number` | `congress` | |
+| `date` | `date` | string YYYYMMDD → `date32` |
+| `chamber` | `chamber_map` | **not** `chamber`, which has nulls |
+| `state` | `state_map` | **not** `state`, which is `"Unknown"` |
+| `last_name` | `last_name` | **not** `speaker`, which is OCR-damaged |
+| `word_count` | `word_count` | string → `int32` |
+| `source` | **does not exist in either source — added at build time** | |
 
 `source` is what keeps the 2017 break visible in the data itself. Every row
 must carry `stanford` or `govinfo`. Do not merge without it.
@@ -159,9 +215,25 @@ Run three LLMs and combine their outputs (average for continuous scores). This r
 The ensemble is fixed at three models from distinct providers and training paradigms:
 - **DeepSeek R1** (`deepseek-reasoner`) — reasoning model, open-weight; selected for explicit chain-of-thought reasoning prior to scoring, well-suited to the multi-step ideological inference required
 - **GPT-4o** (`gpt-4o-2024-11-20`) — industry-standard baseline (OpenAI); widely cited in NLP research, enables direct comparison with prior work
-- **Claude 3.5 Sonnet** (`claude-3-5-sonnet-20241022`) — Constitutional AI paradigm (Anthropic); provides architectural and training diversity
+- **Claude Sonnet 4.6** (`claude-sonnet-4-6`) — Constitutional AI paradigm (Anthropic);
+  provides architectural and training diversity. **Replaced Claude 3.5 Sonnet on
+  2026-09-23**, which was retired by Anthropic and returns 404. Same tier and
+  same price ($3/$15 per 1M), so the budget and the diversity rationale are
+  unchanged — see `docs/decisions.md` M3a.
 
 This combination covers: one reasoning model + two instruction-following models; one open-weight model (reproducible checkpoint); three independent training approaches. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else.
+
+**No temperature is set on any model, and this is not a choice we made.** The
+providers removed the control: `deepseek-reasoner` ignores it, and the anthropic
+SDK dropped the parameter outright (current models answer "`temperature` is
+deprecated for this model"). All three run at their provider default, every run
+manifest records that per model, and the methodology chapter must say so rather
+than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
+
+**Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
+member in September 2026 and was already a 404 by the time the first call was
+made. Verify every pinned model still answers before a run that costs money —
+`make smoke` does this for free.
 
 **4. Feed full speeches, not fragments**
 Do not split speeches into short chunks unless a model's context window absolutely requires it. Chunking breaks cross-sentence rhetorical context, which matters for detecting ideological framing. Current frontier models (GPT-4o, Llama 4, Gemini 2.5, DeepSeek R1) all handle full congressional speeches comfortably. Verify context length per model before deciding.
@@ -172,14 +244,34 @@ Scoring ideological position requires chaining inferences: "what policy position
 **6. Structural validation via DW-NOMINATE**
 LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideological scores from VoteView.com). This is not optional — it is the primary methodological defense of our approach. Expect the correlation to be imperfect (floor speech rhetoric vs. actual votes are different signals), but it should be positive and meaningful. A weak or inverse correlation would be a red flag requiring investigation, not suppression.
 
+### Decided — data decisions
+
+- **Independents:** assign to the party they caucus with — Sanders → D, King → D,
+  Jeffords → D. Applied once at corpus build time (`code/scripts/build_corpus.py`),
+  never handled differently in any other script. Stated in the methodology.
+- **Aggregation granularity:** by **Congress** (107th through 114th for the Stanford
+  data). Clean 2-year periods aligned with the data structure. Calendar year is
+  not used for primary aggregation.
+- **Unlisted independents:** if a `party == "I"` speech belongs to a member not in
+  `CAUCUS_PARTY` (e.g. Lieberman, who sat as an Independent Democrat 2007–2013),
+  the build **fails** and names them. It does not guess and does not silently
+  drop them. Extend the roster in `config.py` and record the addition here — that
+  keeps the rule visible in one place instead of buried in a log.
+- **Minimum speech length:** **50 words**, inclusive (`MIN_WORD_COUNT`). Strips
+  procedural filler ("I yield back the balance of my time") without biasing the
+  corpus toward members who give long set-piece speeches. Stricter thresholds
+  belong at the LLM-sampling step, where they are cheap to change; filtering
+  harder at build time would need a full rebuild to undo.
+- **Text cleaning:** whitespace normalization only — collapse runs, trim ends.
+  Boilerplate stripping ("Mr. Speaker,", procedural preambles) is **still open**:
+  it changes what the model sees, so it is a methodological choice, not cleaning.
+- **Duplicate `speech_id`:** first occurrence kept, count recorded in the build
+  stats. `speech_id` is documented as unique, so a non-zero count is a signal
+  worth investigating rather than a routine drop.
+
 ### What is NOT yet decided — do not hardcode
 
 - **Prompting vs. fine-tuning:** Still open. Continuous scoring strongly favors prompting (zero-shot or few-shot); fine-tuning would lock us into a binary setup and requires labeled data. Do not build infrastructure that assumes one approach without flagging the trade-off in a comment.
-- **How to handle independents:** the Stanford data has `party` values D / R / **I**
-  (e.g. Sanders, King). The primary RQ compares Democrats vs. Republicans, so
-  independents must either be dropped or assigned to the party they caucus with.
-  Either is defensible; the choice must be made once, applied in the merge, and
-  stated in the methodology. Do not let different scripts handle it differently.
 - **Reinforcement fine-tuning:** Now more mature than a year ago and requires less labeled data than traditional fine-tuning. Worth evaluating if a supervised component turns out to be needed, but not the default path.
 
 ### If manual labeling is done
@@ -189,12 +281,13 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 - Do not rely solely on "own judgment with peer review"
 
 ### Key boundaries
-- The source discontinuity sits at **January 3, 2017** (end of the 114th Congress,
-  where the Stanford data stops and the govinfo pipeline takes over). It must be
-  addressed in the methodology section — flag it in code comments and make it
-  visible in every time-series plot (e.g. vertical dashed line at the 2017 break).
-  `SOURCE_BREAK_YEAR = 2017` in `code/src/config.py` is the year-level constant;
-  use the exact date wherever daily resolution matters.
+- The source discontinuity sits at **2016-09-10**, inside the 114th Congress
+  (Stanford stops 2016-09-09, govinfo takes over — D15). govinfo yields about a
+  third fewer speeches per year. It must be addressed in the methodology
+  section — flag it in code comments and make it visible in every time-series
+  plot (e.g. a vertical dashed line). `SOURCE_BREAK_DATE`, `SOURCE_BREAK_YEAR`
+  (2016) and `SOURCE_BREAK_CONGRESS` (114, the mixed-source point on a
+  per-Congress axis) live in `code/src/config.py`.
 - Every row in the merged corpus carries a `source` column, so the break is
   recoverable from the data and not just from a note
 - Do not fabricate or impute data to paper over coverage gaps
@@ -207,13 +300,19 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 work_thesis_2026/
 ├── CLAUDE.md               ← this file
 ├── README.md               ← setup instructions for the team
-├── requirements.txt
+├── Makefile                ← make setup / test / lint / corpus / lock
+├── requirements.txt        ← direct dependencies (edit this)
+├── requirements.lock.txt   ← pinned versions (generated by `make lock`)
+├── pytest.ini              ← pythonpath = code
+├── ruff.toml               ← src = ["code"], so src.* is first-party
 ├── .env.example            ← template for API keys (.env is git-ignored)
 ├── code/
 │   ├── src/                ← production modules (importable, tested)
 │   │   ├── config.py       ← ALL paths + shared constants; import, never hardcode
+│   │   ├── corpus.py       ← corpus build: load, map, clean, write
 │   │   └── prompts/        ← prompt templates as files, logged with every run
 │   ├── scripts/            ← one-off analysis and pipeline scripts
+│   ├── tests/              ← pytest; run with `pytest` from the repo root
 │   └── notebooks/          ← exploratory work; not used in production
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
@@ -248,8 +347,19 @@ work_thesis_2026/
 
 ### Language and environment
 - Python 3.11+
-- Dependencies in `requirements.txt` (or `pyproject.toml` if project grows)
-- Use virtual environments; do not assume global installs
+- **Always work in the repo's `.venv`.** `make setup` creates it and installs
+  the pinned versions. Never install into a base or conda environment — mixed
+  pandas/pyarrow versions across the team mean results that do not reproduce.
+- Two dependency files, do not conflate them:
+  - `requirements.txt` — direct dependencies, loose ranges. Edit this.
+  - `requirements.lock.txt` — every version pinned, generated by `make lock`.
+    Install from this. Commit both whenever either changes.
+- `make test` / `make lint` / `make corpus` call `.venv/bin/` explicitly, so
+  they behave the same whether or not the venv is activated. Prefer them over
+  bare `pytest` / `python`, which may resolve to the wrong interpreter.
+- Lint config lives in `ruff.toml` (`src = ["code"]` so `src.*` resolves as
+  first-party) and test config in `pytest.ini` (`pythonpath = code`). Both
+  encode the same import root as the `sys.path` insert in `code/scripts/`.
 
 ### Style
 - PEP 8 — use `black` for formatting, `ruff` for linting
@@ -269,7 +379,8 @@ work_thesis_2026/
 - Store ensemble inputs and outputs separately so individual model behavior can be inspected
 
 ### Cost awareness
-- The corpus spans 25 years and millions of speeches
+- The Stanford side is **823,341 raw speeches → 426,718 after filtering**, not
+  millions. Budget from the real number; see `results/metrics/corpus_build_stats.json`
 - Always run on a small sample (100–500 speeches) before any full run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
@@ -280,6 +391,11 @@ work_thesis_2026/
 ## What the Agent Should and Should Not Do
 
 ### DO
+- **Record every data/model/methodology decision in
+  [`docs/decisions.md`](docs/decisions.md)** — what was chosen, what was
+  rejected, and why. Add the entry in the same session the decision is made.
+  The methodology chapter is written from that file; anything not in it will be
+  forgotten by December.
 - Work within the existing folder structure
 - Flag in a comment when a methodological decision is still open
 - Log all key parameters and results to `results/metrics/`
@@ -321,8 +437,11 @@ work_thesis_2026/
 
 ---
 
-*Last updated: September 16, 2026 — Stanford dataset section rewritten from the
-actual data (see `docs/notes/2026-09-15_stanford_dataset.md`); everything still
-marked **[assumed]** is a planning estimate awaiting verification. Update this
-file when major decisions are made, and drop an [assumed] mark only once the
-value has been checked against data.*
+*Last updated: September 20, 2026 — corpus build implemented
+(`code/scripts/build_corpus.py`, logic in `code/src/corpus.py`, tests in
+`code/tests/`); the data decisions it settles are recorded above. Everything
+still marked **[assumed]** is a planning estimate awaiting verification —
+including the Stanford speaker-match drop count, which this build cannot
+recover because those rows were removed upstream. Update this file when major
+decisions are made, and drop an [assumed] mark only once the value has been
+checked against data.*
