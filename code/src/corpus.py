@@ -492,7 +492,7 @@ def build_stanford_corpus(
         raise FileNotFoundError(
             f"Raw Stanford parquet not found at {src}. Download "
             "congress_speeches_2001_2017.parquet from the team drive into "
-            "data/raw/stanford/ first (see docs/notes/2026-09-15_stanford_dataset.md)."
+            "data/raw/stanford/ first (see data/raw/stanford/README.md)."
         )
     if dst.exists() and not overwrite:
         raise FileExistsError(

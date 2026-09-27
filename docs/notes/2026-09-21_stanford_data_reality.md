@@ -9,7 +9,7 @@ any of them. What should survive a swap is the *method*: key on `speakerid`, use
 the `_map` columns, and let the build fail loudly on anything new.
 
 Written after the first real build. The earlier note
-(`2026-09-15_stanford_dataset.md`) and CLAUDE.md's **[verified]** Stanford
+(`2026-09-15_stanford_dataset.md`, since deleted; its content moved to `data/raw/stanford/README.md`) and CLAUDE.md's **[verified]** Stanford
 section describe the file from the build recipe rather than from the file, and
 several of those descriptions are wrong. This note records what 823,341 rows
 actually look like. Where the two disagree, this one was measured.

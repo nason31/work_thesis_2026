@@ -7,7 +7,7 @@ Usage (from the repo root):
 
 The raw file is not in the repo. Download congress_speeches_2001_2017.parquet
 from the team drive into data/raw/stanford/ first -- see
-docs/notes/2026-09-15_stanford_dataset.md.
+data/raw/stanford/README.md.
 
 All logic lives in code/src/corpus.py; this is only the command line around it.
 """
