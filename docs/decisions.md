@@ -266,7 +266,7 @@ one entry per congress. The 18 independent ids were enumerated from the data.
 ---
 
 ### D12 — Coverage ends 2016-09-09, not 2017-01-03
-**Date:** 2026-09-21 · **Status:** active, **and it opens O1**
+**Date:** 2026-09-21 · **Status:** active; the O1 it opened is settled by D15
 
 Measured over all raw rows before any filtering. CLAUDE.md previously stated
 January 3, 2017 and called the handover a clean Congress boundary; both were
@@ -298,6 +298,115 @@ many rows; `chamber` has 97 nulls; `state_map` and `chamber_map` have none.
 worth investigating rather than a routine drop. Reported in the build stats.
 
 **Outcome:** 0 duplicates across 823,341 rows — the property holds.
+
+---
+
+### D15 — govinfo covers 2016-09-10 to 2025-12-31 (settles O1)
+**Date:** 2026-09-27 · **Status:** active
+
+`GOVINFO_START_DATE` / `GOVINFO_END_DATE` in `config.py`. Konsti's file already
+starts at 2016-09-12 (the first sitting day after Stanford's last, 2016-09-09),
+so the seam has **no gap and no overlap**. The build still enforces the window
+and counts anything outside it (0 before, 15,283 after).
+
+**Rejected:** starting at the 115th Congress — it would throw away the 2016
+election run-up that RQ4 asks about, in order to keep a boundary D1 does not
+actually need (the 114th is simply built from two sources). Keeping 2026 —
+outside the thesis scope (`YEAR_RANGE`), and a partial year that would read as a
+trend in any per-year plot.
+
+**Consequence:** the 114th Congress is mixed-source (Stanford to 2016-09-09,
+govinfo after). The `source` column keeps that visible. Note October 2016 has
+zero speeches — a normal pre-election recess (Stanford has zero for October
+2006, 2010 and 2014 too), not a data gap.
+
+---
+
+### D16 — govinfo speakers are re-resolved against congress-legislators
+**Date:** 2026-09-27 · **Status:** active
+
+The file's `party` and `icpsr` columns are ignored. Every speaker is resolved
+again against unitedstates/congress-legislators, filtered by **chamber and
+date**, and only a unique match is accepted.
+
+**Why:** the upstream lookup ignored chamber, so a surname counted as ambiguous
+whenever *anyone* in Congress shared it — every Senate speech by Mike Lee (518),
+Sherrod Brown (401), Chris Murphy, Gary Peters, Ron Johnson and Tina Smith came
+out with no party. It also used each term's end-of-term party, so mid-term
+switchers were mislabelled: Van Drew's 2019 speeches as R (he switched
+2019-12-19), Mitchell's and Amash's Republican-era speeches as Independent.
+congress-legislators records day-level `party_affiliations`, which fixes both.
+
+**Result:** unresolved rows in the window fall from 29,013 (13.8%, file) to
+24,762 (11.8%); Senate unresolved from ~4,100 to 1,196, which are mostly the two
+Senators Scott (genuinely ambiguous) and non-members (trial counsel, video
+clips). ICPSR agrees with the file on every row where both have one.
+
+**Rejected:** trusting the file's labels (wrong in the ways above); guessing
+among same-name candidates (would put speeches in the wrong party).
+
+**Remaining limitation (not fixable from this file):** the Record header
+`Mr. SMITH of Texas.` names the state, but the upstream parser kept only the
+surname, so 23,075 House rows stay ambiguous. They lean **Republican** — about
+13,900 R vs 9,100 D by candidate weight — so their loss under-represents House
+Republicans. Fixing it needs the parser to keep the state and a re-fetch.
+7,029 of them have candidates who all share one party. See O7.
+
+**ICPSR gap:** congress-legislators has no ICPSR for many members first elected
+2021 or later (missing on 12% of 117th, 29% of 118th, 34% of 119th rows). The
+DW-NOMINATE join for those needs VoteView's member file (name/state/congress).
+
+---
+
+### D17 — govinfo text is cut to the member's own words
+**Date:** 2026-09-27 · **Status:** active
+
+The upstream parser split speeches only when a *member* began speaking, so
+presiding-officer turns, Record narration and whole bill texts (up to 29k
+words) were glued onto the previous speech. `clean_speech` cuts each speech at
+the first of: an officer turn (`The PRESIDING OFFICER.`, `The SPEAKER pro
+tempore.` …), a fixed narration phrase opening a paragraph (`The Clerk read the
+title of the bill.`), or a long `____________________` rule between Record
+items. It then strips page markers, HTML residue, `{time}` stamps and centered
+heading lines. The 50-word filter is applied **after** cleaning.
+
+**Result:** 19.5% of words removed; 92k of 210k in-window rows cut (56k at an
+officer turn, 27k at a separator, 8.5k at narration).
+
+**Checked, not assumed:** a first version also cut at the short `____` rule and
+at rules framing `{time}` stamps; both occur *inside* a member's turn, and the
+check below caught it. After the fix, the removed text contains a paragraph
+addressed to the chair ("Mr. Speaker, I …") in 31 of ~92k cut rows (0.03%) —
+mostly amendment text, or a member resuming after the Record moved their
+remarks. Accepted.
+
+**Rejected:** leaving the text as is (other speakers' words and bill text in
+front of the model, and inflated word counts letting procedural exchanges pass
+the 50-word filter); a word cap like upstream's 30,000 (it cannot catch
+officer text, and drops the member's real words along with the bill).
+
+**Not O3:** this is separating speakers and removing typesetting, which the
+Stanford source already does. Boilerplate inside a member's own words ("Mr.
+Speaker, I yield back") is untouched; O3 stays open.
+
+---
+
+### D18 — govinfo independents
+**Date:** 2026-09-27 · **Status:** active
+
+Keyed on bioguide id (`GOVINFO_CAUCUS_PARTY`, `GOVINFO_EXCLUDED_MEMBERS`) and
+applied only on dates when the member's party is neither D nor R. Same rules as
+D2/D8, and the build raises on anyone unlisted (D4). Each caucus entry is
+checked against congress-legislators' own `caucus` field.
+
+- Sanders, King → D (as D2)
+- Manchin → D from 2024-05-31; Sinema → D from 2022-12-09 (both caucused D)
+- Mitchell (from 2020-12-14) and Amash (from 2019-07-04) → **excluded** for
+  those dates only: neither caucused with a party. 9 rows. Their earlier
+  Republican speeches stay in as R.
+
+Kiley (Independent caucusing R from 2026-03-09) falls outside D15's window; if
+the window is extended the build will stop and ask.
 
 ---
 
@@ -737,19 +846,6 @@ full run.
 
 Move these up into a numbered entry once decided.
 
-### O1 — Where does the govinfo pipeline start?
-**Raised:** 2026-09-21 (from D12) · **Blocks:** the merged corpus, RQ4
-
-Stanford data ends 2016-09-09. Two options, both defensible:
-
-- **Start at 2016-09-10** — closes the gap, but the handover no longer sits on a
-  Congress boundary, which complicates D1's per-Congress aggregation at the seam.
-- **Start at the 115th Congress (2017-01-03)** — keeps the clean boundary, but
-  leaves a ~4 month hole over the 2016 election run-up that must be declared as a
-  limitation.
-
-Decide **before** building the govinfo pipeline, not after.
-
 ### O5 — Keep all three models, or trim the ensemble?
 **Raised:** 2026-09-23 (from [P2] and [P3]) · **Blocks:** the full-run budget
 
@@ -781,6 +877,17 @@ scale with word count in any simple way — 732 words is unremarkable in a corpu
 filtered at 50 words — so it is the reasoning that runs long, not the input.
 Measure output tokens against the word-count distribution before the full run
 rather than guessing again.
+
+### O7 — Recover the ~23k ambiguous House speeches?
+**Raised:** 2026-09-27 (from D16) · **Blocks:** nothing yet; affects RQ2 balance
+
+The govinfo parser dropped the state from `Mr. SMITH of Texas.`, leaving 23,075
+House speeches unattributable. They lean Republican (~60/40 by candidate
+weight). Options: (a) ask Konsti to keep the state and re-fetch — the only full
+fix; (b) keep the 7,029 whose candidates all share a party, with party but no
+member (enough for party-level plots, useless for DW-NOMINATE); (c) accept the
+loss and report it. Konsti's notebook is not in the repo, so (a) starts with
+committing it.
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup

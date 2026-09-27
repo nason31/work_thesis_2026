@@ -8,6 +8,7 @@ Import from here instead:
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 from pathlib import Path
 
@@ -25,7 +26,7 @@ DATA_DIR: Path = Path(os.getenv("THESIS_DATA_DIR", REPO_ROOT / "data"))
 # --- data --------------------------------------------------------------
 RAW_DIR: Path = DATA_DIR / "raw"  # read-only, never written to
 RAW_STANFORD: Path = RAW_DIR / "stanford"  # 2001-2016, Gentzkow/Shapiro/Taddy
-RAW_GOVINFO: Path = RAW_DIR / "govinfo"  # 2017-2025, own pipeline
+RAW_GOVINFO: Path = RAW_DIR / "govinfo"  # 2016-09-10 onward, Konsti's pipeline
 RAW_DW_NOMINATE: Path = RAW_DIR / "dw_nominate"  # VoteView validation scores
 PROCESSED_DIR: Path = DATA_DIR / "processed"
 
@@ -37,6 +38,24 @@ CORPUS_PATH: Path = PROCESSED_DIR / "corpus.parquet"
 # download it into RAW_STANFORD before running the corpus build.
 STANFORD_PARQUET: Path = RAW_STANFORD / "congress_speeches_2001_2017.parquet"
 
+# The govinfo speeches as published on the team drive (built by Konsti's
+# 02_govinfo_dataset.ipynb, not in this repo). Download into RAW_GOVINFO.
+GOVINFO_JSONL: Path = RAW_GOVINFO / "congress_speeches_2016_present.jsonl"
+
+# unitedstates/congress-legislators, JSON build (CC0). The govinfo file's own
+# party/ICPSR columns are NOT trusted -- its lookup ignored chamber and term-level
+# party switches -- so the build re-resolves every speaker against these.
+# Download from https://unitedstates.github.io/congress-legislators/
+RAW_LEGISLATORS: Path = RAW_DIR / "congress_legislators"
+LEGISLATORS_FILES: tuple[Path, ...] = (
+    RAW_LEGISLATORS / "legislators-current.json",
+    RAW_LEGISLATORS / "legislators-historical.json",
+)
+
+# Processed govinfo side. Same columns as CORPUS_PATH plus `icpsr`; merging the
+# two into one corpus is a separate, later step.
+GOVINFO_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_govinfo.parquet"
+
 # --- results -----------------------------------------------------------
 RESULTS_DIR: Path = REPO_ROOT / "results"
 PLOTS_DIR: Path = RESULTS_DIR / "plots"  # committed
@@ -46,15 +65,21 @@ SCORES_DIR: Path = RESULTS_DIR / "scores"  # raw per-model LLM output, git-ignor
 # Corpus build statistics (row counts, drop counts, distributions). Committed,
 # so the numbers quoted in the methodology chapter have a traceable source.
 BUILD_STATS_PATH: Path = METRICS_DIR / "corpus_build_stats.json"
+GOVINFO_BUILD_STATS_PATH: Path = METRICS_DIR / "govinfo_build_stats.json"
 
 # --- thesis ------------------------------------------------------------
 THESIS_DIR: Path = REPO_ROOT / "thesis"
 FIGURES_DIR: Path = THESIS_DIR / "figures"  # final figures, copied from PLOTS_DIR
 
 # --- analysis constants ------------------------------------------------
-# The govinfo pipeline covers fewer speeches per year than the Stanford data.
-# Mark this year in every time-series plot (CLAUDE.md: "do not ignore the gap").
-SOURCE_BREAK_YEAR: int = 2017
+# Where Stanford hands over to govinfo. govinfo yields about a third fewer
+# speeches per year (measured, see docs/notes/2026-09-27_govinfo_data_reality.md),
+# so mark the break in every time-series plot (CLAUDE.md: "do not ignore the
+# gap"). The break falls inside the 114th Congress, not on a Congress boundary:
+# on a per-Congress axis, the 114th is the mixed-source point.
+SOURCE_BREAK_DATE: dt.date = dt.date(2016, 9, 10)
+SOURCE_BREAK_YEAR: int = SOURCE_BREAK_DATE.year
+SOURCE_BREAK_CONGRESS: int = 114
 YEAR_RANGE: tuple[int, int] = (2001, 2025)
 
 # Stanford data covers the 107th-114th Congress. Primary aggregation is by
@@ -139,6 +164,35 @@ DELEGATE_STATES: frozenset[str] = frozenset({"DC", "PR", "VI", "GU", "AS", "MP"}
 
 # After the rules above, party must be exactly this set, or the build raises.
 EXPECTED_PARTIES: frozenset[str] = frozenset({"D", "R"})
+
+# --- govinfo side --------------------------------------------------------
+# The seam. Stanford's last speech is 2016-09-09 (verified), so govinfo starts
+# the next day: no gap, no overlap. Rows outside this window are dropped and
+# counted. The end is YEAR_RANGE's last day; the file runs into 2026, which is
+# outside the thesis scope. See docs/decisions.md D15.
+GOVINFO_START_DATE: dt.date = SOURCE_BREAK_DATE
+GOVINFO_END_DATE: dt.date = dt.date(YEAR_RANGE[1], 12, 31)
+
+# Keyed on bioguide id, not speakerid: govinfo rows are resolved against
+# congress-legislators, which has no speakerid. Applied only while the member's
+# party *on that date* is not Democrat/Republican (congress-legislators records
+# day-level affiliations). The build checks each entry against the source's own
+# `caucus` field and raises on a disagreement or an unlisted independent.
+GOVINFO_CAUCUS_PARTY: dict[str, str] = {
+    "S000033": "D",  # Bernie Sanders (VT, Senate)
+    "K000383": "D",  # Angus King (ME, Senate)
+    "M001183": "D",  # Joe Manchin (WV) — Independent from 2024-05-31, caucused D
+    "S001191": "D",  # Kyrsten Sinema (AZ) — Independent from 2022-12-09, caucused D
+}
+
+# Excluded only for the dates their party is neither D nor R -- their earlier
+# Republican speeches stay in. Same rule as Barkley: no caucus, no assignment.
+GOVINFO_EXCLUDED_MEMBERS: frozenset[str] = frozenset(
+    {
+        "M001201",  # Paul Mitchell (MI-10) — left the GOP 2020-12-14, no caucus
+        "A000367",  # Justin Amash (MI-3) — Independent 2019-07-04, then Libertarian
+    }
+)
 
 # Ensemble composition decided — three models from distinct providers and
 # training paradigms. Pin specific snapshot versions for reproducibility;
