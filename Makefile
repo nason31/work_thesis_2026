@@ -7,6 +7,7 @@
 #   make lint     check formatting and linting
 #   make format   apply formatting
 #   make corpus   build data/processed/corpus.parquet
+#   make govinfo  build data/processed/corpus_govinfo.parquet
 #   make lock     re-pin requirements.lock.txt after changing requirements.txt
 
 PYTHON ?= python3
@@ -16,7 +17,7 @@ BIN    := $(VENV)/bin
 # changed -- not on every `make test`.
 STAMP  := $(VENV)/.installed
 
-.PHONY: help setup test lint format corpus smoke lock clean
+.PHONY: help setup test lint format corpus smoke govinfo govinfo-smoke lock clean
 
 help:
 	@grep -E '^#   make' $(MAKEFILE_LIST) | sed 's/^#   //'
@@ -54,6 +55,14 @@ corpus: $(STAMP)
 # independents roster in seconds. Run this before the full build.
 smoke: $(STAMP)
 	$(BIN)/python code/scripts/build_corpus.py --limit 50000
+
+# govinfo side. Needs the JSONL in data/raw/govinfo/ and the congress-legislators
+# JSON in data/raw/congress_legislators/ -- see data/raw/govinfo/README.md.
+govinfo: $(STAMP)
+	$(BIN)/python code/scripts/build_govinfo_corpus.py
+
+govinfo-smoke: $(STAMP)
+	$(BIN)/python code/scripts/build_govinfo_corpus.py --limit 20000
 
 # Re-pin after editing requirements.txt. Builds a throwaway environment so the
 # lock records exactly what requirements.txt resolves to, with nothing left

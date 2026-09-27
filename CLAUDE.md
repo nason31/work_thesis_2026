@@ -63,12 +63,9 @@ which was measured against the file rather than the build recipe.
   This corrects an earlier claim that coverage ran to January 3, 2017: it does
   not. The 114th Congress ran to January 3, 2017, but the data stops nearly
   four months early, so the 114th is **incomplete** in this corpus.
-- **The break is NOT a clean Congress boundary.** If the govinfo pipeline starts
-  at the 115th Congress as planned, there is a **~4 month hole from 2016-09-10
-  to 2017-01-02**, covering the run-up to the November 2016 election — directly
-  relevant to RQ4. **OPEN DECISION:** either govinfo starts at 2016-09-10
-  instead of the Congress boundary, or the gap is documented as a known
-  limitation. Do not let this be discovered late.
+- **The break is NOT a clean Congress boundary.** Settled (D15): govinfo starts
+  2016-09-10, so the 114th Congress is built from both sources and the seam has
+  no gap and no overlap.
 - **Source:** `hein-daily.zip` from data.stanford.edu/congress_text, sessions
   107–114, speech text + metadata + speaker map merged per session on `speech_id`
 - **Form:** one parquet file, ~650 MB, one row per speech. Not in the repo —
@@ -113,21 +110,37 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   does, the parquet cannot be rebuilt or independently checked.
 - Note: Yufei said we **can drop this** if our govinfo pipeline produces sufficient coverage
 
-### Jan 2017 – 2025: Custom govinfo.gov Pipeline
+### Sep 2016 – 2025: govinfo.gov (Konsti's pipeline)
 
-**[assumed]** — nothing verified against data yet; this whole section is a plan.
+**[verified 2026-09-27]** — see
+[`docs/notes/2026-09-27_govinfo_data_reality.md`](docs/notes/2026-09-27_govinfo_data_reality.md).
 
-- Path: `data/raw/govinfo/`
-- **Start date is an OPEN DECISION.** The Stanford data ends **2016-09-09**, not
-  January 2017, so starting govinfo at the 115th Congress leaves a ~4 month hole
-  over the 2016 election run-up. Either start at **2016-09-10** (closes the gap,
-  but the handover no longer sits on a Congress boundary) or start at the 115th
-  and document the hole. Decide before building, and verify afterwards that
-  there is no gap and no double-counted overlap at the seam.
-- **Known issue [assumed]:** fewer speeches per year than the Stanford dataset —
-  this creates a discontinuity at the 2017 break. Address this in the
-  methodology section; do NOT silently ignore it. Verify the actual per-year
-  counts on both sides of the break and record them in `results/metrics/`.
+- **Raw file:** `data/raw/govinfo/congress_speeches_2016_present.jsonl` (team
+  drive), built by Konsti's `02_govinfo_dataset.ipynb` — **not in the repo**, so
+  the raw file cannot be rebuilt here. 6 columns: `date`, `speaker` (surname),
+  `party`, `icpsr`, `chamber`, `speech`.
+- **Seam settled (D15):** the file starts 2016-09-12, Stanford ends 2016-09-09 —
+  no gap, no overlap. The build keeps 2016-09-10 → 2025-12-31 and drops 2026.
+- **Do not trust the file's `party`/`icpsr`, and do not use its text raw.** The
+  upstream parser ignored chamber in its party lookup, used end-of-term party
+  labels, and glued presiding-officer turns, narration, bill texts and HTML onto
+  speeches. `code/src/govinfo.py` repairs all of that (D16, D17): speakers are
+  re-resolved against `data/raw/congress_legislators/` (unitedstates/
+  congress-legislators JSON) by chamber and date, and text is cut to the
+  member's own words. Build with `make govinfo` →
+  `data/processed/corpus_govinfo.parquet`, stats in
+  `results/metrics/govinfo_build_stats.json`.
+- **`member_id` is the bioguide id** on this side (Stanford uses `speakerid`),
+  plus an extra `icpsr` column — the direct DW-NOMINATE join key, missing for
+  many members first elected 2021+.
+- **Not repairable here (O7):** the parser dropped the state from
+  `Mr. SMITH of Texas.`, so 23,075 House speeches cannot be attributed. They
+  lean Republican (~60/40), so House Republicans are under-represented.
+- **Discontinuity, measured:** ~11–15k speeches/year after filtering vs ~22k/year
+  in Stanford's 114th — about a third fewer at the break. Address it in the
+  methodology; it is not a political trend.
+- **Not yet merged** with the Stanford corpus. The two processed files share the
+  CLAUDE.md schema (govinfo adds `icpsr`); the merge is the next step.
 
 ### Processed / Combined
 
@@ -266,12 +279,13 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 - Do not rely solely on "own judgment with peer review"
 
 ### Key boundaries
-- The source discontinuity sits at **January 3, 2017** (end of the 114th Congress,
-  where the Stanford data stops and the govinfo pipeline takes over). It must be
-  addressed in the methodology section — flag it in code comments and make it
-  visible in every time-series plot (e.g. vertical dashed line at the 2017 break).
-  `SOURCE_BREAK_YEAR = 2017` in `code/src/config.py` is the year-level constant;
-  use the exact date wherever daily resolution matters.
+- The source discontinuity sits at **2016-09-10**, inside the 114th Congress
+  (Stanford stops 2016-09-09, govinfo takes over — D15). govinfo yields about a
+  third fewer speeches per year. It must be addressed in the methodology
+  section — flag it in code comments and make it visible in every time-series
+  plot (e.g. a vertical dashed line). `SOURCE_BREAK_DATE`, `SOURCE_BREAK_YEAR`
+  (2016) and `SOURCE_BREAK_CONGRESS` (114, the mixed-source point on a
+  per-Congress axis) live in `code/src/config.py`.
 - Every row in the merged corpus carries a `source` column, so the break is
   recoverable from the data and not just from a note
 - Do not fabricate or impute data to paper over coverage gaps
