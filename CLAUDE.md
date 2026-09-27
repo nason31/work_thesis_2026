@@ -44,8 +44,10 @@ Focus tightly. Yufei's explicit instruction: include findings only if they **add
 
 ### Jan 2001 – Sep 2016: Stanford Dataset (Gentzkow, Shapiro & Taddy)
 
-Built by Konsti ([`docs/notes/2026-09-15_stanford_dataset.md`](docs/notes/2026-09-15_stanford_dataset.md));
-**that note's schema and coverage claims are superseded** by
+Built by Konsti ([`data/raw/stanford/README.md`](data/raw/stanford/README.md)).
+Its coverage dates are correct, but **its column table documents the
+OCR-damaged `speaker`/`state`/`first_name` fields** — use the clean ones listed
+below, from
 [`docs/notes/2026-09-21_stanford_data_reality.md`](docs/notes/2026-09-21_stanford_data_reality.md),
 which was measured against the file rather than the build recipe.
 

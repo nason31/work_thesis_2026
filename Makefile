@@ -47,7 +47,7 @@ format: $(STAMP)
 	$(BIN)/ruff check --fix code/
 
 # Full corpus build. Needs congress_speeches_2001_2017.parquet in
-# data/raw/stanford/ -- see docs/notes/2026-09-15_stanford_dataset.md.
+# data/raw/stanford/ -- see data/raw/stanford/README.md.
 corpus: $(STAMP)
 	$(BIN)/python code/scripts/build_corpus.py
 

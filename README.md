@@ -88,7 +88,7 @@ Folders are kept in git with `.gitkeep` placeholders.
 
 The raw Stanford parquet is not in the repo. Download
 `congress_speeches_2001_2017.parquet` (~681 MB) from the team drive into
-`data/raw/stanford/` — see [docs/notes/2026-09-15_stanford_dataset.md](docs/notes/2026-09-15_stanford_dataset.md).
+`data/raw/stanford/` — see [data/raw/stanford/README.md](data/raw/stanford/README.md).
 
 ```bash
 make smoke       # first 50k rows; seconds. Run this first.
