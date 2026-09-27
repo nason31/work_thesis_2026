@@ -1,0 +1,912 @@
+# Decision log
+
+Every choice that shapes the data, the models or the results, with the reasoning
+that produced it. The thesis methodology chapter is written **from this file** —
+if a decision is not here, by December nobody will remember why it was made.
+
+**How to use this file**
+
+- One entry per decision, newest section last. Never delete an entry: if a
+  decision changes, mark the old one `SUPERSEDED` and add a new one that links
+  back. The trail of what we tried and rejected is worth as much as the outcome.
+- Every entry records what was **rejected** and why. A decision with no
+  alternatives is a decision nobody actually made.
+- Figures cited here come from `results/metrics/corpus_build_stats.json`, which
+  is tied to a specific raw file by `source_sha256`. If the dataset changes, the
+  figures change — re-run and update.
+- Open questions live in the last section. Move them up when they are settled.
+
+**Maintained by:** updated at the end of every working session (see the rule in
+CLAUDE.md). Entries are written by whoever made the decision, human or agent.
+
+---
+
+## Methodology
+
+### M1 — Continuous scoring, not binary classification
+**Date:** 2026-09 (project setup) · **Status:** active
+
+Output is a continuous ideological position per speech, not a polarizing/
+not-polarizing label.
+
+**Rejected:** binary classification. It throws away degree — a speech can be
+mildly or strongly partisan — and the whole analytical contribution is tracking
+*position over time*, which needs a scale. Binary would also have locked us into
+fine-tuning and required labeled data.
+
+---
+
+### M2 — Two independent dimensions: ideology and tone
+**Date:** 2026-09 (project setup) · **Status:** active
+
+Each speech is scored on ideological position (left–right, the primary measure)
+and on tone/hostility, separately.
+
+**Why:** RQ5 asks whether hostility tracks ideology or moves independently. That
+question is only answerable if the two are measured separately rather than
+collapsed into one "extremeness" score.
+
+---
+
+### M3 — Ensemble of three models from different providers
+**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member · **Commit:** 112343d
+
+DeepSeek R1 (`deepseek-reasoner`), GPT-4o (`gpt-4o-2024-11-20`), Claude 3.5
+Sonnet (`claude-3-5-sonnet-20241022`). Averaged for continuous scores, with all
+individual model outputs logged before aggregation.
+
+**Why these three:** one reasoning model plus two instruction-following models;
+one open-weight model so the checkpoint is reproducible; three independent
+training paradigms (RL-trained reasoning, standard RLHF, Constitutional AI).
+Ideological scoring is subjective, so no single model's internal calibration
+should be treated as ground truth.
+
+**Rejected:** Gemini, dropped when the ensemble was fixed at three. The
+`google-genai` dependency was removed later (E4).
+
+**Consequence:** model IDs live only in `ENSEMBLE_MODELS` in `code/src/config.py`.
+
+---
+
+### M4 — Feed whole speeches, never chunks
+**Date:** 2026-09 (project setup) · **Status:** active
+
+**Why:** chunking breaks cross-sentence rhetorical context, which is exactly
+what signals ideological framing. Current context windows handle full
+congressional speeches comfortably, so there is no forcing constraint.
+
+---
+
+### M5 — Validate against DW-NOMINATE
+**Date:** 2026-09 (project setup) · **Status:** active, **blocked**
+
+LLM scores are cross-checked against VoteView DW-NOMINATE. This is the primary
+methodological defense of the approach. A weak or inverse correlation is a
+finding to investigate and report, not to suppress.
+
+**Blocker:** VoteView keys on ICPSR; the speeches carry Gentzkow's `speakerid`.
+The crosswalk does not exist yet. D9 keeps the columns needed to build it.
+
+---
+
+## Data
+
+### D1 — Aggregate by Congress, not calendar year
+**Date:** 2026-09-20 · **Status:** active
+
+**Why:** Congresses are clean two-year units aligned with how the data is
+organized. Calendar years would split the 114th awkwardly and, before D12 was
+discovered, would have mixed three days of Stanford data into a 2017 bucket.
+
+---
+
+### D2 — Independents are assigned to the party they caucus with
+**Date:** 2026-09-20 · **Status:** active
+
+Sanders → D, Jeffords → D, King → D, later Lieberman → D (D6).
+
+**Rejected:** dropping independents entirely (loses Sanders, a politically
+distinctive and prolific speaker); keeping "I" as a third category (the primary
+RQ is a D-vs-R comparison, and a third category would force every downstream
+script to decide what to do with it — exactly the divergence we want to avoid).
+
+**Consequence:** applied once, at corpus build time, nowhere else.
+`party_original` preserves the pre-assignment label so this is auditable and
+reversible.
+
+---
+
+### D3 — Minimum speech length: 50 words, inclusive
+**Date:** 2026-09-20 · **Status:** active
+
+**Why 50:** matches the Gentzkow/Shapiro/Taddy convention, and strips procedural
+filler ("I yield back the balance of my time") without biasing the corpus toward
+members who give long set-piece speeches.
+
+**Rejected:** 100 and 200 words. Both cut substantive short floor remarks and
+introduce a selection effect that would need defending. Cost control belongs at
+the LLM-sampling step, where the threshold is one line and costs nothing to
+change — filtering harder at build time needs a full rebuild to undo.
+
+**Consequence:** drops 390,952 of 823,341 rows (47.5%).
+
+---
+
+### D4 — An independent no rule covers stops the build
+**Date:** 2026-09-20 · **Status:** active
+
+**Why:** CLAUDE.md fixes the handling of independents once, at build time. A
+silent fallback would make the actual rule invisible and undocumentable. Failing
+loudly forces a human decision that gets written down here.
+
+**Rejected:** dropping unknown independents with a log line (shrinks the corpus
+in a way only a log reveals); passing them through as "I" (pushes the decision
+downstream into every script).
+
+**Validated:** this fired on the first real run and caught four members nobody
+had considered — Lieberman, Crenshaw, Sablan and Barkley (D6–D8, D10). The
+design paid for itself immediately.
+
+---
+
+### D5 — Text cleaning is whitespace normalization only
+**Date:** 2026-09-20 · **Status:** active
+
+Collapse whitespace runs, trim ends. Nothing else.
+
+**Why:** stripping boilerplate ("Mr. Speaker,", procedural preambles) changes
+what the model sees, which makes it a methodological choice rather than cleaning.
+It stays **open** — if we do it later, it needs its own entry and a robustness
+check.
+
+---
+
+### D6 — Lieberman assigned to D
+**Date:** 2026-09-21 · **Status:** active
+
+1,255 speeches, 110th–112th Congress. He sat as an "Independent Democrat" and
+caucused with Senate Democrats throughout, chairing a committee as part of that
+caucus.
+
+**Why:** consistent with D2. His caucus membership is unambiguous across all
+three congresses.
+
+**Rejected:** dropping him — more speeches than Jeffords and King combined, from
+a politically distinctive figure, and breaking the stated rule for no reason.
+
+---
+
+### D7 — Crenshaw's party label corrected to R
+**Date:** 2026-09-21 · **Status:** active
+
+34 rows (31 after the word filter) coded `I` in the 107th Congress. Ander
+Crenshaw represented FL-4 as a Republican for his entire career (2001–2017), so
+the source label is wrong.
+
+**Rejected:** dropping the rows. Discussed explicitly — dropping is the
+lower-risk option, because if the party field is wrong the speaker attribution
+might be too, and we cannot tell which field failed. **Chosen anyway** to keep
+the speeches, on the judgment that this is a simple party-field glitch.
+
+**Consequence:** this is the only place we override the source on outside
+knowledge. `PARTY_CORRECTIONS` should stay as close to empty as possible; each
+entry needs a documented reason. Count is reported as
+`party_corrections_applied`.
+
+---
+
+### D8 — Barkley dropped
+**Date:** 2026-09-21 · **Status:** active
+
+6 speeches. Dean Barkley (MN) was appointed in November 2002 to fill Wellstone's
+seat for about two months, from Minnesota's Independence Party, and caucused
+with neither party.
+
+**Why:** the caucus rule in D2 simply has no answer for him. With 6 speeches
+there is nothing to gain by forcing one, and an arbitrary assignment is harder
+to defend than an exclusion stated in one sentence.
+
+---
+
+### D9 — Retain four columns beyond the documented eight
+**Date:** 2026-09-20, revised 2026-09-21 · **Status:** active
+
+`last_name`, `state`, `word_count`, `party_original` on top of the CLAUDE.md
+schema.
+
+**Why:** the `speakerid` → ICPSR crosswalk that M5 is blocked on needs
+name + state + congress + chamber. Without these, building it means re-streaming
+the 681 MB raw file. `party_original` makes D2/D6/D7 auditable.
+
+**`first_name` deliberately NOT retained:** it is the literal string `"Unknown"`
+on 97.2% of rows, so it carries no information.
+
+---
+
+### D10 — Non-voting delegates dropped corpus-wide
+**Date:** 2026-09-21 · **Status:** active
+
+DC, PR, VI, GU, AS, MP — 5,665 rows, 0.69%.
+
+**Why:** they cannot vote on final passage, so DW-NOMINATE does not score them
+comparably and their speeches would have no validation benchmark (M5). The
+primary RQ concerns D-vs-R positions among voting members.
+
+**Rejected:** keeping them. They do give floor speeches carrying party rhetoric,
+but including members the validation cannot cover weakens the central
+methodological defense.
+
+**Side effect:** removes the stray `A`/`P` party codes, which belong solely to
+Acevedo-Vilá (Resident Commissioner of Puerto Rico), and removes Sablan without
+needing a separate rule.
+
+---
+
+### D11 — Identify members by `speakerid`, not by name
+**Date:** 2026-09-21 · **Status:** active · supersedes an earlier name-based key
+
+All membership rules key on `speakerid`.
+
+**Why:** the name columns are OCR-damaged. `speaker` carries an honorific plus
+noise on 99.7% of rows — the same senator appears as `Mr. JEFFORDS`,
+`LR. JEFFORDS`, `Mr. -JEFFORDS`, `Mr.. JEFFORDS`, `Mr. JEFFORD`. The cleaner
+`last_name` looked safe (no nulls, no `"Unknown"`) but has spelling variants on
+**30.6%** of speakerids (`LIEBERMAN`/`LIEDERMAN`/`LISBERMAN`,
+`SANDERS`/`SANDERR`/`SA.NDERS`). `speakerid` is exact, and `state_map` is
+consistent within every speakerid — 0 exceptions in 823,341 rows.
+
+**What this cost:** a first attempt keyed on `(last_name, state_map)` failed on
+the real data. Two rounds of failure were needed to find this; the lesson is that
+"no nulls" is not the same as "clean".
+
+**Consequence:** `speakerid` encodes the congress in its first three digits, so
+it is unique per member *per congress*. A member serving several congresses needs
+one entry per congress. The 18 independent ids were enumerated from the data.
+
+---
+
+### D12 — Coverage ends 2016-09-09, not 2017-01-03
+**Date:** 2026-09-21 · **Status:** active; the O1 it opened is settled by D15
+
+Measured over all raw rows before any filtering. CLAUDE.md previously stated
+January 3, 2017 and called the handover a clean Congress boundary; both were
+wrong. The 114th Congress ran to January 2017 but the data stops nearly four
+months early, so the 114th is **incomplete**.
+
+**Why it matters:** if govinfo starts at the 115th Congress as planned, there is
+a ~4 month hole from 2016-09-10 to 2017-01-02 — covering the run-up to the
+November 2016 election, which RQ4 asks about directly. See O1.
+
+---
+
+### D13 — Use the clean column variants
+**Date:** 2026-09-21 · **Status:** active
+
+`last_name` over `speaker`, `state_map` over `state`, `chamber_map` over
+`chamber`.
+
+**Why:** the raw file carries both a dirty and a clean version of every speaker
+field, and CLAUDE.md had documented the dirty ones. `state` is `"Unknown"` on
+many rows; `chamber` has 97 nulls; `state_map` and `chamber_map` have none.
+
+---
+
+### D14 — Duplicate `speech_id`: keep the first, count it
+**Date:** 2026-09-20 · **Status:** active
+
+**Why:** `speech_id` is documented as unique, so a non-zero count is a signal
+worth investigating rather than a routine drop. Reported in the build stats.
+
+**Outcome:** 0 duplicates across 823,341 rows — the property holds.
+
+---
+
+### D15 — govinfo covers 2016-09-10 to 2025-12-31 (settles O1)
+**Date:** 2026-09-27 · **Status:** active
+
+`GOVINFO_START_DATE` / `GOVINFO_END_DATE` in `config.py`. Konsti's file already
+starts at 2016-09-12 (the first sitting day after Stanford's last, 2016-09-09),
+so the seam has **no gap and no overlap**. The build still enforces the window
+and counts anything outside it (0 before, 15,283 after).
+
+**Rejected:** starting at the 115th Congress — it would throw away the 2016
+election run-up that RQ4 asks about, in order to keep a boundary D1 does not
+actually need (the 114th is simply built from two sources). Keeping 2026 —
+outside the thesis scope (`YEAR_RANGE`), and a partial year that would read as a
+trend in any per-year plot.
+
+**Consequence:** the 114th Congress is mixed-source (Stanford to 2016-09-09,
+govinfo after). The `source` column keeps that visible. Note October 2016 has
+zero speeches — a normal pre-election recess (Stanford has zero for October
+2006, 2010 and 2014 too), not a data gap.
+
+---
+
+### D16 — govinfo speakers are re-resolved against congress-legislators
+**Date:** 2026-09-27 · **Status:** active
+
+The file's `party` and `icpsr` columns are ignored. Every speaker is resolved
+again against unitedstates/congress-legislators, filtered by **chamber and
+date**, and only a unique match is accepted.
+
+**Why:** the upstream lookup ignored chamber, so a surname counted as ambiguous
+whenever *anyone* in Congress shared it — every Senate speech by Mike Lee (518),
+Sherrod Brown (401), Chris Murphy, Gary Peters, Ron Johnson and Tina Smith came
+out with no party. It also used each term's end-of-term party, so mid-term
+switchers were mislabelled: Van Drew's 2019 speeches as R (he switched
+2019-12-19), Mitchell's and Amash's Republican-era speeches as Independent.
+congress-legislators records day-level `party_affiliations`, which fixes both.
+
+**Result:** unresolved rows in the window fall from 29,013 (13.8%, file) to
+24,762 (11.8%); Senate unresolved from ~4,100 to 1,196, which are mostly the two
+Senators Scott (genuinely ambiguous) and non-members (trial counsel, video
+clips). ICPSR agrees with the file on every row where both have one.
+
+**Rejected:** trusting the file's labels (wrong in the ways above); guessing
+among same-name candidates (would put speeches in the wrong party).
+
+**Remaining limitation (not fixable from this file):** the Record header
+`Mr. SMITH of Texas.` names the state, but the upstream parser kept only the
+surname, so 23,075 House rows stay ambiguous. They lean **Republican** — about
+13,900 R vs 9,100 D by candidate weight — so their loss under-represents House
+Republicans. Fixing it needs the parser to keep the state and a re-fetch.
+7,029 of them have candidates who all share one party. See O7.
+
+**ICPSR gap:** congress-legislators has no ICPSR for many members first elected
+2021 or later (missing on 12% of 117th, 29% of 118th, 34% of 119th rows). The
+DW-NOMINATE join for those needs VoteView's member file (name/state/congress).
+
+---
+
+### D17 — govinfo text is cut to the member's own words
+**Date:** 2026-09-27 · **Status:** active
+
+The upstream parser split speeches only when a *member* began speaking, so
+presiding-officer turns, Record narration and whole bill texts (up to 29k
+words) were glued onto the previous speech. `clean_speech` cuts each speech at
+the first of: an officer turn (`The PRESIDING OFFICER.`, `The SPEAKER pro
+tempore.` …), a fixed narration phrase opening a paragraph (`The Clerk read the
+title of the bill.`), or a long `____________________` rule between Record
+items. It then strips page markers, HTML residue, `{time}` stamps and centered
+heading lines. The 50-word filter is applied **after** cleaning.
+
+**Result:** 19.5% of words removed; 92k of 210k in-window rows cut (56k at an
+officer turn, 27k at a separator, 8.5k at narration).
+
+**Checked, not assumed:** a first version also cut at the short `____` rule and
+at rules framing `{time}` stamps; both occur *inside* a member's turn, and the
+check below caught it. After the fix, the removed text contains a paragraph
+addressed to the chair ("Mr. Speaker, I …") in 31 of ~92k cut rows (0.03%) —
+mostly amendment text, or a member resuming after the Record moved their
+remarks. Accepted.
+
+**Rejected:** leaving the text as is (other speakers' words and bill text in
+front of the model, and inflated word counts letting procedural exchanges pass
+the 50-word filter); a word cap like upstream's 30,000 (it cannot catch
+officer text, and drops the member's real words along with the bill).
+
+**Not O3:** this is separating speakers and removing typesetting, which the
+Stanford source already does. Boilerplate inside a member's own words ("Mr.
+Speaker, I yield back") is untouched; O3 stays open.
+
+---
+
+### D18 — govinfo independents
+**Date:** 2026-09-27 · **Status:** active
+
+Keyed on bioguide id (`GOVINFO_CAUCUS_PARTY`, `GOVINFO_EXCLUDED_MEMBERS`) and
+applied only on dates when the member's party is neither D nor R. Same rules as
+D2/D8, and the build raises on anyone unlisted (D4). Each caucus entry is
+checked against congress-legislators' own `caucus` field.
+
+- Sanders, King → D (as D2)
+- Manchin → D from 2024-05-31; Sinema → D from 2022-12-09 (both caucused D)
+- Mitchell (from 2020-12-14) and Amash (from 2019-07-04) → **excluded** for
+  those dates only: neither caucused with a party. 9 rows. Their earlier
+  Republican speeches stay in as R.
+
+Kiley (Independent caucusing R from 2026-03-09) falls outside D15's window; if
+the window is extended the build will stop and ask.
+
+---
+
+## Engineering
+
+### E1 — Pinned virtualenv and a lockfile
+**Date:** 2026-09-20 · **Status:** active
+
+`requirements.txt` holds direct dependencies with loose ranges;
+`requirements.lock.txt` pins all 140 packages exactly. `make setup` installs
+from the lock.
+
+**Why:** open ranges with no venv gave each team member whatever pip resolved
+that day. This bit us concretely: ruff installed into a base conda environment
+and resolved to 0.16 while `requirements.txt` permitted 0.5, so two people would
+get different lint results on the same code. Lint noise is cosmetic, but a
+pandas or pyarrow difference can change *results*.
+
+---
+
+### E2 — pandas 3.0 kept, not pinned back to 2.x
+**Date:** 2026-09-20 · **Status:** active
+
+The resolver chose pandas 3.0.6, numpy 2.5.3, pyarrow 25.0.1 — nobody picked
+these. The concern was that the pinned seaborn 0.13.2 and statsmodels 0.15.0
+both predate pandas 3.0 and are exactly what the results chapters depend on.
+
+**Tested before deciding:** a miniature of the real analysis path — `read_parquet`,
+the per-party-by-Congress panel, D–R distance, a statsmodels OLS, a seaborn
+lineplot with the break marker. All of it worked, no warnings. So pandas 3.0
+stays; the reproducibility win came from pinning at all, not from the version.
+
+**Two gotchas it exposed:** `date` reads back as `object` (Python `datetime.date`),
+not `datetime64`, so `.dt`/`resample`/dated axes need `pd.to_datetime` first; and
+`text` has pandas 3's `str` dtype, so `select_dtypes(include="object")` finds no
+text columns.
+
+---
+
+### E3 — Corpus build streams with pyarrow, in two passes
+**Date:** 2026-09-20 · **Status:** active
+
+Pass 1 reads metadata only and fails fast; pass 2 streams text in 50k-row
+batches through one writer.
+
+**Why:** the raw file is 681 MB compressed and decompresses to several GB, almost
+all text, against 16 GB of RAM. `pd.read_parquet()` on the whole thing is not
+viable. Splitting the passes means validation failures (D4) cost seconds and
+happen before any output exists.
+
+**Outcome:** full build 41 s, peak RSS 1.66 GB.
+
+---
+
+### E4 — `google-genai` removed
+**Date:** 2026-09-20 · **Status:** active
+
+The ensemble was fixed to three models in M3, so Gemini is not in the design.
+`openai` covers GPT-4o and DeepSeek (OpenAI-compatible API); `anthropic` covers
+Claude.
+
+---
+
+### E5 — A `--limit` run never writes to the corpus path
+**Date:** 2026-09-21 · **Status:** active
+
+**Why:** a smoke run left a partial 24,570-row file at `CORPUS_PATH` that nothing
+downstream could distinguish from a full build. Limited runs write
+`corpus.smoke.parquet` and do not write the stats JSON, since partial counts in a
+committed file would mislead.
+
+---
+
+### E6 — Every build records the raw file's SHA-256
+**Date:** 2026-09-21 · **Status:** active
+
+**Why:** the current Stanford parquet is provisional — a starting point for
+building the pipeline, not the final corpus. `source_sha256` ties every count in
+the stats file to the exact raw file it came from, so a swapped dataset is
+visible rather than silent.
+
+**When the dataset is replaced:** re-run `make smoke`, then `make corpus`, and
+re-check D3, D10, D12 and the figures in
+`docs/notes/2026-09-21_stanford_data_reality.md`. The build fails loudly on any
+independent, party code or column it does not recognize, so a swap cannot drift
+through unnoticed.
+
+---
+
+## Scoring
+
+### S1 — Pilot sample: 200 speeches, stratified party × Congress, seed 42
+**Date:** 2026-09-21 · **Status:** active
+
+Equal allocation over 2 parties × 8 Congresses = 16 strata, 12–13 each, exactly
+100 D and 100 R.
+
+**Why stratified rather than random:** a simple random draw would over-represent
+the 110th (66,727 rows) against the 114th (36,661) and Democrats against
+Republicans, so a per-Congress or per-party comparison on the pilot would be
+measuring sample composition rather than rhetoric. Every stratum holds ≥17,354
+rows, so equal allocation costs nothing.
+
+**Why 200:** CLAUDE.md requires a 100–500 speech pilot before any full run.
+
+**Consequence:** seed 42 is logged in the run manifest, and the draw is
+reproducible — verified identical across runs and different under another seed.
+
+---
+
+### S2 — `deepseek-reasoner` runs without a temperature setting
+**Date:** 2026-09-21 · **Status:** SUPERSEDED by [S2a] — no model gets a temperature
+
+GPT-4o and Claude get `temperature=0.1`. The parameter is **omitted** for
+`deepseek-reasoner`.
+
+**Why:** DeepSeek documents that the reasoner ignores `temperature`, and some API
+versions reject it outright. A 400 there would have lost all 200 calls for that
+model.
+
+**Consequence — this one matters for the write-up.** The three models are not
+identically configured, so the methodology chapter must not claim they are.
+`ModelSpec.effective_temperature` reports `0.1` for two models and
+`"provider default"` for the reasoner, and the run manifest records it per model.
+
+---
+
+### S3 — Out-of-range scores are failures, not clipped
+**Date:** 2026-09-21 · **Status:** active
+
+An `ideology_score` outside [−1, 1] or a `tone_score` outside [0, 1] is recorded
+as null with the error, not clamped to the boundary.
+
+**Why:** a model returning 1.5 has ignored the scale the prompt defined. Clipping
+would turn that into a plausible-looking maximum score and hide a real problem
+with the instrument. The pilot exists to surface exactly this.
+
+---
+
+### S4 — A failed model averages over the survivors, with `n_models` recorded
+**Date:** 2026-09-21 · **Status:** active
+
+If one of the three models fails on a speech, the ensemble row is built from the
+two that succeeded, and every row carries `n_models`.
+
+**Rejected:** nulling the whole row (throws away two valid scores over one
+failure, and a flaky provider silently shrinks the pilot); averaging with no
+marker (a 2-model average becomes indistinguishable from a 3-model one, which
+would quietly bias the cross-model disagreement statistic).
+
+**Related:** standard deviation is `null` below two models rather than 0.0 — one
+model agreeing with itself is not agreement.
+
+---
+
+### S5 — Spending requires confirmation
+**Date:** 2026-09-21 · **Status:** active
+
+The pilot estimates cost with `tiktoken`, prints it, and waits for `y` before
+calling anything. `--dry-run` stops after the estimate; `--yes` skips the prompt
+for unattended runs.
+
+**Why:** 600 calls including a reasoning model is real money, and CLAUDE.md
+requires logging cost before and after large API calls. Estimated at **~$2.45**
+for the 200-speech pilot.
+
+**Caveat recorded in the output:** the estimate is a floor. The tokenizer is
+OpenAI's and only approximates the other two providers, and `deepseek-reasoner`
+bills hidden reasoning tokens as output that the estimate cannot see. Extrapolate
+the full run from the *billed* usage in the closing summary, not from this.
+
+---
+
+### S6 — Scoring logic lives in `src/`, not in the script
+**Date:** 2026-09-21 · **Status:** active
+
+`code/src/scoring.py` holds the provider clients, prompt rendering, JSON
+extraction, validation and retry; `code/scripts/pilot_run.py` holds sampling,
+orchestration and reporting.
+
+**Why:** the full run needs the same clients. CLAUDE.md puts production logic in
+`src/` with scripts calling it, and `corpus.py`/`build_corpus.py` already follow
+that split.
+
+---
+
+### M3a — Claude Sonnet 4.6 replaces the retired Claude 3.5 Sonnet
+**Date:** 2026-09-23 · **Status:** active · supersedes the Anthropic half of [M3]
+
+`claude-3-5-sonnet-20241022` returns **404 — the model has been retired**. This
+was found on the very first API call, not by reading a deprecation notice.
+
+**Chosen:** `claude-sonnet-4-6`. Same Sonnet tier and the same $3/$15 per 1M as
+the retired model, so neither the budget nor M3's "architectural diversity"
+rationale changes. It is also the newest model that still accepts a temperature
+at the API level — though see [S2a], where that turned out not to matter.
+
+**Rejected:** `claude-sonnet-5` (cheaper per token at $2/$10, but adaptive
+thinking is on by default and used roughly twice the output tokens in a probe,
+so the saving largely washes out, and it rejects temperature outright);
+`claude-opus-5` (most capable but $5/$25, ~1.7× the old Anthropic cost, and no
+temperature either).
+
+**Lesson worth keeping:** a pinned model ID is not a guarantee of availability.
+`make smoke` verifies every model answers, for free, before a run that spends.
+
+---
+
+### S2a — No model gets a temperature; all three run at provider default
+**Date:** 2026-09-23 · **Status:** active · supersedes [S2]
+
+Temperature is not set anywhere. **This is not a methodological preference — the
+providers removed the control.**
+
+- `deepseek-reasoner` ignores it (the original [S2] finding).
+- The anthropic SDK 1.7.0 has **no `temperature` parameter at all**; passing it
+  is a `TypeError` before any request leaves the machine. Forced through
+  `extra_body`, Sonnet 4.6 accepts it but Sonnet 5 answers
+  `400 — "temperature is deprecated for this model"`.
+
+So the only model that could still take 0.1 was GPT-4o. Setting it on one model
+of three would imply an ensemble tuned alike, which would be false.
+
+**Rejected:** keeping 0.1 on GPT-4o and Sonnet 4.6 via an `extra_body`
+passthrough. It works today, but it forces a parameter the SDK deliberately
+removed and that the API already calls deprecated — it would likely break during
+the thesis, and it buys consistency on two models out of three.
+
+**Consequence for the write-up:** do not claim the ensemble was run at a
+controlled temperature. Every run manifest records `"provider default"` for all
+three, and that is what the methodology chapter should state. Repeat runs will
+be noisier than a temperature-0.1 design would have been; if that matters for a
+robustness claim, it has to be measured, not assumed.
+
+---
+
+### S7 — Anthropic returns JSON via structured outputs, not assistant prefill
+**Date:** 2026-09-23 · **Status:** active
+
+`output_config.format` with a server-enforced JSON schema.
+
+**Why not prefill:** seeding the assistant turn with `{` was the standard way to
+force JSON before structured outputs existed. It returns a **400 on all current
+Claude models**. The bug was invisible until the retired-model 404 was fixed,
+because the 404 came first.
+
+**Consequence:** Claude's replies are schema-valid by construction, so the
+brace-depth parser is a safety net for that model rather than the mechanism.
+DeepSeek still needs it — the reasoner emits reasoning before its answer.
+
+---
+
+## Pilot findings (2026-09-23)
+
+### P1 — The pilot passed its gate; the instrument works
+**Date:** 2026-09-23 · **Status:** finding, not a decision
+**Data:** `results/metrics/pilot_summary_20260923T103556Z.json`
+
+200 speeches, 600 calls, **$1.911** (under the $2.45 estimate). 199 of 200 scored
+by all three models.
+
+**The party check passes decisively.** Ensemble R − D = **+0.590**
+(D −0.279, R +0.311; t=11.3, p=3e-23). Each model separates the parties on its
+own — R − D of +0.558 (Sonnet 4.6), +0.557 (DeepSeek), +0.658 (GPT-4o) — so the
+result does not depend on one member carrying the ensemble.
+
+**The scale is genuinely used**, not bunched at zero: deciles −0.65 / −0.33 /
+0.00 / +0.34 / +0.73, and 72 of 200 speeches score beyond ±0.5. The 41 speeches
+scored exactly 0.0 are procedural, which is what the prompt instructs. Excluding
+them raises separation to **+0.744** — worth a robustness check later, and note
+the procedural rate is similar across parties (D 18, R 23), so it is not a
+confound.
+
+**Tone**: D 0.289 vs R 0.231. Small, and the opposite direction from what a
+naive reading might expect. Not interpretable at this n.
+
+---
+
+### P2 — The three models agree at r ≈ 0.95, which cuts both ways
+**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+
+Mean pairwise Pearson r on ideology = **0.949** (DeepSeek–GPT-4o 0.935,
+DeepSeek–Sonnet 0.953, GPT-4o–Sonnet 0.961). Mean cross-model standard deviation
+0.082; only 2 of 200 speeches exceed 0.3.
+
+**Good news:** strong convergent validity. Three models from different providers
+and training paradigms measure substantially the same construct, which is
+evidence the construct is real and not a single model's artefact.
+
+**Bad news for [M3]'s rationale:** the ensemble exists to "reduce single-model
+bias". At r = 0.95 there is little independent error left to average away, so the
+ensemble buys less than the design assumed — while costing 3× to run. See [O5].
+
+**The 2 disagreements are substantive, not bugs.** Both are Democratic speeches
+attacking defence spending and corporate welfare on fiscal-restraint grounds.
+DeepSeek read the fiscal conservatism as right-leaning (+0.20, +0.40); GPT-4o
+read the criticism as left-leaning (−0.70, −0.70). That is a real ambiguity in
+the construct, and exactly the kind of case worth quoting in the thesis.
+
+---
+
+### P3 — Full-corpus cost is ~$4,100, not a rounding error
+**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+
+At $0.00955 per speech, all three models over 426,718 speeches extrapolates to
+**~$4,077**, or **~$2,038** with batch APIs at roughly half price.
+
+Per model, extrapolated: Sonnet 4.6 **$2,100**, GPT-4o **$1,265**, DeepSeek
+**$712**. The reasoner is the cheapest of the three despite emitting ~529 output
+tokens per speech against 69 and 94 — its per-token price is far lower.
+
+This is the number to budget from, and it is large enough that the ensemble
+question in [O5] is a financial decision, not only a methodological one.
+
+---
+
+### P4 — RQ2 preview: the Democratic mean moved, the Republican mean did not
+**Date:** 2026-09-23 · **Status:** **indicative only — do not cite**
+
+OLS of speech-level ensemble score on Congress number, 107th–114th:
+
+| Party | Slope / congress | Change over 107→114 | p |
+|---|---|---|---|
+| D | **−0.0383** | −0.268 | **0.012** |
+| R | +0.0148 | +0.104 | 0.379 (ns) |
+
+Signed extremity (each score oriented toward its own party) rises +0.0266 per
+congress, p=0.019. Per-congress D–R distance runs 0.33 → 0.43 → 0.59 → 0.52 →
+0.69 → **0.92** (112th) → 0.65 → 0.63.
+
+**This is the question Yufei cared most about in Meeting 1**, and the preliminary
+answer is that Democratic floor rhetoric moved left while Republican rhetoric
+held roughly flat.
+
+**Why it cannot be cited yet:** n = 12–13 per party-congress cell. The design was
+built to prove the pipeline works, not to estimate a trend. Treat the direction
+as a hypothesis the full run must test, and resist the temptation to put this
+table in a slide before then.
+
+---
+
+### S8 — Sampling stratifies by party × congress × chamber, 100 per cell
+**Date:** 2026-09-23 · **Status:** active · extends [S1]
+
+32 cells (2 parties × 8 congresses × 2 chambers) at 100 each = **3,200 speeches**,
+seed 42. Estimated **$30.86**.
+
+**Why chamber was added:** House and Senate floor rhetoric differ in length and
+formality, and the chamber mix drifts across congresses in the corpus (Senate
+share falls from ~52% in the 107th to ~35% in the 114th). Without balancing on
+it, a per-Congress comparison would partly measure that drift rather than
+rhetoric. Every cell holds at least 5,865 speeches, so 100 each costs nothing.
+
+**Consequence:** this is no longer a pilot in CLAUDE.md's sense (it specifies
+100–500 speeches) — it is a first measurement run. The 200-speech pilot [P1]
+remains the pipeline gate.
+
+---
+
+### S9 — Cost is estimated from measured usage, not a flat assumption
+**Date:** 2026-09-23 · **Status:** active · supersedes the estimator in [S5]
+
+The pre-flight estimate uses each model's **measured** per-speech token counts
+from the 200-speech pilot, scaled by the current sample's length, instead of a
+flat 250-token guess for every model.
+
+**Why it matters:** the flat assumption was wrong per model, not just in total.
+Providers differ by ~30% on input tokens for identical text because their
+tokenizers differ, and `deepseek-reasoner` emits ~7× the output of the other two
+because its reasoning is billed as output. The old estimator put the 3,200-speech
+run near $40 and misattributed the split; the measured one says $30.86, with the
+cost concentrated in Claude ($15.90) rather than the reasoner ($5.39).
+
+**Maintenance:** `PILOT_MEASURED_TOKENS` in `config.py` is pinned to the
+2026-09-23 pilot. Re-measure if the prompt, the models or the corpus change.
+
+---
+### S10 — The output cap is per model: 8,192 for the reasoner, 1,024 for the rest
+**Date:** 2026-09-23 · **Status:** active · **Commit:** 586a3bd
+
+A reasoning model spends its reasoning tokens from the **same** budget as its
+answer. Under a shared 1,024-token cap, `deepseek-reasoner` spent the whole cap
+reasoning about a 623-word speech and returned empty content with
+`finish_reason="length"` — the full pilot died on its first speech. The two
+instruction-following models were nowhere near the cap.
+
+`MAX_OUTPUT_TOKENS = 1024` therefore applies to GPT-4o and Claude, and
+`REASONING_MAX_OUTPUT_TOKENS = 8192` to `deepseek-reasoner`
+(`code/src/scoring.py`, set per model on `ModelSpec`).
+
+**Measured on the 200-speech pilot** (`results/scores/pilot_*_20260923T103556Z.jsonl`),
+output tokens per speech:
+
+| Model | median | mean | max | over the old 1,024 cap |
+|---|---|---|---|---|
+| `deepseek-reasoner` | 427 | 532 | 3,792 | **16 of 200 (8%)** |
+| `claude-sonnet-4-6` | 94 | 94 | 152 | 0 |
+| `gpt-4o-2024-11-20` | 66 | 69 | 123 | 0 |
+
+So the old cap would have lost roughly one speech in twelve from the reasoner,
+not one in two hundred. It is a **length-dependent** failure, which is why the
+6-speech smoke test passed and the 200-speech run did not: small samples hide it.
+
+**Raising the cap is also cheaper, not merely more correct.** Billing is on
+tokens *used*, not on the cap. Truncated at 1,024 the reasoner burned all 1,024
+and produced nothing to score; given room it stops naturally at a median of 427.
+A larger cap buys a usable answer for fewer tokens than a small cap wastes.
+
+**Rejected:**
+
+- *One uniform cap for all three* — the configuration that broke. It treats
+  reasoning tokens and answer tokens as the same resource across models that
+  bill them differently.
+- *Raising all three to 8,192* — free in billing terms, but the measured maxima
+  for GPT-4o and Claude are 123 and 152, so 1,024 is already ~7× headroom and a
+  cheap guard against a runaway response. There is no reason to remove it.
+- *Splitting long speeches to fit the cap* — forbidden by [M4]: chunking breaks
+  the cross-sentence context the ideology score depends on.
+- *Keeping whatever partial text came back* — a truncated reasoner emits
+  reasoning, not an answer. Scoring it would invent a number the model never
+  gave, the same error [S3] rejects for out-of-range scores.
+
+**On truncation:** `TruncatedResponseError` names the model and its cap, instead
+of surfacing as `no JSON object in response: ''` three layers from the cause. It
+subclasses `ScoreParseError`, so a truncation becomes a null row under [S4] and
+the surviving models still average — it never ends a run that has already been
+paid for. One speech still hits the raised cap; see [O6].
+
+**Follow-up:** the run manifest records `effective_temperature` per model but not
+`max_output_tokens`, so the cap that decides whether a model answers at all is
+not yet in the run record. Add it to the manifest in `pilot_run.py` before the
+full run.
+
+---
+
+## Open questions
+
+Move these up into a numbered entry once decided.
+
+### O5 — Keep all three models, or trim the ensemble?
+**Raised:** 2026-09-23 (from [P2] and [P3]) · **Blocks:** the full-run budget
+
+The models agree at r ≈ 0.95, so averaging three buys little error reduction,
+and the full run costs ~$4,077 against ~$712 for DeepSeek alone or ~$1,977 for
+the cheapest two.
+
+Against trimming: [M3]'s cross-provider design is a genuine methodological
+defence, and three-model agreement is itself a validity result worth reporting.
+For trimming: $3,365 saved, and the pilot already establishes the agreement —
+it may not need re-establishing on 426,718 speeches.
+
+A middle path: run one model on the full corpus and all three on a large random
+subsample, reporting the agreement from the subsample. Decide before the full
+run, and record the reasoning here.
+
+### O6 — DeepSeek still truncates on long speeches
+**Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]
+
+Speech `1110041041` (732 words) hit even the raised 8,192-token cap set in [S10]
+and returned no answer, so its ensemble row has `n_models=2`. Raising the cap
+further is cheap (billing is on tokens used), but 0.5% at pilot scale is ~2,100
+speeches over the full corpus.
+
+The pilot gives the headroom to reason from: across the other 199 speeches the
+reasoner's output peaked at 3,792 tokens, well under 8,192, so this is a tail
+case rather than a cap set too low across the board. Note the failure does not
+scale with word count in any simple way — 732 words is unremarkable in a corpus
+filtered at 50 words — so it is the reasoning that runs long, not the input.
+Measure output tokens against the word-count distribution before the full run
+rather than guessing again.
+
+### O7 — Recover the ~23k ambiguous House speeches?
+**Raised:** 2026-09-27 (from D16) · **Blocks:** nothing yet; affects RQ2 balance
+
+The govinfo parser dropped the state from `Mr. SMITH of Texas.`, leaving 23,075
+House speeches unattributable. They lean Republican (~60/40 by candidate
+weight). Options: (a) ask Konsti to keep the state and re-fetch — the only full
+fix; (b) keep the 7,029 whose candidates all share a party, with party but no
+member (enough for party-level plots, useless for DW-NOMINATE); (c) accept the
+loss and report it. Konsti's notebook is not in the repo, so (a) starts with
+committing it.
+
+### O2 — Prompting or fine-tuning?
+**Raised:** project setup
+
+Continuous scoring (M1) strongly favors prompting, zero- or few-shot.
+Fine-tuning needs labeled data and would push toward a binary setup. Reinforcement
+fine-tuning is a middle path worth evaluating if a supervised component turns out
+to be needed. Do not build infrastructure that assumes one without flagging it.
+
+### O3 — Does boilerplate get stripped from speech text?
+**Raised:** 2026-09-20 (from D5)
+
+Currently no. If it changes, it needs its own entry and a robustness check
+showing scores do not move much.
+
+### O4 — How many speeches did the upstream build drop?
+**Raised:** 2026-09-15 · **Status:** unanswerable here
+
+Speeches with no matched speaker were dropped when Konsti built the parquet.
+Those rows are not in the file, so no analysis of it recovers the count. Only the
+missing `code/scripts/build_stanford_dataset.py` can close this, and the
+methodology chapter needs the figure.
