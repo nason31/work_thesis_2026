@@ -716,6 +716,30 @@ through unnoticed.
 
 ---
 
+### E7 — No external API call without a human's go-ahead
+**Date:** 2026-09-29 · **Status:** active · extends [S5] from the pilot script
+to every agent and every API
+
+Before any call to an LLM provider (OpenAI, DeepSeek, Anthropic) or a data API
+(govinfo / api.data.gov, congress.gov), an agent states what it will call, how
+many requests and the estimated cost, and waits for an explicit yes from a
+human in the current session. Cheap test calls and model-availability checks
+included; an approval covers one run; `--yes` is never passed to skip
+`pilot_run.py`'s prompt. Code that makes no calls needs no approval. The rule
+is in CLAUDE.md under DO NOT.
+
+**Why:** calls cost money (the full run is estimated at ~$4,100, P3), and they
+reach outside the machine — data API keys have daily limits (`DEMO_KEY`: about
+50 calls a day, O8). S5 already made `pilot_run.py` ask before spending, but
+that prompt is one `--yes` away from being skipped, and it does not cover other
+scripts or ad-hoc calls an agent writes itself.
+
+**Rejected:** a cost threshold under which calls are allowed (a threshold
+invites "just a small test" to add up unseen, and data-API calls cost quota,
+not dollars); relying on S5's prompt alone (it guards one script).
+
+---
+
 ## Scoring
 
 ### S1 — Pilot sample: 200 speeches, stratified party × Congress, seed 42
@@ -832,6 +856,10 @@ temperature either).
 
 **Lesson worth keeping:** a pinned model ID is not a guarantee of availability.
 `make smoke` verifies every model answers, for free, before a run that spends.
+*(Corrected 2026-09-29: it does not — `make smoke` is the Stanford corpus build
+and contacts no model, and no other tool checks availability. The check is a
+cheap real run, `pilot_run.py --sample-size 6`, which needs a human's go-ahead
+under E7.)*
 
 ---
 
@@ -965,6 +993,44 @@ held roughly flat.
 built to prove the pipeline works, not to estimate a trend. Treat the direction
 as a hypothesis the full run must test, and resist the temptation to put this
 table in a slide before then.
+
+---
+
+### P5 — First DW-NOMINATE validation: clear across parties, weak within them
+**Date:** 2026-09-29 (on the 2026-09-23 pilot) · **Status:** finding, feeds [O9]
+**Data:** `results/metrics/validation_20260923T103556Z.json`
+(`python code/scripts/validate_scores.py --run 20260923T103556Z`, no API calls)
+
+All 200 pilot speeches (Stanford, 107th–114th) join to a scored member through
+the crosswalk. Ensemble ideology score against `nominate_dim1`, speech level:
+
+| Speeches | Both parties | Within D | Within R |
+|---|---|---|---|
+| all (n = 200) | **+0.64** [0.55, 0.72] | **+0.27** [0.07, 0.44] | +0.14 [−0.06, 0.33] |
+| non-procedural (n = 160) | **+0.71** [0.62, 0.78] | +0.23 [0.02, 0.43] | +0.12 [−0.11, 0.33] |
+
+Pearson r with 95% CI; Spearman agrees within 0.05 everywhere.
+`nokken_poole_dim1` gives nearly the same figures (within 0.04).
+
+- **Positive, as M5 requires — no red flag.** Every model, every benchmark and
+  every subset is positive.
+- **But the overall r is mostly the party gap.** In this sample party alone
+  correlates **r = 0.947** with `nominate_dim1`, and the ensemble only 0.63
+  with party. An overall r of 0.64 therefore says little more than P1 did.
+- **Within party the signal is weak:** significant for Democrats, not for
+  Republicans. Within-party variation in DW-NOMINATE is small (SD 0.13 D, 0.15
+  R, against 0.44 overall), and a single speech is a noisy reading of a member —
+  179 of the 189 members contributed exactly one speech. Weak speech-level
+  correlation is what attenuation predicts; it does not show the member-level
+  correlation is weak. This pilot cannot tell the two apart.
+- **Models:** GPT-4o is highest within Democrats (+0.32), DeepSeek lowest
+  (+0.17); every CI overlaps, so the pilot cannot rank them (see O5).
+- Dropping procedural speeches raises the overall r (+0.64 → +0.71), because
+  they sit at 0.0 regardless of party, but not the within-party r.
+
+**Consequence:** the validation that defends the method needs several speeches
+per member, averaged, then correlated at member level — see O9. The 5,200-speech
+S8 sample would not provide that either: it stratifies by cell, not by member.
 
 ---
 
@@ -1191,6 +1257,27 @@ keep the House member's state and settle O7 (a). It needs an api.data.gov key
 repo. Until the re-fetch: do not pool chambers in a trend, and treat any
 govinfo-era Senate trend as unreliable. Plot the chambers separately or
 stratify (the S8 sampler already stratifies by chamber).
+
+### O9 — How exactly is the DW-NOMINATE validation done?
+**Raised:** 2026-09-29 (from P5) · **Blocks:** the validation that goes in the
+thesis
+
+`code/src/validation.py` reports every option side by side
+(`VALIDATION_BENCHMARKS` in `config.py`) until these are settled:
+
+1. **Benchmark:** `nominate_dim1` (constant over a member's career) or
+   `nokken_poole_dim1` (per Congress). RQ2 is about movement over time, which
+   only Nokken-Poole can show; in the pilot they give the same answer.
+2. **Unit:** speech level, or member (× Congress) level after averaging each
+   member's speeches. P5 suggests speech level is dominated by noise within
+   party; member level needs a sample with several speeches per member, which
+   neither the pilot nor the S8 design provides. How many speeches per member,
+   and how many members, is a cost question (P3, S9).
+3. **Headline statistic:** overall r mostly re-measures the party gap (P5), so
+   the within-party r — or a regression of DW-NOMINATE on party plus the LLM
+   score — is the defensible one.
+4. **Procedural speeches:** keep or drop (P1 and P5 both show they change the
+   overall figure, not the within-party one).
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup

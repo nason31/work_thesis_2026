@@ -1,0 +1,606 @@
+{
+  "run": "20260923T103556Z",
+  "built_at": "2026-09-29T20:30:14+00:00",
+  "inputs": {
+    "scores": {
+      "deepseek-reasoner": "364c18239d8446d732f43465d4b32afa231d857b5aec483a4c94038475a1cfa8",
+      "gpt-4o-2024-11-20": "f32b327b55ce1f2275a75eaa0b5b4a17bbaf9f389bee397e6564d11b8643b240",
+      "claude-sonnet-4-6": "8cb6c77f7dac6e476841d8e8282507331c1ee911afb8f09d26e4b9da0d339b15"
+    },
+    "corpus": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+      "sha256": "c6a773de5d94f560b66a15192544144b35940e233f7ea0d9b25e374b66e5ebfc"
+    },
+    "crosswalk": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/member_crosswalk.parquet",
+      "sha256": "7eba6f0371c48029c8400f76b9a225e4323b03fc41e6cdbd05950f3893062f17"
+    }
+  },
+  "counts": {
+    "speeches": 200,
+    "distinct_members": 189,
+    "in_validation": 200,
+    "excluded_unmatched": 0,
+    "excluded_no_score": 0,
+    "procedural": 40,
+    "party_switch_in_validation": 2,
+    "by_party_in_validation": {
+      "D": 100,
+      "R": 100
+    }
+  },
+  "results": {
+    "all_speeches": {
+      "nominate_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.643,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5536,
+              0.7177
+            ],
+            "spearman_rho": 0.6204,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.2658,
+            "pearson_p": 0.0075,
+            "pearson_ci95": [
+              0.0732,
+              0.4393
+            ],
+            "spearman_rho": 0.2567,
+            "spearman_p": 0.0099
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1412,
+            "pearson_p": 0.1613,
+            "pearson_ci95": [
+              -0.0568,
+              0.3285
+            ],
+            "spearman_rho": 0.1789,
+            "spearman_p": 0.075
+          }
+        },
+        "deepseek-reasoner": {
+          "all": {
+            "n": 199,
+            "pearson_r": 0.5863,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.4869,
+              0.6707
+            ],
+            "spearman_rho": 0.562,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 99,
+            "pearson_r": 0.1709,
+            "pearson_p": 0.0907,
+            "pearson_ci95": [
+              -0.0274,
+              0.3563
+            ],
+            "spearman_rho": 0.1867,
+            "spearman_p": 0.0642
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1483,
+            "pearson_p": 0.141,
+            "pearson_ci95": [
+              -0.0496,
+              0.3349
+            ],
+            "spearman_rho": 0.1578,
+            "spearman_p": 0.117
+          }
+        },
+        "gpt-4o-2024-11-20": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.6633,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5777,
+              0.7345
+            ],
+            "spearman_rho": 0.6415,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.3234,
+            "pearson_p": 0.001,
+            "pearson_ci95": [
+              0.1356,
+              0.4888
+            ],
+            "spearman_rho": 0.3351,
+            "spearman_p": 0.0007
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1223,
+            "pearson_p": 0.2254,
+            "pearson_ci95": [
+              -0.0759,
+              0.3113
+            ],
+            "spearman_rho": 0.1339,
+            "spearman_p": 0.1842
+          }
+        },
+        "claude-sonnet-4-6": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.647,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5584,
+              0.7211
+            ],
+            "spearman_rho": 0.618,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.2817,
+            "pearson_p": 0.0045,
+            "pearson_ci95": [
+              0.0903,
+              0.4531
+            ],
+            "spearman_rho": 0.2639,
+            "spearman_p": 0.008
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1461,
+            "pearson_p": 0.1468,
+            "pearson_ci95": [
+              -0.0518,
+              0.333
+            ],
+            "spearman_rho": 0.1634,
+            "spearman_p": 0.1042
+          }
+        }
+      },
+      "nokken_poole_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.6398,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5498,
+              0.7151
+            ],
+            "spearman_rho": 0.6072,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.251,
+            "pearson_p": 0.0118,
+            "pearson_ci95": [
+              0.0575,
+              0.4264
+            ],
+            "spearman_rho": 0.216,
+            "spearman_p": 0.0309
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1293,
+            "pearson_p": 0.1998,
+            "pearson_ci95": [
+              -0.0689,
+              0.3176
+            ],
+            "spearman_rho": 0.1711,
+            "spearman_p": 0.0887
+          }
+        },
+        "deepseek-reasoner": {
+          "all": {
+            "n": 199,
+            "pearson_r": 0.5836,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.4837,
+              0.6684
+            ],
+            "spearman_rho": 0.5519,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 99,
+            "pearson_r": 0.162,
+            "pearson_p": 0.1092,
+            "pearson_ci95": [
+              -0.0366,
+              0.3482
+            ],
+            "spearman_rho": 0.1533,
+            "spearman_p": 0.1297
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1453,
+            "pearson_p": 0.1492,
+            "pearson_ci95": [
+              -0.0526,
+              0.3322
+            ],
+            "spearman_rho": 0.1573,
+            "spearman_p": 0.1181
+          }
+        },
+        "gpt-4o-2024-11-20": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.6601,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5739,
+              0.7318
+            ],
+            "spearman_rho": 0.6292,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.3108,
+            "pearson_p": 0.0016,
+            "pearson_ci95": [
+              0.1219,
+              0.4781
+            ],
+            "spearman_rho": 0.3094,
+            "spearman_p": 0.0017
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.0992,
+            "pearson_p": 0.3259,
+            "pearson_ci95": [
+              -0.0991,
+              0.29
+            ],
+            "spearman_rho": 0.1143,
+            "spearman_p": 0.2574
+          }
+        },
+        "claude-sonnet-4-6": {
+          "all": {
+            "n": 200,
+            "pearson_r": 0.6433,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.554,
+              0.718
+            ],
+            "spearman_rho": 0.6052,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 100,
+            "pearson_r": 0.2572,
+            "pearson_p": 0.0098,
+            "pearson_ci95": [
+              0.064,
+              0.4318
+            ],
+            "spearman_rho": 0.217,
+            "spearman_p": 0.0301
+          },
+          "R": {
+            "n": 100,
+            "pearson_r": 0.1374,
+            "pearson_p": 0.1727,
+            "pearson_ci95": [
+              -0.0606,
+              0.3251
+            ],
+            "spearman_rho": 0.1586,
+            "spearman_p": 0.1149
+          }
+        }
+      }
+    },
+    "non_procedural": {
+      "nominate_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7054,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6178,
+              0.7757
+            ],
+            "spearman_rho": 0.6639,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.2327,
+            "pearson_p": 0.0342,
+            "pearson_ci95": [
+              0.0179,
+              0.427
+            ],
+            "spearman_rho": 0.2182,
+            "spearman_p": 0.0475
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.119,
+            "pearson_p": 0.3026,
+            "pearson_ci95": [
+              -0.1079,
+              0.3341
+            ],
+            "spearman_rho": 0.149,
+            "spearman_p": 0.1958
+          }
+        },
+        "deepseek-reasoner": {
+          "all": {
+            "n": 159,
+            "pearson_r": 0.6442,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.543,
+              0.727
+            ],
+            "spearman_rho": 0.5987,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 82,
+            "pearson_r": 0.126,
+            "pearson_p": 0.2593,
+            "pearson_ci95": [
+              -0.0936,
+              0.3339
+            ],
+            "spearman_rho": 0.1244,
+            "spearman_p": 0.2657
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.1301,
+            "pearson_p": 0.2596,
+            "pearson_ci95": [
+              -0.0967,
+              0.344
+            ],
+            "spearman_rho": 0.1395,
+            "spearman_p": 0.2261
+          }
+        },
+        "gpt-4o-2024-11-20": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7266,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6441,
+              0.7924
+            ],
+            "spearman_rho": 0.6834,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.3014,
+            "pearson_p": 0.0056,
+            "pearson_ci95": [
+              0.0917,
+              0.4855
+            ],
+            "spearman_rho": 0.284,
+            "spearman_p": 0.0093
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.0952,
+            "pearson_p": 0.4101,
+            "pearson_ci95": [
+              -0.1316,
+              0.3125
+            ],
+            "spearman_rho": 0.1143,
+            "spearman_p": 0.322
+          }
+        },
+        "claude-sonnet-4-6": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7102,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6238,
+              0.7795
+            ],
+            "spearman_rho": 0.6706,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.2546,
+            "pearson_p": 0.0202,
+            "pearson_ci95": [
+              0.0411,
+              0.4458
+            ],
+            "spearman_rho": 0.2419,
+            "spearman_p": 0.0276
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.1244,
+            "pearson_p": 0.2809,
+            "pearson_ci95": [
+              -0.1024,
+              0.339
+            ],
+            "spearman_rho": 0.1205,
+            "spearman_p": 0.2965
+          }
+        }
+      },
+      "nokken_poole_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7017,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6133,
+              0.7727
+            ],
+            "spearman_rho": 0.6555,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.2193,
+            "pearson_p": 0.0464,
+            "pearson_ci95": [
+              0.0038,
+              0.4153
+            ],
+            "spearman_rho": 0.2025,
+            "spearman_p": 0.0663
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.102,
+            "pearson_p": 0.3774,
+            "pearson_ci95": [
+              -0.1248,
+              0.3187
+            ],
+            "spearman_rho": 0.1438,
+            "spearman_p": 0.2122
+          }
+        },
+        "deepseek-reasoner": {
+          "all": {
+            "n": 159,
+            "pearson_r": 0.641,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.5391,
+              0.7244
+            ],
+            "spearman_rho": 0.5923,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 82,
+            "pearson_r": 0.1174,
+            "pearson_p": 0.2936,
+            "pearson_ci95": [
+              -0.1022,
+              0.3261
+            ],
+            "spearman_rho": 0.1129,
+            "spearman_p": 0.3124
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.1241,
+            "pearson_p": 0.2823,
+            "pearson_ci95": [
+              -0.1028,
+              0.3386
+            ],
+            "spearman_rho": 0.1403,
+            "spearman_p": 0.2234
+          }
+        },
+        "gpt-4o-2024-11-20": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7228,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6393,
+              0.7894
+            ],
+            "spearman_rho": 0.6756,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.2923,
+            "pearson_p": 0.0073,
+            "pearson_ci95": [
+              0.0817,
+              0.4778
+            ],
+            "spearman_rho": 0.2833,
+            "spearman_p": 0.0095
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.0646,
+            "pearson_p": 0.577,
+            "pearson_ci95": [
+              -0.1618,
+              0.2844
+            ],
+            "spearman_rho": 0.0936,
+            "spearman_p": 0.4179
+          }
+        },
+        "claude-sonnet-4-6": {
+          "all": {
+            "n": 160,
+            "pearson_r": 0.7059,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6185,
+              0.7761
+            ],
+            "spearman_rho": 0.6603,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 83,
+            "pearson_r": 0.229,
+            "pearson_p": 0.0373,
+            "pearson_ci95": [
+              0.014,
+              0.4238
+            ],
+            "spearman_rho": 0.2087,
+            "spearman_p": 0.0583
+          },
+          "R": {
+            "n": 77,
+            "pearson_r": 0.1111,
+            "pearson_p": 0.3361,
+            "pearson_ci95": [
+              -0.1158,
+              0.3269
+            ],
+            "spearman_rho": 0.1199,
+            "spearman_p": 0.2988
+          }
+        }
+      }
+    }
+  }
+}

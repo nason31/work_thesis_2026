@@ -268,6 +268,14 @@ Rules:
   (career-constant) vs `nokken_poole_dim1` (per Congress). RQ2 is about
   movement over time, which only the latter can show. Record the choice in
   `docs/decisions.md` when it is made.
+- **Validating a scoring run** needs no code of your own:
+  `python code/scripts/validate_scores.py --run <timestamp>` (no API calls)
+  joins a run's per-model scores through the crosswalk and writes every
+  combination — ensemble and each model, both benchmarks, all and
+  non-procedural speeches, overall and **within each party** — to
+  `results/metrics/validation_<timestamp>.json`. Read the within-party rows
+  first: across parties r mostly re-measures the party gap (P5). Logic in
+  `code/src/validation.py`.
 - **If the build fails**, it names the problem — two members on one ICPSR, a
   `speakerid` that no longer encodes its Congress, an unknown `source`. Each
   means an assumption broke (usually a replaced dataset); fix the cause, do not
@@ -315,8 +323,11 @@ than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
 
 **Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
 member in September 2026 and was already a 404 by the time the first call was
-made. Verify every pinned model still answers before a run that costs money —
-`make smoke` does this for free.
+made. Verify every pinned model still answers before a run that costs money.
+No tool in the repo does this: `make smoke` is the Stanford corpus build and
+never contacts a model. The practical check is `pilot_run.py --sample-size 6`,
+which is a real (cheap) API call, so it needs a human's go-ahead like any other
+(see DO NOT).
 
 **4. Feed full speeches, not fragments**
 Do not split speeches into short chunks unless a model's context window absolutely requires it. Chunking breaks cross-sentence rhetorical context, which matters for detecting ideological framing. Current frontier models (GPT-4o, Llama 4, Gemini 2.5, DeepSeek R1) all handle full congressional speeches comfortably. Verify context length per model before deciding.
@@ -465,6 +476,8 @@ work_thesis_2026/
 - Store ensemble inputs and outputs separately so individual model behavior can be inspected
 
 ### Cost awareness
+- **No external API call without a human's explicit go-ahead** — see the first
+  rule under DO NOT below
 - The merged corpus is **538,804 speeches** (Stanford 823,341 raw → 426,718;
   govinfo 225,564 raw → 112,086), not millions. Budget from the real number;
   see `results/metrics/merged_build_stats.json`
@@ -493,6 +506,17 @@ work_thesis_2026/
 - Prefer clarity over cleverness — this is academic code, not production software
 
 ### DO NOT
+- **Make any external API call without first asking a human and getting an
+  explicit yes in the current session.** This covers every LLM provider
+  (OpenAI, DeepSeek, Anthropic) and every data API (govinfo / api.data.gov,
+  congress.gov, …), including cheap test calls, `pilot_run.py --sample-size 6`
+  and checks that a model still answers. Before asking, say what will be
+  called, how many requests, and the estimated cost — `pilot_run.py --dry-run`
+  prints it without calling anything. An approval covers the run it was given
+  for, not later ones. Never pass `--yes` to skip `pilot_run.py`'s
+  confirmation prompt. No approval is needed for code that makes no calls:
+  the corpus builds, `make crosswalk`, `validate_scores.py`,
+  `pilot_run.py --dry-run`. (docs/decisions.md E7)
 - Make irreversible changes to `data/raw/`
 - Hardcode model names, prompt text, or thresholds in multiple places — centralize in config
 - Build RQ5 pipeline without confirming govinfo coverage first
