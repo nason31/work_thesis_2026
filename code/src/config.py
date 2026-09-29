@@ -30,9 +30,14 @@ RAW_GOVINFO: Path = RAW_DIR / "govinfo"  # 2016-09-10 onward, Konsti's pipeline
 RAW_DW_NOMINATE: Path = RAW_DIR / "dw_nominate"  # VoteView validation scores
 PROCESSED_DIR: Path = DATA_DIR / "processed"
 
-# Merged corpus: one row per speech, columns per CLAUDE.md ->
+# Merged corpus, both sources: one row per speech, columns per CLAUDE.md ->
 # speech_id, date, member_id, party, chamber, congress_number, text, source
+# (plus last_name, state, word_count, party_original, icpsr). Built by
+# `make corpus` from the two processed sides below. See docs/decisions.md D19.
 CORPUS_PATH: Path = PROCESSED_DIR / "corpus.parquet"
+
+# Processed Stanford side, 2001-01-03 .. 2016-09-09. Built by `make stanford`.
+STANFORD_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_stanford.parquet"
 
 # The Stanford parquet as published on the team drive. Not in the repo --
 # download it into RAW_STANFORD before running the corpus build.
@@ -52,8 +57,8 @@ LEGISLATORS_FILES: tuple[Path, ...] = (
     RAW_LEGISLATORS / "legislators-historical.json",
 )
 
-# Processed govinfo side. Same columns as CORPUS_PATH plus `icpsr`; merging the
-# two into one corpus is a separate, later step.
+# Processed govinfo side, 2016-09-10 onward. Same columns as the Stanford side
+# plus `icpsr`. Built by `make govinfo`; merged into CORPUS_PATH by `make corpus`.
 GOVINFO_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_govinfo.parquet"
 
 # --- results -----------------------------------------------------------
@@ -64,8 +69,9 @@ SCORES_DIR: Path = RESULTS_DIR / "scores"  # raw per-model LLM output, git-ignor
 
 # Corpus build statistics (row counts, drop counts, distributions). Committed,
 # so the numbers quoted in the methodology chapter have a traceable source.
-BUILD_STATS_PATH: Path = METRICS_DIR / "corpus_build_stats.json"
+STANFORD_BUILD_STATS_PATH: Path = METRICS_DIR / "stanford_build_stats.json"
 GOVINFO_BUILD_STATS_PATH: Path = METRICS_DIR / "govinfo_build_stats.json"
+MERGED_BUILD_STATS_PATH: Path = METRICS_DIR / "merged_build_stats.json"
 
 # --- thesis ------------------------------------------------------------
 THESIS_DIR: Path = REPO_ROOT / "thesis"
@@ -226,8 +232,9 @@ RANDOM_SEED: int = 42
 PILOT_SAMPLE_SIZE: int = 200
 
 # Stratification keys for the sample, and how many speeches per cell.
-# party x congress x chamber = 2 x 8 x 2 = 32 cells; at 100 each that is 3,200
-# speeches. Every cell holds at least 5,865 rows, so the quota is never short.
+# party x congress x chamber = 2 x 13 x 2 = 52 cells over the merged corpus
+# (107th-119th); at 100 each that is 5,200 speeches. The smallest cell (119th,
+# R, Senate) holds 1,128 rows, so the quota is never short.
 # Chamber was added after the first pilot: House and Senate floor rhetoric differ
 # in length and formality, and an unbalanced split would confound a per-Congress
 # comparison with a drift in chamber mix.
