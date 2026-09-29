@@ -230,6 +230,12 @@ VOTEVIEW_CONGRESS_RANGE: tuple[int, int] = (107, 119)
 # rows in that Congress; this picks the one matching the corpus's party label.
 VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
 
+# Voteview scores the LLM ideology scores are validated against. Both are
+# reported until one is chosen -- NOT YET DECIDED (docs/decisions.md O9):
+# nominate_dim1 is constant over a member's career, nokken_poole_dim1 is
+# estimated per Congress and so can show a member moving.
+VALIDATION_BENCHMARKS: tuple[str, ...] = ("nominate_dim1", "nokken_poole_dim1")
+
 # Ensemble composition decided — three models from distinct providers and
 # training paradigms. Pin specific snapshot versions for reproducibility;
 # update these constants (and CLAUDE.md) if a version is changed mid-project.
