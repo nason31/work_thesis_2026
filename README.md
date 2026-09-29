@@ -55,6 +55,7 @@ make smoke       # Stanford build on the first 50k rows (needs raw data)
 make stanford    # Stanford side           (needs raw data)
 make govinfo     # govinfo side            (needs raw data)
 make corpus      # merge both into data/processed/corpus.parquet
+make crosswalk   # corpus members -> DW-NOMINATE ICPSR (after make corpus)
 ```
 
 `make test` and `make lint` need no data and should pass on a fresh clone.
@@ -96,13 +97,21 @@ The raw files are not in the repo — download them from the team drive first:
 - `congress_speeches_2016_present.jsonl` into `data/raw/govinfo/`, plus the
   congress-legislators JSON into `data/raw/congress_legislators/` — see
   [data/raw/govinfo/README.md](data/raw/govinfo/README.md)
+- Voteview's `HSall_members.csv` (https://voteview.com/data, "Member
+  Ideology") into `data/raw/dw_nominate/` — only for `make crosswalk`
 
 ```bash
 make smoke       # Stanford, first 50k rows; seconds. Run this first.
 make stanford    # -> data/processed/corpus_stanford.parquet (2001-01-03 .. 2016-09-09)
 make govinfo     # -> data/processed/corpus_govinfo.parquet  (2016-09-12 .. 2025-12-19)
 make corpus      # -> data/processed/corpus.parquet, both merged (538,804 rows)
+make crosswalk   # -> data/processed/member_crosswalk.parquet (re-run after make corpus)
 ```
+
+`make crosswalk` links every corpus member to their Voteview ICPSR for the
+DW-NOMINATE validation, and lists who could not be matched in
+`results/metrics/crosswalk_unmatched.csv`. How to join it onto the speeches:
+the "Member crosswalk" section of `CLAUDE.md`.
 
 Each step writes its stats to `results/metrics/` (`stanford_build_stats.json`,
 `govinfo_build_stats.json`, `merged_build_stats.json`) — quote those files for

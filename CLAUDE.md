@@ -133,16 +133,25 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   `data/processed/corpus_govinfo.parquet`, stats in
   `results/metrics/govinfo_build_stats.json`.
 - **`member_id` is the bioguide id** on this side (Stanford uses `speakerid`),
-  plus an extra `icpsr` column — the direct DW-NOMINATE join key, missing for
-  many members first elected 2021+.
+  plus an extra `icpsr` column from congress-legislators, missing for many
+  members first elected 2021+. **It is not the DW-NOMINATE join key:** it holds
+  a party switcher's original number, while Voteview gives them a new one
+  (D21). Join through the member crosswalk — see External Validation.
+- **`chamber` is the member's chamber**, not the Record section the speech
+  appears in: House impeachment managers at the 2020/2021 Senate trials are `H`
+  (425 speeches, D20).
 - **Not repairable here (O7):** the parser dropped the state from
   `Mr. SMITH of Texas.`, so 23,075 House speeches cannot be attributed. They
   lean Republican (~60/40), so House Republicans are under-represented.
 - **Discontinuity, measured:** ~11–15k speeches/year after filtering vs ~22k/year
   in Stanford's 114th — about a third fewer at the break. Address it in the
   methodology; it is not a political trend. The drop is concentrated in the
-  **Senate** (−71% vs −32% for the House) and is not yet explained — see O8 in
-  `docs/decisions.md`. Do not pool chambers in a trend until it is.
+  **Senate** (−71% vs −32% for the House). **Cause found (O8 in
+  `docs/decisions.md`):** the upstream fetch kept only the first 100 granules
+  of each day's Record, and the Senate is listed after the House, so busy-House
+  days lose the Senate partly or entirely. A re-fetch with pagination is the
+  fix. Until then, do not pool chambers in a trend, and treat the govinfo-era
+  Senate as a biased sample.
 - **Merged (D19)** with the Stanford side into `data/processed/corpus.parquet`
   by `make corpus` — see Processed / Combined below.
 
@@ -164,7 +173,8 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   - `corpus_stanford.parquet` — `make stanford` (`build_corpus.py`, `corpus.py`)
   - `corpus_govinfo.parquet` — `make govinfo` (`build_govinfo_corpus.py`,
     `govinfo.py`); adds an `icpsr` column, which the merge carries (null on
-    Stanford rows until the crosswalk exists)
+    Stanford rows). Do not join DW-NOMINATE on it — use the member crosswalk
+    (External Validation below)
 
   The merge drops nothing and fails on any seam overlap, repeated `speech_id`,
   unexpected code or stale input. `member_id` is source-native: Stanford
@@ -195,17 +205,73 @@ must carry `stanford` or `govinfo`. Do not merge without it.
 
 - **DW-NOMINATE scores** — voting-based ideological measure from VoteView.com
 - Used to validate LLM-derived ideological scores against a non-ML, voting-based benchmark
-- Path: `data/raw/dw_nominate/`
-- **Open blocker:** VoteView identifies members by **ICPSR** number; the Stanford
-  data carries `speakerid`, Gentzkow's own identifier. There is currently no
-  join path between our speeches and DW-NOMINATE. A crosswalk
-  (`speakerid` → ICPSR, e.g. via the Stanford speaker map plus name/state/congress
-  matching) has to be built and its match rate reported. Since CLAUDE.md treats
-  the DW-NOMINATE check as the primary methodological defense, this blocks the
-  validation entirely — resolve it early, not at the end. A rough first probe
-  (2026-09-29) matched 97.4% of Stanford speeches to an ICPSR through
-  congress-legislators on state + chamber + date + surname — see the M5 note in
-  `docs/decisions.md`. The govinfo side already carries `icpsr`.
+- Path: `data/raw/dw_nominate/HSall_members.csv` (Voteview member file, all
+  Congresses; read-only). `data/processed/dw_nominate_107_119.csv` is the same
+  table filtered to the 107th–119th, House and Senate — made by hand, and
+  identical to what `load_voteview()` in `code/src/crosswalk.py` produces from
+  the raw file, so prefer the function.
+
+#### Member crosswalk — how to join speeches to DW-NOMINATE [verified 2026-09-29]
+
+VoteView keys members on **ICPSR**; our speeches carry Gentzkow's `speakerid`
+(Stanford) or the bioguide id (govinfo). The crosswalk links them. **This was
+the blocker on the validation; it is resolved** (M5, D21–D24).
+
+- **Build:** `make crosswalk` (3 s) → `data/processed/member_crosswalk.parquet`.
+  Logic in `code/src/crosswalk.py`, runner `code/scripts/build_crosswalk.py`,
+  tests `code/tests/test_crosswalk.py`. **Re-run it after every `make corpus`** —
+  it is keyed on the corpus as built, and its stats record the corpus SHA-256.
+- **Outputs** (committed): `results/metrics/crosswalk_build_stats.json` (match
+  rates per source, per Congress × chamber, per method; party switchers;
+  unscored members; ICPSR disagreements) and
+  `results/metrics/crosswalk_unmatched.csv` (every unmatched member, with speech
+  count, reason and the Voteview candidates).
+- **One row per** `source` × `member_id` × `congress_number` × `chamber` ×
+  `party_original` — the **join key**. `party_original` is in it because
+  govinfo records party by day (Van Drew has a D and an R row in the 116th).
+- **Coverage:** 99.82% of Stanford and 100% of govinfo speeches matched;
+  538,039 of 538,804 speeches (99.86%) usable for validation. Not usable: Tom
+  and Jo Ann Davis (VA, 742 speeches — nothing separates them), 5 OCR-garbage
+  speeches, and Kwanza Hall (18 speeches, no score).
+
+**Use it like this** — always `validate="many_to_one"`, always filter on
+`in_validation`, and **only for the validation**:
+
+```python
+import pandas as pd
+from src.config import CORPUS_PATH, CROSSWALK_PATH
+
+KEY = ["source", "member_id", "congress_number", "chamber", "party_original"]
+crosswalk = pd.read_parquet(CROSSWALK_PATH)
+speeches = pd.read_parquet(CORPUS_PATH, columns=["speech_id", "party", *KEY])
+speeches = speeches.merge(crosswalk, on=KEY, how="left", validate="many_to_one")
+validation = speeches[speeches["in_validation"]]  # scored speeches: join on speech_id
+```
+
+Columns worth knowing:
+
+| Column | Meaning |
+|---|---|
+| `icpsr`, `bioguide_id`, `bioname` | the matched Voteview member; null when unmatched |
+| `nominate_dim1` | DW-NOMINATE 1st dim. **Constant over a member's career** (checked: all 1,248 multi-Congress members) — cannot show a member moving |
+| `nokken_poole_dim1` | per-Congress score; varies over time |
+| `in_validation` | matched **and** scored — the only rows the validation may use |
+| `party_switch` | Voteview has two ICPSRs for this member in that Congress. On Stanford rows (Jeffords, Goode, Hall, Specter, Griffith) every speech got the record of the party Stanford lists — drop these in a robustness check (D23) |
+| `candidate_key`, `resolved_by`, `unmatched_reason`, `n_candidates` | how the match was made (D21, D22) — for auditing |
+
+Rules:
+
+- **Never drop an unmatched speech from the trend analysis.** `in_validation`
+  is a filter for the DW-NOMINATE check only.
+- **Do not join on the corpus `icpsr` column** (see the govinfo section above).
+- **Which score validates the LLM scores is not decided** — `nominate_dim1`
+  (career-constant) vs `nokken_poole_dim1` (per Congress). RQ2 is about
+  movement over time, which only the latter can show. Record the choice in
+  `docs/decisions.md` when it is made.
+- **If the build fails**, it names the problem — two members on one ICPSR, a
+  `speakerid` that no longer encodes its Congress, an unknown `source`. Each
+  means an assumption broke (usually a replaced dataset); fix the cause, do not
+  loosen the check.
 
 ### RQ5 Data (not yet committed to)
 - Check govinfo.gov for press releases / official statements pre-2010 before starting
@@ -317,7 +383,7 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 work_thesis_2026/
 ├── CLAUDE.md               ← this file
 ├── README.md               ← setup instructions for the team
-├── Makefile                ← make setup / test / lint / stanford / govinfo / corpus / lock
+├── Makefile                ← make setup / test / lint / stanford / govinfo / corpus / crosswalk / lock
 ├── requirements.txt        ← direct dependencies (edit this)
 ├── requirements.lock.txt   ← pinned versions (generated by `make lock`)
 ├── pytest.ini              ← pythonpath = code
@@ -329,6 +395,7 @@ work_thesis_2026/
 │   │   ├── corpus.py       ← Stanford side: load, map, clean, write
 │   │   ├── govinfo.py      ← govinfo side: re-resolve speakers, cut text, write
 │   │   ├── merge.py        ← both sides → corpus.parquet, with checks
+│   │   ├── crosswalk.py    ← corpus members → Voteview ICPSR (DW-NOMINATE join)
 │   │   └── prompts/        ← prompt templates as files, logged with every run
 │   ├── scripts/            ← one-off analysis and pipeline scripts
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
@@ -442,7 +509,8 @@ work_thesis_2026/
 
 1. **Literature Review** — concise, justifies novelty; Yufei will scrutinize this
 2. **Finish Dataset** — merge Stanford + govinfo, document the 2017 gap
-   (merged 2026-09-29, D19; the Senate drop at the break is still open, O8)
+   (merged 2026-09-29, D19; the Senate drop at the break is an upstream
+   100-granule fetch cap and needs a paginated re-fetch, O8)
 3. **Run models and summarize findings** — at least pilot results; per-party position plots
 4. **Start written document** — chapter structure, table of contents, introduction draft
 5. **Check formal requirements** — ~20 pages per person; Yufei says hitting the page limit is the actual risk, so be concise
@@ -458,7 +526,9 @@ work_thesis_2026/
 
 ---
 
-*Last updated: September 20, 2026 — corpus build implemented
+*Last updated: September 29, 2026 — member crosswalk to DW-NOMINATE built
+(`make crosswalk`, see External Validation); the validation is unblocked.
+Previously, September 20, 2026 — corpus build implemented
 (`code/scripts/build_corpus.py`, logic in `code/src/corpus.py`, tests in
 `code/tests/`); the data decisions it settles are recorded above. Everything
 still marked **[assumed]** is a planning estimate awaiting verification —

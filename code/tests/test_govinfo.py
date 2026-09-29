@@ -344,6 +344,21 @@ def test_output_schema_and_source_tag(tmp_path: Path) -> None:
     assert (row["state"], row["congress_number"], row["icpsr"]) == ("UT", 115, 1)
 
 
+def test_impeachment_manager_is_written_with_the_house_as_chamber(
+    tmp_path: Path,
+) -> None:
+    """A House manager speaking at a Senate trial is still a House member.
+
+    ``chamber`` is the member's chamber, as on the Stanford side, so the row
+    joins to their House record in DW-NOMINATE. docs/decisions.md D20.
+    """
+    stats, table = _build(tmp_path, [_record("Manager SCHIFF", "SENATE")])
+    assert table is not None
+    assert table.column("chamber").to_pylist() == ["H"]
+    assert stats.chamber_counts == {"H": 1}
+    assert stats.rows_chamber_reassigned == 1
+
+
 def test_file_party_is_ignored_in_favour_of_the_lookup(tmp_path: Path) -> None:
     """The file labels mid-term switchers with their end-of-term party."""
     record = _record("SWITCHER", party="Republican")

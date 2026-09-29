@@ -7,7 +7,7 @@
     "legislators-historical.json": "25187633f3215a096fe9d14d8a40db1fb0841ab1d24c6da52da3a80c93698cbc"
   },
   "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus_govinfo.parquet",
-  "built_at": "2026-09-27T12:40:33+00:00",
+  "built_at": "2026-09-29T19:41:20+00:00",
   "min_word_count": 50,
   "start_date": "2016-09-10",
   "end_date": "2025-12-31",
@@ -24,6 +24,7 @@
   "rows_dropped_short": 71822,
   "rows_dropped_duplicate_id": 0,
   "independents_reassigned": 317,
+  "rows_chamber_reassigned": 425,
   "rows_cut": {
     "narration": 8508,
     "none": 91910,
@@ -143,8 +144,8 @@
     "2025": 11092
   },
   "chamber_counts": {
-    "H": 90249,
-    "S": 21837
+    "H": 90674,
+    "S": 21412
   },
   "icpsr_missing": 13036,
   "date_min": "2016-09-12",

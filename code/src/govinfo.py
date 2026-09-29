@@ -78,6 +78,10 @@ PARTY_CODES: dict[str, str] = {
 
 _CHAMBER_TYPES: dict[str, str] = {"HOUSE": "rep", "SENATE": "sen"}
 _CHAMBER_CODES: dict[str, str] = {"HOUSE": "H", "SENATE": "S"}
+#: congress-legislators term type -> corpus chamber code. The written ``chamber``
+#: is the member's, not the Record section's: a House impeachment manager
+#: speaking at a Senate trial stays "H" (docs/decisions.md D20).
+_TERM_CHAMBER_CODES: dict[str, str] = {"rep": "H", "sen": "S"}
 
 
 # --- text cleaning -----------------------------------------------------
@@ -392,6 +396,9 @@ class GovinfoBuildStats:
     rows_dropped_short: int = 0
     rows_dropped_duplicate_id: int = 0
     independents_reassigned: int = 0
+    # Rows whose member sits in the other chamber from the Record section they
+    # appear in -- House impeachment managers at a Senate trial.
+    rows_chamber_reassigned: int = 0
     # Text repairs, counted over rows in the date window.
     rows_cut: dict[str, int] = field(default_factory=dict)
     words_removed_by_cleaning: int = 0
@@ -611,6 +618,8 @@ def build_govinfo_corpus(
             seen_ids.add(speech_id)
 
             stats.independents_reassigned += reassigned
+            member_chamber = _TERM_CHAMBER_CODES[term.chamber]
+            stats.rows_chamber_reassigned += member_chamber != _CHAMBER_CODES[chamber]
             congress = congress_for(day)
             buffer.append(
                 {
@@ -618,7 +627,7 @@ def build_govinfo_corpus(
                     "date": day,
                     "member_id": term.bioguide,
                     "party": party,
-                    "chamber": _CHAMBER_CODES[chamber],
+                    "chamber": member_chamber,
                     "congress_number": congress,
                     "text": cleaned.text,
                     "source": SOURCE_TAG,
@@ -634,7 +643,7 @@ def build_govinfo_corpus(
             counters["party_original"][party_original] += 1
             counters["congress"][str(congress)] += 1
             counters["year"][str(day.year)] += 1
-            counters["chamber"][_CHAMBER_CODES[chamber]] += 1
+            counters["chamber"][member_chamber] += 1
             stats.icpsr_missing += term.icpsr is None
             iso = day.isoformat()
             stats.date_min = min(stats.date_min or iso, iso)

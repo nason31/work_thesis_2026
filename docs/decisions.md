@@ -80,7 +80,7 @@ congressional speeches comfortably, so there is no forcing constraint.
 ---
 
 ### M5 — Validate against DW-NOMINATE
-**Date:** 2026-09 (project setup) · **Status:** active, **blocked**
+**Date:** 2026-09 (project setup) · **Status:** active — **unblocked 2026-09-29** by the crosswalk (D21–D24)
 
 LLM scores are cross-checked against VoteView DW-NOMINATE. This is the primary
 methodological defense of the approach. A weak or inverse correlation is a
@@ -97,6 +97,13 @@ speeches (97.4%)** with an ICPSR. 94 speakerids (6,923 speeches) were ambiguous
 and 18 (3,645) unmatched. Not validated — no miss was inspected. It is the next
 piece of work after the merge (D19), and would also let `member_id` become the
 bioguide id on both sides of the break.
+
+**Update 2026-09-29 — built.** `data/processed/member_crosswalk.parquet`
+(`make crosswalk`, D21) matches **99.82% of Stanford speeches and 100% of
+govinfo speeches** to a Voteview ICPSR; 538,039 of 538,804 speeches (99.86%)
+can enter the validation. The probe above matched against congress-legislators
+on the most common spelling only; the build matches against Voteview directly
+and uses every spelling, which is why it does better.
 
 ---
 
@@ -439,7 +446,8 @@ build, which used to write `corpus.parquet`; `make stanford`) and
   match their committed build stats (a smoke file or a stale file).
 - **`member_id` stays source-native** — Stanford `speakerid`, govinfo bioguide
   id. The formats cannot collide. `icpsr` is null on Stanford rows until the
-  crosswalk (M5) fills it.
+  crosswalk (M5) fills it. *(Revised by D21: the crosswalk does not fill it —
+  it is a separate table, and the govinfo `icpsr` is not the join key either.)*
 - **Row order:** Stanford (date-sorted), then govinfo (its file order, not
   date-sorted). Nothing downstream depends on it.
 
@@ -458,6 +466,166 @@ run, which needs only party).
 2026-09-23 pilot manifest's `corpus_path` refers to the Stanford-only file of
 that date. Run manifests now record `corpus_sha256`, so the file a run used is
 identifiable regardless of its name.
+
+---
+
+### D20 — govinfo `chamber` is the member's chamber, not the Record section's
+**Date:** 2026-09-29 · **Status:** active
+
+House impeachment managers speaking at the Senate trials of January 2020 and
+February 2021 (Schiff, Jeffries, Crow, Demings, Lofgren, Nadler, Raskin and 6
+others) were written with `chamber = S`, because the build copied the Record
+section. The build already resolved them correctly — the Record heads their
+turns `Manager SCHIFF`, and D16 looks those up among House terms in
+congress-legislators — it just wrote the wrong column. `chamber` is now the
+chamber of the resolved member's term on that date, as on the Stanford side
+(`chamber_map`). Counted as `rows_chamber_reassigned` in
+`govinfo_build_stats.json`.
+
+**Effect, verified by rebuilding:** exactly **425 rows** move S → H (373 in the
+116th, 52 in the 117th, all Democrats); nothing else in the govinfo or merged
+stats changes. The smallest S8 sampling cell this touches, 116th/S/D, falls from
+2,353 to 1,980 speeches — still far above 100.
+
+**Why:** a House member at a trial is still a House member. With `S`, these 13
+members had no Voteview record to match (Voteview files them under the House),
+and they inflated the Senate cells of any chamber-stratified sample.
+
+**Rejected:** leaving the build alone and letting the crosswalk fall back to
+the other chamber — the corpus would keep a wrong label that every
+chamber-level plot and the S8 sampler read.
+
+---
+
+### D21 — The DW-NOMINATE crosswalk: a separate member-level table
+**Date:** 2026-09-29 · **Status:** active · unblocks M5
+
+`data/processed/member_crosswalk.parquet`, built by `make crosswalk`
+(`code/src/crosswalk.py`) from the merged corpus and Voteview's raw
+`HSall_members.csv`. One row per `source` × `member_id` × `congress_number` ×
+`chamber` × `party_original` — the key it joins back onto the corpus with — so
+7,176 rows, not 538,804. Match rates:
+`results/metrics/crosswalk_build_stats.json`; unmatched members with speech
+counts: `results/metrics/crosswalk_unmatched.csv`.
+
+| Source | Units | Matched | Speeches | Matched | In validation |
+|---|---|---|---|---|---|
+| Stanford | 4,334 | 4,322 | 426,718 | 425,971 (99.82%) | 425,971 |
+| govinfo | 2,842 | 2,842 | 112,086 | 112,086 (100%) | 112,068 |
+
+- **Stanford: surname + state + Congress + chamber.** Matched against the
+  Voteview surname (the part of `bioname` before the comma), normalized:
+  uppercase, accents stripped, hyphens split, non-letters dropped. Every
+  spelling a speakerid carries is tried, since OCR variants differ within one
+  speakerid (HODES/RHODES). If no surname equals, a shared word is accepted:
+  Stanford keeps only the last word of compound surnames (JACKSON LEE → LEE,
+  WASSERMAN SCHULTZ → SCHULTZ) — 28 units, 3,196 speeches, all checked by eye.
+  No fuzzy matching: after this, 4 units (5 speeches) are left, all OCR
+  garbage (`WIU`/`WVU` for Wu).
+- **govinfo: bioguide id + Congress + chamber**, not the corpus `icpsr`. That
+  column is congress-legislators' ICPSR, the member's *original* number, while
+  Voteview gives a party switcher a new one. Joined directly, Van Drew's
+  Republican speeches in the 116th would land on his Democratic record, and his
+  117th–119th speeches, Sinema's as an independent and Dold's after his return
+  would not land at all. The corpus `icpsr` disagrees with the match on 7 units, every one
+  explained by Voteview's renumbering; they are listed in the stats. `member_id`
+  is the bioguide id on every govinfo row, so the name-based fallback is never
+  needed there.
+- **Voteview is read from the raw file**, filtered in code to Congresses
+  107–119, House and Senate. This reproduces the hand-made
+  `data/processed/dw_nominate_107_119.csv` exactly (all values identical, row
+  order aside), so that file has a recipe now; the build records the raw file's
+  SHA-256.
+- **Fails loudly** on two members matched to one ICPSR in one Congress and
+  chamber, a speakerid person part pointing to two people (D22), an unknown
+  `source`, or a repeated Voteview key.
+
+**Rejected:** writing `icpsr` into the corpus (the merge design's plan, D19) —
+it would rewrite an 820 MB file for a 7k-row fact, and govinfo's existing
+`icpsr` is the wrong key anyway (above); matching the Stanford side against
+congress-legislators, as the M5 probe did — it adds a hop, since Voteview
+carries names and states itself; fuzzy matching — nothing left for it to do.
+
+---
+
+### D22 — Same-surname, same-party namesakes: speakerid person part, then elimination
+**Date:** 2026-09-29 · **Status:** active
+
+Surname, state and party cannot separate Loretta and Linda Sánchez (CA), Gene
+and Al Green (TX), Carolyn and Sean Patrick Maloney (NY), Lincoln and Mario
+Diaz-Balart (FL), Dan and Jeff Miller (FL, 107th) or Julia and André Carson
+(IN). Two steps resolve them, repeated until nothing changes:
+
+1. **speakerid person part.** A speakerid is the Congress (3 digits) plus a
+   person part that stays the same across Congresses: over the 1,100 persons
+   matched uniquely somewhere, each person part maps to exactly one bioguide id
+   (0 exceptions). So a member matched uniquely in one Congress (Loretta
+   Sanchez alone in the 107th) is recognized in the Congresses where a namesake
+   joins. 26 units, 2,163 speeches.
+2. **Elimination.** If every candidate but one is already taken by another
+   member of that Congress and chamber, the last one is assigned. 16 units,
+   703 speeches.
+
+**Verified independently:** for all 42 units, the raw Stanford `speaker`
+headers name the assigned person — `Ms. LINDA T. SANCHEZ of California` on the
+unit assigned to Linda, `Mr. GENE GREEN of Texas` on Gene's, and so on. 42 of
+42 agree. The headers were not used by the matching.
+
+**Guarded:** the build stops if a person part points to two bioguide ids, or if
+a speakerid does not start with its Congress — a replacement dataset that
+breaks the layout cannot slip through.
+
+**Rejected:** leaving all namesakes unmatched (2,866 speeches, all from 12
+House members, 8 of them Democrats — a systematic gap, not noise).
+
+---
+
+### D23 — Party breaks ties only via `party_original`; switchers are flagged
+**Date:** 2026-09-29 · **Status:** active
+
+When several candidates remain, the one whose Voteview `party_code` matches
+`party_original` (D 100, R 200, I 328; `VOTEVIEW_PARTY_CODES`) wins. Never
+`party`: the caucus rule (D2) turns Jeffords' `I` into `D`, while Voteview codes
+him 328. 51 Stanford units (3,876 speeches) are settled this way, mostly
+different-party namesakes (George and Gary Miller, CA), and 7 govinfo units.
+
+**Switchers within a Congress.** Voteview gives a member who switches party a
+new ICPSR, so they have two records in that Congress. On the govinfo side
+`party_original` is recorded by day, so each speech gets the right record (Van
+Drew's 116th splits 82 D / 44 R). On the Stanford side a speakerid carries one
+party for the whole Congress, so every speech of Jeffords (107th, 260), Goode
+(107th, 15), Hall (108th, 24), Specter (111th, 222) and Griffith (111th, 17)
+gets the record of the party Stanford lists — Specter's speeches from before
+April 2009 get his Democratic score. Accepted, and every such unit carries
+`party_switch = True` (12 in all, both sides), so a robustness check can drop
+them.
+
+**Rejected:** splitting Stanford switchers by speech date (needs switch dates
+from outside the data, for 538 speeches); leaving them unmatched (drops
+Specter and Jeffords, two of the most-cited cases of ideological movement).
+
+---
+
+### D24 — Who enters the validation
+**Date:** 2026-09-29 · **Status:** active
+
+`in_validation = True` only for a matched member with a DW-NOMINATE score.
+Everyone else is excluded **from the validation only** — every speech stays in
+the trend analysis.
+
+- **Tom and Jo Ann Davis (VA)** stay unmatched: both Republicans, both in the
+  House 107th–110th, same surname and state. 8 units, 742 speeches (0.17%).
+  Nothing the build uses separates them. *(Noted for later: the raw file does —
+  in every Congress one speakerid is headed `Mrs. JO ANN DAVIS of Virginia` and
+  the other `Mr. TOM DAVIS of Virginia`, and the raw `gender` column agrees —
+  if these 742 are ever worth a dependency on the raw file.)*
+- **4 OCR-garbage units** (5 speeches) stay unmatched.
+- **Matched but unscored:** Kwanza Hall (GA, 116th, 18 speeches) served a month
+  and cast too few votes for a score. If a member cannot be scored on votes,
+  there is nothing to validate against.
+- **Delegates** never reach the crosswalk: D10 removes them on both sides.
+
+**Rejected:** guessing the Davis pair; imputing a score for Hall.
 
 ---
 
@@ -942,28 +1110,87 @@ loss and report it. Konsti's notebook is not in the repo, so (a) starts with
 committing it.
 
 ### O8 — Why does the Senate lose 71% of its speeches at the break?
-**Raised:** 2026-09-29 (from D19) · **Blocks:** nothing yet; affects any trend
-that pools the two chambers
+**Raised:** 2026-09-29 (from D19) · **Cause found:** 2026-09-29, an upstream
+fetch cap; open until re-fetched · **Blocks:** any trend that pools the two
+chambers, and any govinfo-era Senate trend
 
 Speeches per year from `merged_build_stats.json`, Stanford 2011–2015 average
 against govinfo 2017–2025 average:
 
 | Chamber | Stanford | govinfo | Change |
 |---|---|---|---|
-| House | 14,488 | 9,783 | −32% |
-| Senate | 8,082 | 2,377 | **−71%** |
+| House | 14,488 | 9,830 | −32% |
+| Senate | 8,082 | 2,330 | **−71%** |
+
+*(Updated 2026-09-29 after D20 moved 425 impeachment-trial speeches from the
+Senate to the House; the drop is unchanged.)*
 
 The House drop is mostly O7: about 2,500 ambiguous House speeches a year are
 dropped. The Senate loses only about 130 unresolved speeches a year (1,196 in
-total), so its drop is **unexplained**. The Senate share of speeches falls from
-33.7–51.5% a year in Stanford to 11.5–30.8% in govinfo.
+total). The Senate share of speeches falls from 33.7–51.5% a year in Stanford
+to 11.5–27.5% in govinfo.
 
-Candidate causes, none checked: the govinfo parser splitting Senate turns
-differently; D17's cleaning cutting Senate speeches below the 50-word filter
-more often; a real change in Senate floor activity. First step: count raw
-Senate rows per year in the govinfo JSONL before and after cleaning, and ask
-Konsti. Until it is resolved, do not pool chambers in a trend — plot them
-separately or stratify (the S8 sampler already stratifies by chamber).
+**Cause found 2026-09-29: the upstream fetch kept only the first 100 granules
+of each day's Congressional Record.** The table above was re-checked against
+`corpus.parquet` on the same day and still holds. Each daily Record package
+(`CREC-YYYY-MM-DD`) lists its granules House first, then Senate, then Extensions
+and Daily Digest. The notebook apparently read one page of 100 and never
+followed `nextPage`, so whatever sits past position 100 (usually the Senate) is
+not in the file. Evidence, from the govinfo API:
+
+- **2021-09-30** (193 granules, Senate at positions 59–146): every Senate
+  granule with a speaker turn at positions ≤ 99 is in the file; none at ≥ 102
+  is (positions 100–101 have no speaker turn). Lost from that day, for example:
+  "Infrastructure Investment and Jobs Act", every "Introductory Statement on
+  S. …", "Tribute to Dr. Mark J. Cochran".
+- **Six randomly drawn days with busy House speeches (>150 rows) but no
+  Senate speeches in the file:** four
+  had a real Senate session of 54–80 granules, starting at positions 101–125
+  (2019-07-23, 2023-11-07, 2024-12-04, 2025-12-10). The other two were real
+  recess days: 2021-06-30 had no Senate granules and 2018-09-13 had 3.
+- **Such days are no longer rare:** days with House speeches and no Senate
+  speeches number 0–30 a year in Stanford (2001–2016) and 57–111 a year in
+  govinfo (2017–2025). The Senate has speeches on 117–176 days a year in
+  Stanford (full years) but only 71–130 in govinfo.
+- **The Senate shrinks when the House is busy:** on days both chambers appear
+  in the file, the Senate has 54 raw rows per day when the House is quietest
+  (bottom quarter of days) and 30–31 when it is busiest (top half). On days with
+  no House speeches it has 60 rows and 32k words a day, much closer to
+  Stanford's 36–43k (2011–15) than the 20k it has on shared days.
+
+Where the Senate speeches go (per-year averages, Stanford 2011–15 against
+govinfo 2017–25, by Record section):
+
+| Step | Senate speeches/yr |
+|---|---|
+| Stanford, ≥ 50 words | 8,082 |
+| govinfo raw file, ≥ 50 words, before our code | 3,140 (−61%) |
+| govinfo after D16/D17 (written) | 2,377 |
+
+So about 87% of the drop is already in the raw file. Of the rest, about 680 a
+year fall below 50 words only after D17's cut, and about 130 a year are
+unresolved. Of the three candidate causes once listed, splitting and cleaning
+account for little, and no real change in Senate activity is needed to explain
+the drop.
+
+**What it means for the analysis.** The govinfo Senate is not only smaller but
+a different sample. Days when the House was busy are missing entirely. On
+other days, the speeches that survive are from early in the Senate day (leader
+remarks, the main debate, votes), and the late-day statements, tributes and
+bill introductions are lost. That shift in composition is concentrated
+exactly at the break, so it can masquerade as a trend in tone or ideology. The
+House is exposed too: any House speech past position 100 is lost. On the days
+checked, House speeches ended well before 100 (by position 66 on 2019-07-23),
+with only end-of-day listings after them, but the House loss is **not
+measured**.
+
+**Fix:** re-fetch 2016-09-10 → 2025-12-31 following the API's `nextPage` /
+`offsetMark` pagination (or `pageSize=1000`, the maximum). The same re-fetch can
+keep the House member's state and settle O7 (a). It needs an api.data.gov key
+(`DEMO_KEY` allows about 50 calls a day), and Konsti's notebook is not in the
+repo. Until the re-fetch: do not pool chambers in a trend, and treat any
+govinfo-era Senate trend as unreliable. Plot the chambers separately or
+stratify (the S8 sampler already stratifies by chamber).
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup

@@ -1,6 +1,6 @@
 {
   "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
-  "built_at": "2026-09-29T19:23:31+00:00",
+  "built_at": "2026-09-29T19:42:05+00:00",
   "inputs": {
     "stanford": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus_stanford.parquet",
@@ -12,8 +12,8 @@
     },
     "govinfo": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus_govinfo.parquet",
-      "bytes": 172209404,
-      "sha256": "511c2b79bdfb7be4a8e87b474b5c737b27560326ef7b416bb37c61e2c8670523",
+      "bytes": 172209456,
+      "sha256": "56653affc273798504beff2a45563142b70d7a5d061ab6881609ab2509ce72e2",
       "rows": 112086,
       "stats_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/results/metrics/govinfo_build_stats.json",
       "raw_source_sha256": "822d1c80dcbb7932bcb366e83a3cd4bdc8c9fd73bda00895c682af6d85ed49a6"
@@ -146,11 +146,11 @@
     "116": {
       "govinfo": {
         "H": {
-          "D": 11253,
+          "D": 11626,
           "R": 8940
         },
         "S": {
-          "D": 2353,
+          "D": 1980,
           "R": 2757
         }
       }
@@ -158,11 +158,11 @@
     "117": {
       "govinfo": {
         "H": {
-          "D": 8573,
+          "D": 8625,
           "R": 8388
         },
         "S": {
-          "D": 3085,
+          "D": 3033,
           "R": 2397
         }
       }
@@ -313,14 +313,14 @@
     },
     "2020": {
       "govinfo": {
-        "H": 7895,
-        "S": 3512
+        "H": 8268,
+        "S": 3139
       }
     },
     "2021": {
       "govinfo": {
-        "H": 8913,
-        "S": 2923
+        "H": 8965,
+        "S": 2871
       }
     },
     "2022": {
