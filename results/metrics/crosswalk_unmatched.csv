@@ -1,0 +1,13 @@
+source,member_id,congress_number,chamber,state,party_original,last_name,name_variants,n_speeches,unmatched_reason,candidates
+stanford,108114700,108,H,VA,R,DAVIS,DAVIS,163,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,110114700,110,H,VA,R,DAVIS,.DAVIS | DAVIS,144,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,109114700,109,H,VA,R,DAVIS,DAVIS,132,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,107114700,107,H,VA,R,DAVIS,DAVIS,115,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,107114690,107,H,VA,R,DAVIS,DAVIS,113,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,108114690,108,H,VA,R,DAVIS,DAVIS,46,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,109114690,109,H,VA,R,DAVIS,DAVIS,24,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,110114690,110,H,VA,R,DAVIS,DAVIS,5,ambiguous,"DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+stanford,110116360,110,H,OR,D,WIU,WIU | WVU,2,no_candidate,
+stanford,108116660,108,H,CA,R,SCHMITT,SCHMITT,1,no_candidate,
+stanford,112116360,112,H,OR,D,WKU,WKU,1,no_candidate,
+stanford,112121620,112,H,MD,D,SMITH,SMITH,1,no_candidate,

@@ -61,6 +61,19 @@ LEGISLATORS_FILES: tuple[Path, ...] = (
 # plus `icpsr`. Built by `make govinfo`; merged into CORPUS_PATH by `make corpus`.
 GOVINFO_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_govinfo.parquet"
 
+# Voteview member file, every Congress (https://voteview.com/data, "Member
+# Ideology", HSall_members.csv). Read-only; the crosswalk filters it in code.
+# data/processed/dw_nominate_107_119.csv is exactly that filter, written by hand
+# before the crosswalk existed -- identical values, verified 2026-09-29.
+DW_NOMINATE_MEMBERS: Path = RAW_DW_NOMINATE / "HSall_members.csv"
+
+# Speech corpus member -> Voteview ICPSR, one row per source x member_id x
+# congress x chamber x party_original. Built by `make crosswalk` from
+# CORPUS_PATH; joins back onto the corpus on those five columns. Only rows with
+# in_validation=True enter the DW-NOMINATE validation -- the trend analysis
+# uses every speech regardless. See docs/decisions.md D21-D24.
+CROSSWALK_PATH: Path = PROCESSED_DIR / "member_crosswalk.parquet"
+
 # --- results -----------------------------------------------------------
 RESULTS_DIR: Path = REPO_ROOT / "results"
 PLOTS_DIR: Path = RESULTS_DIR / "plots"  # committed
@@ -72,6 +85,11 @@ SCORES_DIR: Path = RESULTS_DIR / "scores"  # raw per-model LLM output, git-ignor
 STANFORD_BUILD_STATS_PATH: Path = METRICS_DIR / "stanford_build_stats.json"
 GOVINFO_BUILD_STATS_PATH: Path = METRICS_DIR / "govinfo_build_stats.json"
 MERGED_BUILD_STATS_PATH: Path = METRICS_DIR / "merged_build_stats.json"
+
+# Crosswalk match rates (per source, Congress and chamber) and the members left
+# unmatched, with speech counts, so gaps in the validation can be judged.
+CROSSWALK_STATS_PATH: Path = METRICS_DIR / "crosswalk_build_stats.json"
+CROSSWALK_UNMATCHED_PATH: Path = METRICS_DIR / "crosswalk_unmatched.csv"
 
 # --- thesis ------------------------------------------------------------
 THESIS_DIR: Path = REPO_ROOT / "thesis"
@@ -199,6 +217,18 @@ GOVINFO_EXCLUDED_MEMBERS: frozenset[str] = frozenset(
         "A000367",  # Justin Amash (MI-3) — Independent 2019-07-04, then Libertarian
     }
 )
+
+# --- DW-NOMINATE crosswalk ---------------------------------------------
+# Congresses the corpus spans: 107th (Stanford, from 2001) to 119th (govinfo,
+# to 2025). Voteview rows outside are ignored.
+VOTEVIEW_CONGRESS_RANGE: tuple[int, int] = (107, 119)
+
+# Corpus party code -> Voteview party_code, used ONLY to break a tie between
+# same-surname candidates, and only on `party_original` -- the caucus rule
+# rewrites `party` (Jeffords I -> D), while Voteview codes independents 328.
+# Voteview gives a member who switches party a new ICPSR, so a switcher has two
+# rows in that Congress; this picks the one matching the corpus's party label.
+VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
 
 # Ensemble composition decided — three models from distinct providers and
 # training paradigms. Pin specific snapshot versions for reproducibility;
