@@ -6,8 +6,10 @@
 #   make test     run the test suite
 #   make lint     check formatting and linting
 #   make format   apply formatting
-#   make corpus   build data/processed/corpus.parquet
-#   make govinfo  build data/processed/corpus_govinfo.parquet
+#   make stanford build data/processed/corpus_stanford.parquet (2001-2016)
+#   make smoke    the same on the first 50k raw rows; run it first
+#   make govinfo  build data/processed/corpus_govinfo.parquet (2016-2025)
+#   make corpus   merge both into data/processed/corpus.parquet
 #   make lock     re-pin requirements.lock.txt after changing requirements.txt
 
 PYTHON ?= python3
@@ -17,7 +19,7 @@ BIN    := $(VENV)/bin
 # changed -- not on every `make test`.
 STAMP  := $(VENV)/.installed
 
-.PHONY: help setup test lint format corpus smoke govinfo govinfo-smoke lock clean
+.PHONY: help setup test lint format stanford corpus smoke govinfo govinfo-smoke lock clean
 
 help:
 	@grep -E '^#   make' $(MAKEFILE_LIST) | sed 's/^#   //'
@@ -46,9 +48,9 @@ format: $(STAMP)
 	$(BIN)/black code/
 	$(BIN)/ruff check --fix code/
 
-# Full corpus build. Needs congress_speeches_2001_2017.parquet in
+# Stanford side. Needs congress_speeches_2001_2017.parquet in
 # data/raw/stanford/ -- see data/raw/stanford/README.md.
-corpus: $(STAMP)
+stanford: $(STAMP)
 	$(BIN)/python code/scripts/build_corpus.py
 
 # Same, but reads only the first 50k rows: validates the raw schema and the
@@ -63,6 +65,12 @@ govinfo: $(STAMP)
 
 govinfo-smoke: $(STAMP)
 	$(BIN)/python code/scripts/build_govinfo_corpus.py --limit 20000
+
+# The merged corpus: both processed sides into data/processed/corpus.parquet.
+# Run `make stanford` and `make govinfo` first. Replaces the previous merge,
+# since it is rebuilt from inputs that stay on disk.
+corpus: $(STAMP)
+	$(BIN)/python code/scripts/build_merged_corpus.py --overwrite
 
 # Re-pin after editing requirements.txt. Builds a throwaway environment so the
 # lock records exactly what requirements.txt resolves to, with nothing left

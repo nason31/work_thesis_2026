@@ -1,8 +1,8 @@
-"""Build the processed speech corpus from the raw Stanford parquet.
+"""Build the processed Stanford side of the corpus from the raw Stanford parquet.
 
 One row per speech, mapped onto the corpus schema documented in CLAUDE.md.
-Called by ``code/scripts/build_corpus.py``; the logic lives here so a govinfo
-loader can be added alongside it later and the two concatenated.
+Called by ``code/scripts/build_corpus.py``. The govinfo side is built by
+``govinfo.py``, and ``merge.py`` concatenates the two into the corpus.
 
 Why two passes instead of one read
 ----------------------------------
@@ -24,13 +24,12 @@ counterparts ``last_name``, ``state_map`` and ``chamber_map`` have zero nulls
 and zero "Unknown" across all 823,341 rows, so this module uses those and
 ignores the dirty ones. See docs/notes/2026-09-21_stanford_data_reality.md.
 
-The 2017 source break
----------------------
+The source break
+----------------
 This loader covers the Stanford side only: the 107th-114th Congress, ending
-January 3, 2017. Every row it writes carries ``source == "stanford"`` so the
-break stays recoverable from the data itself rather than only from a note.
-Until the govinfo loader exists, the corpus written here stops in 2017 --
-check the ``source`` column before reading a trend off it.
+2016-09-09, inside the 114th (docs/decisions.md D12, D15). Every row it writes
+carries ``source == "stanford"`` so the break stays recoverable from the data
+itself rather than only from a note.
 """
 
 from __future__ import annotations
@@ -48,14 +47,14 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from src.config import (
-    BUILD_STATS_PATH,
     CAUCUS_PARTY,
-    CORPUS_PATH,
     DELEGATE_STATES,
     EXCLUDED_MEMBERS,
     EXPECTED_PARTIES,
     MIN_WORD_COUNT,
     PARTY_CORRECTIONS,
+    STANFORD_BUILD_STATS_PATH,
+    STANFORD_CORPUS_PATH,
     STANFORD_PARQUET,
 )
 
@@ -120,7 +119,7 @@ BATCH_SIZE = 50_000
 class BuildStats:
     """Counts and parameters for one corpus build.
 
-    Serialized to ``results/metrics/corpus_build_stats.json`` so any figure
+    Serialized to ``results/metrics/stanford_build_stats.json`` so any figure
     quoted in the methodology chapter has a traceable source.
     """
 
@@ -155,7 +154,7 @@ class BuildStats:
         """Return a JSON-serializable view of the stats."""
         return asdict(self)
 
-    def write(self, path: Path = BUILD_STATS_PATH) -> Path:
+    def write(self, path: Path = STANFORD_BUILD_STATS_PATH) -> Path:
         """Write the stats to ``path`` as indented JSON."""
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
@@ -461,7 +460,7 @@ def _count_words(column: pa.Array) -> pa.Array:
 
 def build_stanford_corpus(
     src: Path = STANFORD_PARQUET,
-    dst: Path = CORPUS_PATH,
+    dst: Path = STANFORD_CORPUS_PATH,
     min_word_count: int = MIN_WORD_COUNT,
     limit: int | None = None,
     overwrite: bool = False,

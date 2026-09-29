@@ -9,8 +9,8 @@ Usage (from the repo root):
     python code/scripts/pilot_run.py --sample-size 6    # cheap end-to-end check
     python code/scripts/pilot_run.py                    # the real pilot
 
-Needs API keys in .env (copy .env.example). The corpus must already be built --
-see code/scripts/build_corpus.py.
+Needs API keys in .env (copy .env.example). The merged corpus must already be
+built -- `make corpus`.
 
 The sanity check at the end is the point of the exercise. score_speech.txt
 defines ideology as -1.0 liberal to +1.0 conservative, so Republicans should
@@ -51,6 +51,7 @@ from src.config import (
     SCORES_DIR,
     STRATIFY_BY,
 )
+from src.corpus import _fingerprint
 from src.scoring import (
     ScoreResult,
     build_clients,
@@ -121,9 +122,9 @@ def load_sample(
     as it can, falling back on `allocate` when a cell is short. Exactly one must
     be given.
 
-    Two passes on purpose. The corpus is 426,718 rows and ~624 MB with text; a
-    single read to pick a few thousand speeches would pull several GB into
-    memory. Pass one reads only the small columns, pass two streams batches and
+    Two passes on purpose. The corpus is ~540k rows, almost all of its bytes
+    text; a single read to pick a few thousand speeches would pull several GB
+    into memory. Pass one reads only the small columns, pass two streams batches and
     keeps the matched rows.
     """
     if (per_cell is None) == (sample_size is None):
@@ -531,6 +532,10 @@ async def main(argv: list[str] | None = None) -> int:
         sample_size=args.sample_size,
     )
     prompts = [render_prompt(template, s["text"]) for s in speeches]
+    # The path alone does not identify the data: corpus.parquet was the
+    # Stanford-only build until 2026-09-29 and is the merged corpus since (D19).
+    corpus_sha256 = _fingerprint(args.corpus)
+    print(f"corpus  {args.corpus} (sha256 {corpus_sha256[:12]})")
 
     cells: dict[tuple[Any, ...], int] = defaultdict(int)
     for speech in speeches:
@@ -568,6 +573,7 @@ async def main(argv: list[str] | None = None) -> int:
     manifest = {
         "timestamp": timestamp,
         "corpus_path": str(args.corpus),
+        "corpus_sha256": corpus_sha256,
         "sample_size": len(speeches),
         "stratify_by": list(STRATIFY_BY),
         "per_cell": args.per_cell if not args.sample_size else None,

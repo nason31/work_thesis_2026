@@ -1,4 +1,4 @@
-"""Build data/processed/corpus.parquet from the raw Stanford parquet.
+"""Build data/processed/corpus_stanford.parquet from the raw Stanford parquet.
 
 Usage (from the repo root):
 
@@ -22,9 +22,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import (
-    BUILD_STATS_PATH,
-    CORPUS_PATH,
     MIN_WORD_COUNT,
+    STANFORD_BUILD_STATS_PATH,
+    STANFORD_CORPUS_PATH,
     STANFORD_PARQUET,
 )
 from src.corpus import build_stanford_corpus
@@ -37,7 +37,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--input", type=Path, default=STANFORD_PARQUET, help="raw Stanford parquet"
     )
     parser.add_argument(
-        "--output", type=Path, default=CORPUS_PATH, help="processed corpus parquet"
+        "--output",
+        type=Path,
+        default=STANFORD_CORPUS_PATH,
+        help="processed Stanford parquet",
     )
     parser.add_argument(
         "--min-words",
@@ -57,7 +60,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--stats-path",
         type=Path,
-        default=BUILD_STATS_PATH,
+        default=STANFORD_BUILD_STATS_PATH,
         help="where to write the build statistics JSON",
     )
     return parser.parse_args(argv)
@@ -70,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     # A --limit run produces a partial corpus. Never let it land on the real
     # corpus path, where a later reader would have no way to tell it apart
     # from a full build.
-    if args.limit is not None and args.output == CORPUS_PATH:
+    if args.limit is not None and args.output == STANFORD_CORPUS_PATH:
         args.output = args.output.with_suffix(".smoke.parquet")
         print(f"--limit run: writing partial corpus to {args.output}\n")
 

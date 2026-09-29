@@ -10,13 +10,15 @@ Fixtures are synthetic and built in-process, so the suite runs without the
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from src.corpus import build_stanford_corpus
+from src.config import CORPUS_PATH, STANFORD_BUILD_STATS_PATH, STANFORD_CORPUS_PATH
+from src.corpus import BuildStats, build_stanford_corpus
 
 # Superset of what the build needs, plus the dirty columns the real file
 # carries so the tests prove they are ignored.
@@ -551,3 +553,17 @@ def test_limit_caps_rows_read(tmp_path: Path) -> None:
     )
     assert stats.rows_read == 10
     assert stats.rows_written == 10
+
+
+# --- default paths -----------------------------------------------------
+
+
+def test_stanford_build_defaults_to_the_stanford_paths() -> None:
+    # corpus.parquet is the merged corpus; the Stanford side must never land
+    # there by default, or `make stanford` would silently replace the merge.
+    build_defaults = inspect.signature(build_stanford_corpus).parameters
+    write_defaults = inspect.signature(BuildStats.write).parameters
+
+    assert build_defaults["dst"].default == STANFORD_CORPUS_PATH
+    assert write_defaults["path"].default == STANFORD_BUILD_STATS_PATH
+    assert STANFORD_CORPUS_PATH != CORPUS_PATH
