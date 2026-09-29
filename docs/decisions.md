@@ -11,8 +11,10 @@ if a decision is not here, by December nobody will remember why it was made.
   back. The trail of what we tried and rejected is worth as much as the outcome.
 - Every entry records what was **rejected** and why. A decision with no
   alternatives is a decision nobody actually made.
-- Figures cited here come from `results/metrics/corpus_build_stats.json`, which
-  is tied to a specific raw file by `source_sha256`. If the dataset changes, the
+- Figures cited here come from the build stats in `results/metrics/`
+  (`stanford_build_stats.json`, `govinfo_build_stats.json`,
+  `merged_build_stats.json`), each tied to the exact file it describes by
+  SHA-256. If the dataset changes, the
   figures change — re-run and update.
 - Open questions live in the last section. Move them up when they are settled.
 
@@ -86,6 +88,15 @@ finding to investigate and report, not to suppress.
 
 **Blocker:** VoteView keys on ICPSR; the speeches carry Gentzkow's `speakerid`.
 The crosswalk does not exist yet. D9 keeps the columns needed to build it.
+
+**Update 2026-09-29 — the crosswalk looks feasible.** A rough probe matched each
+Stanford `speakerid` to congress-legislators (already in the repo for D16) on
+state + chamber + date + most common `last_name`: 4,191 speakerids matched
+exactly and 31 loosely (compound surnames), covering **415,792 of 426,718
+speeches (97.4%)** with an ICPSR. 94 speakerids (6,923 speeches) were ambiguous
+and 18 (3,645) unmatched. Not validated — no miss was inspected. It is the next
+piece of work after the merge (D19), and would also let `member_id` become the
+bioguide id on both sides of the break.
 
 ---
 
@@ -410,6 +421,46 @@ the window is extended the build will stop and ask.
 
 ---
 
+### D19 — Stanford and govinfo merged into one corpus file
+**Date:** 2026-09-29 · **Status:** active ·
+**Design:** `docs/notes/2026-09-29_corpus_merge_design.md`
+
+`data/processed/corpus.parquet` now holds both sources: **538,804 rows**
+(426,718 Stanford + 112,086 govinfo), 2001-01-03 → 2025-12-19, Congresses
+107–119. `make corpus` builds it from `corpus_stanford.parquet` (the Stanford
+build, which used to write `corpus.parquet`; `make stanford`) and
+`corpus_govinfo.parquet` (`make govinfo`). Stats:
+`results/metrics/merged_build_stats.json`; the Stanford stats file is renamed
+`stanford_build_stats.json`.
+
+- **The merge drops nothing.** Every input row is written or the build fails.
+  It refuses inputs that cross the seam, repeat a `speech_id`, carry a null or
+  an unexpected party/chamber/source, leave a Congress with no rows, or do not
+  match their committed build stats (a smoke file or a stale file).
+- **`member_id` stays source-native** — Stanford `speakerid`, govinfo bioguide
+  id. The formats cannot collide. `icpsr` is null on Stanford rows until the
+  crosswalk (M5) fills it.
+- **Row order:** Stanford (date-sorted), then govinfo (its file order, not
+  date-sorted). Nothing downstream depends on it.
+
+**Verified on the real data:** the rebuilt `corpus_stanford.parquet` is
+byte-identical to the old `corpus.parquet`; every column of the merged file is
+identical to its inputs; all 200 speeches of the 2026-09-23 pilot resolve in it.
+
+**Rejected:** a merge done at read time, with no file (every consumer would
+need a helper, and there is no single file to fingerprint); one build that
+re-runs both sources (couples them); naming the output `corpus_merged.parquet`
+(`config.py` already documented `corpus.parquet` as the merged corpus);
+matching Stanford members to legislators in the same step (delays the sampled
+run, which needs only party).
+
+**Consequence:** `corpus.parquet` changed meaning on 2026-09-29. The
+2026-09-23 pilot manifest's `corpus_path` refers to the Stanford-only file of
+that date. Run manifests now record `corpus_sha256`, so the file a run used is
+identifiable regardless of its name.
+
+---
+
 ## Engineering
 
 ### E1 — Pinned virtualenv and a lockfile
@@ -488,7 +539,8 @@ building the pipeline, not the final corpus. `source_sha256` ties every count in
 the stats file to the exact raw file it came from, so a swapped dataset is
 visible rather than silent.
 
-**When the dataset is replaced:** re-run `make smoke`, then `make corpus`, and
+**When the dataset is replaced:** re-run `make smoke`, then `make stanford`,
+then `make corpus` (the merge, D19), and
 re-check D3, D10, D12 and the figures in
 `docs/notes/2026-09-21_stanford_data_reality.md`. The build fails loudly on any
 independent, party code or column it does not recognize, so a swap cannot drift
@@ -888,6 +940,30 @@ fix; (b) keep the 7,029 whose candidates all share a party, with party but no
 member (enough for party-level plots, useless for DW-NOMINATE); (c) accept the
 loss and report it. Konsti's notebook is not in the repo, so (a) starts with
 committing it.
+
+### O8 — Why does the Senate lose 71% of its speeches at the break?
+**Raised:** 2026-09-29 (from D19) · **Blocks:** nothing yet; affects any trend
+that pools the two chambers
+
+Speeches per year from `merged_build_stats.json`, Stanford 2011–2015 average
+against govinfo 2017–2025 average:
+
+| Chamber | Stanford | govinfo | Change |
+|---|---|---|---|
+| House | 14,488 | 9,783 | −32% |
+| Senate | 8,082 | 2,377 | **−71%** |
+
+The House drop is mostly O7: about 2,500 ambiguous House speeches a year are
+dropped. The Senate loses only about 130 unresolved speeches a year (1,196 in
+total), so its drop is **unexplained**. The Senate share of speeches falls from
+33.7–51.5% a year in Stanford to 11.5–30.8% in govinfo.
+
+Candidate causes, none checked: the govinfo parser splitting Senate turns
+differently; D17's cleaning cutting Senate speeches below the 50-word filter
+more often; a real change in Senate floor activity. First step: count raw
+Senate rows per year in the govinfo JSONL before and after cleaning, and ask
+Konsti. Until it is resolved, do not pool chambers in a trend — plot them
+separately or stratify (the S8 sampler already stratifies by chamber).
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup

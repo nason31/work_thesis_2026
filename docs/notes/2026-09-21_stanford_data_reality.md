@@ -3,8 +3,9 @@
 **The dataset is provisional** — a starting point for building the pipeline, not
 the final corpus. Every figure here was measured against one specific file
 (681,029,375 bytes; `source_sha256` in
-`results/metrics/corpus_build_stats.json`). If Konsti rebuilds or replaces it,
-re-run `make smoke` and `make corpus` and re-check these numbers before quoting
+`results/metrics/stanford_build_stats.json`, formerly `corpus_build_stats.json`).
+If Konsti rebuilds or replaces it, re-run `make smoke`, `make stanford` and
+`make corpus` and re-check these numbers before quoting
 any of them. What should survive a swap is the *method*: key on `speakerid`, use
 the `_map` columns, and let the build fail loudly on anything new.
 
@@ -125,7 +126,7 @@ zero duplicates, so that documented property holds.
 The source `word_count` agrees with a recomputed whitespace token count on
 **100%** of retained rows, so it can be trusted for filtering.
 
-Per-congress counts are in `results/metrics/corpus_build_stats.json`. Note the
+Per-congress counts are in `results/metrics/stanford_build_stats.json`. Note the
 114th is the smallest (36,661) partly because its coverage stops in September
 2016.
 

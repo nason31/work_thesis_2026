@@ -51,8 +51,10 @@ Adding a dependency: add it to `requirements.txt`, run `make lock`, commit both.
 make test        # pytest
 make lint        # ruff + black --check
 make format      # apply black, autofix ruff
-make smoke       # corpus build on the first 50k rows (needs raw data)
-make corpus      # full corpus build       (needs raw data)
+make smoke       # Stanford build on the first 50k rows (needs raw data)
+make stanford    # Stanford side           (needs raw data)
+make govinfo     # govinfo side            (needs raw data)
+make corpus      # merge both into data/processed/corpus.parquet
 ```
 
 `make test` and `make lint` need no data and should pass on a fresh clone.
@@ -86,23 +88,31 @@ Folders are kept in git with `.gitkeep` placeholders.
 
 ## Building the corpus
 
-The raw Stanford parquet is not in the repo. Download
-`congress_speeches_2001_2017.parquet` (~681 MB) from the team drive into
-`data/raw/stanford/` — see [data/raw/stanford/README.md](data/raw/stanford/README.md).
+The corpus is built in three steps: each source separately, then the merge.
+The raw files are not in the repo — download them from the team drive first:
+
+- `congress_speeches_2001_2017.parquet` (~681 MB) into `data/raw/stanford/` —
+  see [data/raw/stanford/README.md](data/raw/stanford/README.md)
+- `congress_speeches_2016_present.jsonl` into `data/raw/govinfo/`, plus the
+  congress-legislators JSON into `data/raw/congress_legislators/` — see
+  [data/raw/govinfo/README.md](data/raw/govinfo/README.md)
 
 ```bash
-make smoke       # first 50k rows; seconds. Run this first.
-make corpus      # full run
+make smoke       # Stanford, first 50k rows; seconds. Run this first.
+make stanford    # -> data/processed/corpus_stanford.parquet (2001-01-03 .. 2016-09-09)
+make govinfo     # -> data/processed/corpus_govinfo.parquet  (2016-09-12 .. 2025-12-19)
+make corpus      # -> data/processed/corpus.parquet, both merged (538,804 rows)
 ```
 
-Writes `data/processed/corpus.parquet` and, for full runs,
-`results/metrics/corpus_build_stats.json` — quote the stats file for any row
-count that ends up in the thesis. The build refuses to guess: a `party == "I"`
-speech by a member outside `CAUCUS_PARTY` in `code/src/config.py` stops it with
-a message naming who to add.
+Each step writes its stats to `results/metrics/` (`stanford_build_stats.json`,
+`govinfo_build_stats.json`, `merged_build_stats.json`) — quote those files for
+any row count that ends up in the thesis. The builds refuse to guess: a
+`party == "I"` speech by a member outside `CAUCUS_PARTY` in
+`code/src/config.py` stops the Stanford build with a message naming who to add,
+and the merge stops on any seam overlap, repeated `speech_id` or stale input.
 
-Until the govinfo loader exists, this corpus stops at January 3, 2017. Check the
-`source` column before reading a trend off it.
+The data switches source on 2016-09-10, inside the 114th Congress. Every row
+carries a `source` column; mark the break in every time-series plot.
 
 ## Naming
 
