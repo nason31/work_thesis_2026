@@ -31,15 +31,6 @@ should be treated as partial (still in progress at the time of
 collection) rather than a complete year, in any year-over-year
 analysis.
 
-The September 10 – December 31, 2016 period was collected using a
-pipeline validated only against 2017 and later data. A confirmed check
-of two representative weeks within this period (see
-`03_validation.ipynb`, Section 5) showed party-match rates of 81.0%
-and 89.7% — the lower figure is within a plausible range given the
-small sample size, but somewhat below the roughly 86% typically seen
-elsewhere in this dataset, and worth re-checking on any future rerun
-of this period.
-
 ## Columns
 
 | Column | Description |
@@ -48,6 +39,7 @@ of this period.
 | `speaker` | Extracted last name (or full name where needed for disambiguation) |
 | `party` | Democrat / Republican / null (see limitations below) |
 | `icpsr` | ICPSR identifier for the speaker, where resolved / null |
+| `state` | State named alongside the speaker in the source text (e.g. "Texas" in "Mr. SMITH of Texas."), where present / null |
 | `chamber` | HOUSE / SENATE |
 | `speech` | Full text of the speech |
 
@@ -55,55 +47,74 @@ of this period.
 
 - Speaker names extracted via pattern-matching on the Congressional
   Record's "Mr./Ms./Mrs. NAME." convention (see `02_govinfo_dataset.ipynb`,
-  Section 2, for the full set of edge cases this handles).
+  Section 2, for the full set of edge cases this handles), including
+  the state named alongside a speaker when present.
 - Party and ICPSR both assigned via date-aware lookup against the
   `congress-legislators` project
   (github.com/unitedstates/congress-legislators), trying first+last
-  name, then full compound surname, then last name alone (Section 3).
+  name, then full compound surname, then last name alone, with the
+  captured state used as an additional tie-breaker when a name match
+  is still ambiguous (Section 3).
+- A full day's document listing is fetched completely, following the
+  govinfo API's pagination rather than stopping at the first page
+  (Section 4) — see "Known limitations (resolved)" below.
 - Speeches under 50 characters (procedural fragments) or over 30,000
   words (likely mis-extractions or bill-text contamination) excluded.
 - "Extensions of Remarks" excluded, for consistency with the Stanford
   dataset's methodology.
 - Fetching from govinfo.gov retries on both rate-limit (429) responses
   and connection-level failures (timeouts, dropped connections), up to
-  8 attempts with increasing delay (Section 4).
+  8 attempts with increasing delay.
+
+## Validation
+
+A confirmed run of the complete dataset produced:
+
+- **276,513 total records, 0 exact duplicates.**
+- **96.5% party-match rate, 86.4% ICPSR-match rate.**
+- **Senate share of speeches, by year: 27.9%–41.0%**, consistent with
+  Stanford's own declining trend over its final sessions (Stanford's
+  last session, 114, shows 35.7%; govinfo's first year, 2016, shows
+  35.2% — a close match at the handover point).
+- Longest speech: 29,910 words (at the `MAX_SPEECH_WORDS` cap, as
+  expected).
+- Two representative weeks within the September–December 2016
+  gap-filling period: 98.0% and 99.0% party-match rates respectively.
+
+See `03_validation.ipynb` for the full set of checks: per-year record
+counts, duplicate detection, party/ICPSR/state-match rates, chamber
+balance, speech length distribution, gap-period-specific checks, and
+manual spot-checks of random speech text for coherence and readability.
 
 ## Known limitations
 
 - **A meaningful share of speeches have no party or ICPSR assigned**
   (`party` and `icpsr` are `null`). This is by design: when a speaker's
   surname is shared by multiple members serving at the same time, and
-  the Congressional Record text itself doesn't disambiguate (no first
-  name/state given), no party or ICPSR is guessed. A confirmed run of
-  the complete dataset showed an 86.1% party-match rate.
-- **ICPSR coverage (75.8% in a confirmed run) is meaningfully lower
-  than the party-match rate, and this is expected.** ICPSR identifiers
-  are assigned only to members who cast recorded floor votes;
-  non-voting territorial delegates (e.g. the District of Columbia,
-  American Samoa, the U.S. Virgin Islands) structurally never receive
+  neither the source text nor a captured state disambiguate it, no
+  party or ICPSR is guessed.
+- **ICPSR coverage is somewhat lower than the party-match rate.** ICPSR
+  identifiers are assigned only to members who cast recorded floor
+  votes; non-voting territorial delegates structurally never receive
   one, regardless of how reliably their name resolves to a party.
-  These delegates are disproportionately active on the floor relative
-  to their small share of all members (often their only effective
-  legislative tool, since they cannot cast votes), which plausibly
-  explains why the ICPSR gap is wider than the party-match gap. A
-  speaker resolving to a party but not an ICPSR id should not, by
-  itself, be treated as a resolution failure.
 - **Rare mid-term party switches are not reflected.** The underlying
-  legislator data records party per full term, not per day, so a
-  member who changed party mid-term (a rare event) shows their
-  end-of-term party for their whole term.
+  legislator data records party per full term, not per day.
 - **The most recent year is partial.** See "Time period covered" above.
-- **The September–December 2016 gap-filling period** was collected
-  with a pipeline validated only against 2017 onward; see "Time period
-  covered" above for the confirmed match-rate check.
+- **A small number of records have trailing HTML markup** (e.g.
+  `</pre></body></html>`) appended at the end of the speech text,
+  apparently left over at a document boundary not fully cleaned by the
+  extraction pattern. Appears limited to trailing boilerplate at the
+  end of a document's final speech, not substantive content; not
+  currently addressed.
 
-## Validation
+## Known limitations (resolved in this version, documented for history)
 
-A confirmed run of the complete dataset (September 2016 onward)
-produced 225,564 total records, 0 exact duplicates, an 86.1%
-party-match rate, and a longest speech of 29,910 words (under the
-30,000-word cap). See `03_validation.ipynb` for the full set of
-checks: per-year record counts, duplicate detection, party/ICPSR-match
-rate, speech length distribution, gap-period-specific checks, and
-manual spot-checks of random speech text for coherence and
-readability.
+- **A prior version of this pipeline requested only the first page
+  (up to 100 documents) of each day's document listing**, silently
+  dropping anything beyond it. Since the Congressional Record lists
+  House documents before Senate documents within a day's package, this
+  disproportionately affected the Senate — confirmed, before the fix,
+  as a Senate share of only 11.5%–30.8% per year, well below Stanford's
+  own historical trend. Fixed by following the API's pagination fully
+  (`02_govinfo_dataset.ipynb`, Section 4); see "Validation" above for
+  the confirmed, corrected figures.
