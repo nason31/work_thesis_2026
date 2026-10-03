@@ -1,22 +1,30 @@
-"""Pilot: score ~200 sampled speeches through the three-model ensemble.
+"""Score sampled speeches through the model ensemble, in stages.
 
-This is the gate before the S8 sample run; there is no full-corpus run
-(docs/decisions.md S11). It answers two questions: do the scores look
-plausible, and what does the run cost?
+There is no full-corpus run (docs/decisions.md S11). The S8 sample is scored as
+ONE run extended in stages (S13): a small first stage is the pilot gate, and
+the same run is then resumed at the full size. A larger sample from the same
+seed contains the smaller one, so a later stage scores only what is new, and a
+failed call is retried rather than the run repeated. Nothing is paid for twice.
 
 Usage (from the repo root):
 
-    python code/scripts/pilot_run.py --dry-run          # sample + cost, no calls
-    python code/scripts/pilot_run.py --sample-size 6    # cheap end-to-end check
-    python code/scripts/pilot_run.py                    # the real pilot
+    python code/scripts/pilot_run.py --label s8 --per-cell 4 --dry-run
+    python code/scripts/pilot_run.py --label s8 --per-cell 4          # stage 1
+    python code/scripts/pilot_run.py --resume <timestamp> --per-cell 100 --dry-run
+    python code/scripts/pilot_run.py --resume <timestamp> --per-cell 100
+
+`--dry-run` samples and prices what is left, then stops without calling
+anything. `--resume` also picks up a run that crashed or had failed calls: run
+it again with the same `--per-cell`. It refuses if anything that defines a
+score has changed since the run began (corpus, prompt, models, seed, filters).
 
 Needs API keys in .env (copy .env.example). The merged corpus must already be
 built -- `make corpus`.
 
-The sanity check at the end is the point of the exercise. score_speech.txt
+The party check at the end decides whether to continue. score_speech.txt
 defines ideology as -1.0 liberal to +1.0 conservative, so Republicans should
 average positive and Democrats negative. If that comes out flat or inverted, do
-not proceed to the S8 run.
+not extend the run.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ import json
 import statistics
 import sys
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
@@ -39,6 +48,7 @@ import pyarrow.parquet as pq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import (
+    CALL_TIMEOUT_SECONDS,
     CORPUS_PATH,
     ENSEMBLE_DISAGREEMENT_THRESHOLD,
     ENSEMBLE_MODELS,
@@ -53,6 +63,20 @@ from src.config import (
     STRATIFY_BY,
 )
 from src.corpus import _fingerprint
+from src.runs import (
+    DEFAULT_LABEL,
+    check_nested,
+    check_resumable,
+    effective_rows,
+    ensemble_path,
+    find_label,
+    is_ok,
+    manifest_path,
+    model_path,
+    pending_models,
+    read_rows,
+    summary_path,
+)
 from src.scoring import (
     ModelSpec,
     ScoreResult,
@@ -206,8 +230,8 @@ def load_sample(
 # --- cost preflight ----------------------------------------------------
 
 
-def count_prompt_tokens(prompts: list[str]) -> int:
-    """Total input tokens across rendered prompts, via tiktoken.
+def count_prompt_tokens(prompts: list[str]) -> list[int]:
+    """Input tokens of each rendered prompt, via tiktoken.
 
     OpenAI's tokenizer, so it only approximates DeepSeek and Anthropic. Used for
     the pre-flight estimate only; the closing summary reports billed usage.
@@ -215,43 +239,57 @@ def count_prompt_tokens(prompts: list[str]) -> int:
     import tiktoken
 
     encoding = tiktoken.get_encoding("cl100k_base")
-    return sum(len(encoding.encode(prompt)) for prompt in prompts)
+    return [len(encoding.encode(prompt)) for prompt in prompts]
 
 
-def preflight(prompts: list[str], models: tuple[str, ...]) -> dict[str, Any]:
-    """Estimate what this run will cost, per model and in total.
+def preflight(
+    token_counts: Mapping[str, int],
+    pending: Mapping[str, list[str]],
+    models: tuple[str, ...],
+) -> dict[str, Any]:
+    """Estimate what the pending calls will cost, per model and in total.
 
-    Grounded in the 200-speech pilot's measured usage rather than a flat guess.
-    tiktoken counts this sample's prompts and the result is scaled against the
-    pilot's tiktoken-per-speech figure, so a sample of longer or shorter speeches
-    moves the estimate. Each model then uses its own measured input and output
-    tokens per speech -- the providers differ by ~30% on input for identical text
-    because their tokenizers differ, and the reasoner emits ~7x the output.
+    Only what is still owed is priced: on a resumed run, speeches a model has
+    already scored cost nothing. Grounded in measured usage (config.py
+    PILOT_MEASURED_TOKENS) rather than a flat guess. tiktoken counts the pending
+    prompts and the result is scaled against the measured tiktoken-per-speech
+    figure, so longer
+    or shorter speeches move the estimate. Each model then uses its own measured
+    input and output tokens per speech -- the providers differ by ~30% on input
+    for identical text because their tokenizers differ, and the reasoner emits
+    ~7x the output.
     """
-    n = len(prompts)
-    tiktoken_total = count_prompt_tokens(prompts)
-    # How much longer or shorter this sample is than the pilot's speeches.
-    length_ratio = (tiktoken_total / n) / PILOT_TIKTOKEN_INPUT_PER_SPEECH if n else 1.0
-
     per_model: dict[str, dict[str, Any]] = {}
     for model in models:
         measured = PILOT_MEASURED_TOKENS.get(model)
         if measured is None:
             raise KeyError(
                 f"no measured token usage for {model!r}; add it to "
-                "PILOT_MEASURED_TOKENS in config.py, or re-run the 200-speech pilot"
+                "PILOT_MEASURED_TOKENS in config.py from a small staged run"
             )
+        owed = [
+            speech for speech, models_owed in pending.items() if model in models_owed
+        ]
+        n = len(owed)
+        # How much longer or shorter these speeches are than the pilot's.
+        length_ratio = (
+            (sum(token_counts[s] for s in owed) / n) / PILOT_TIKTOKEN_INPUT_PER_SPEECH
+            if n
+            else 1.0
+        )
         prompt_tokens = round(measured["input"] * length_ratio * n)
         completion_tokens = round(measured["output"] * length_ratio * n)
         per_model[model] = {
+            "speeches": n,
+            "length_ratio_vs_pilot": round(length_ratio, 3),
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "cost_usd": estimate_cost(model, prompt_tokens, completion_tokens),
         }
     return {
-        "speeches": n,
-        "tiktoken_input_tokens": tiktoken_total,
-        "length_ratio_vs_pilot": round(length_ratio, 3),
+        "speeches": len(pending),
+        "calls": sum(len(models_owed) for models_owed in pending.values()),
+        "tiktoken_input_tokens": sum(token_counts[s] for s in pending),
         "per_model": per_model,
         "estimated_total_usd": sum(m["cost_usd"] for m in per_model.values()),
     }
@@ -259,33 +297,37 @@ def preflight(prompts: list[str], models: tuple[str, ...]) -> dict[str, Any]:
 
 def print_preflight(estimate: dict[str, Any]) -> None:
     """Show the estimate, with its basis stated rather than implied."""
-    print(f"\n  speeches            {estimate['speeches']:,}")
-    print(
-        f"  speech length       {estimate['length_ratio_vs_pilot']:.2f}x the "
-        "200-speech pilot's average"
-    )
+    print(f"\n  speeches to score   {estimate['speeches']:,}")
+    print(f"  calls to make       {estimate['calls']:,}")
     print()
-    print(f"  {'model':<30}{'in tokens':>12}{'out tokens':>12}{'cost':>10}")
+    print(
+        f"  {'model':<30}{'speeches':>10}{'length':>8}{'in tokens':>12}"
+        f"{'out tokens':>12}{'cost':>10}"
+    )
     for model, m in estimate["per_model"].items():
         print(
-            f"  {model:<30}{m['prompt_tokens']:>12,}{m['completion_tokens']:>12,}"
+            f"  {model:<30}{m['speeches']:>10,}{m['length_ratio_vs_pilot']:>7.2f}x"
+            f"{m['prompt_tokens']:>12,}{m['completion_tokens']:>12,}"
             f"{'$' + format(m['cost_usd'], '.2f'):>10}"
         )
     print(
-        f"  {'TOTAL':<30}{'':>12}{'':>12}"
+        f"  {'TOTAL':<30}{'':>10}{'':>8}{'':>12}{'':>12}"
         f"{'$' + format(estimate['estimated_total_usd'], '.2f'):>10}"
     )
     print(
-        "\n  Based on measured per-model usage from the 200-speech pilot, scaled\n"
-        "  by this sample's length. Far better than a flat guess, but still an\n"
-        "  estimate: reasoning length varies per speech and list prices change."
+        "\n  Based on measured per-model usage (PILOT_MEASURED_TOKENS), scaled\n"
+        "  by these speeches' length ('length' = x the measured average). Far\n"
+        "  better than a flat guess, but still an estimate: reasoning length\n"
+        "  varies per speech and list prices change."
     )
 
 
 # --- scoring -----------------------------------------------------------
 
 
-def _row(speech: dict[str, Any], result: ScoreResult) -> dict[str, Any]:
+def _row(
+    speech: dict[str, Any], result: ScoreResult, stage: int, scored_at: str
+) -> dict[str, Any]:
     """One raw per-model JSONL record."""
     return {
         "speech_id": speech["speech_id"],
@@ -296,9 +338,14 @@ def _row(speech: dict[str, Any], result: ScoreResult) -> dict[str, Any]:
         "tone_score": result.tone_score,
         "reasoning": result.reasoning,
         "model": result.model,
+        "served_model": result.served_model,
+        "system_fingerprint": result.system_fingerprint,
         "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,
+        "reasoning_tokens": result.reasoning_tokens,
         "error": result.error,
+        "stage": stage,
+        "scored_at": scored_at,
     }
 
 
@@ -308,38 +355,40 @@ async def score_all(
     handles: dict[str, TextIO],
     specs: dict[str, Any],
     clients: dict[str, Any],
-) -> dict[str, list[ScoreResult]]:
-    """Score every speech with every model, writing each result as it lands.
+    pending: Mapping[str, list[str]],
+    stage: int,
+) -> None:
+    """Score each pending speech with the models that still owe it a score.
 
-    The three models for one speech run concurrently; speeches run sequentially,
-    to stay inside provider rate limits. Rows are flushed immediately so a crash
-    keeps everything already paid for.
+    Those models run concurrently for one speech; speeches run sequentially,
+    to stay inside provider rate limits. Rows are appended and flushed as they
+    land, so a crash keeps everything already paid for, and `--resume` carries
+    on from there.
     """
-    by_speech: dict[str, list[ScoreResult]] = defaultdict(list)
-
-    for index, speech in enumerate(speeches, start=1):
+    todo = [speech for speech in speeches if speech["speech_id"] in pending]
+    for index, speech in enumerate(todo, start=1):
+        models = pending[speech["speech_id"]]
         prompt = render_prompt(template, speech["text"])
         results = await asyncio.gather(
-            *(score_one(specs[m], clients[m], prompt) for m in ENSEMBLE_MODELS)
+            *(score_one(specs[m], clients[m], prompt) for m in models)
         )
+        scored_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         for result in results:
             handle = handles[result.model]
-            handle.write(json.dumps(_row(speech, result)) + "\n")
+            handle.write(json.dumps(_row(speech, result, stage, scored_at)) + "\n")
             handle.flush()
-            by_speech[speech["speech_id"]].append(result)
             if result.error:
                 print(
-                    f"  [{index}/{len(speeches)}] {speech['speech_id']} "
+                    f"  [{index}/{len(todo)}] {speech['speech_id']} "
                     f"{result.model}: {result.error}",
                     file=sys.stderr,
                 )
         done = sum(1 for r in results if r.ok)
         print(
-            f"  [{index}/{len(speeches)}] {speech['speech_id']} "
-            f"{done}/{len(ENSEMBLE_MODELS)} models ok",
+            f"  [{index}/{len(todo)}] {speech['speech_id']} "
+            f"{done}/{len(models)} models ok",
             flush=True,
         )
-    return by_speech
 
 
 # --- ensemble ----------------------------------------------------------
@@ -358,13 +407,32 @@ def _mean_std(values: list[float]) -> tuple[float | None, float | None]:
     return statistics.fmean(values), statistics.stdev(values)
 
 
+def results_by_speech(
+    rows_by_model: Mapping[str, list[dict[str, Any]]],
+) -> dict[str, list[ScoreResult]]:
+    """The run's files as results: per speech, each model's row that counts."""
+    by_speech: dict[str, list[ScoreResult]] = defaultdict(list)
+    for model, rows in rows_by_model.items():
+        for speech_id, row in effective_rows(rows).items():
+            by_speech[speech_id].append(
+                ScoreResult(
+                    model=model,
+                    ideology_score=row.get("ideology_score"),
+                    tone_score=row.get("tone_score"),
+                    reasoning=row.get("reasoning"),
+                    error=row.get("error"),
+                )
+            )
+    return by_speech
+
+
 def build_ensemble(
     speeches: list[dict[str, Any]], by_speech: dict[str, list[ScoreResult]]
 ) -> list[dict[str, Any]]:
     """Average the models that succeeded, recording how many there were.
 
-    `n_models` is written on every row so a two-model average is never mistaken
-    for a three-model one -- that would quietly bias the disagreement figures.
+    `n_models` is written on every row so an average over fewer models is never mistaken
+    for a full-ensemble one -- that would quietly bias the disagreement figures.
     """
     rows = []
     for speech in speeches:
@@ -395,21 +463,41 @@ def build_ensemble(
 
 
 def summarize(
-    ensemble: list[dict[str, Any]], by_speech: dict[str, list[ScoreResult]]
+    ensemble: list[dict[str, Any]],
+    rows_by_model: Mapping[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    """Token totals, cost, the party sanity check and the disagreement count."""
+    """Token totals, cost, the party sanity check and the disagreement count.
+
+    Cost counts every attempt, because every attempt was billed. Failures count
+    speeches still without a score, so a failure that a later stage retried
+    successfully is not one. `served_models` lists what each provider says
+    answered -- more than one entry means the model changed during the run.
+    """
     per_model: dict[str, dict[str, Any]] = {}
+    per_stage: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"calls": 0, "cost_usd": 0.0}
+    )
     for model in ENSEMBLE_MODELS:
-        results = [r for rs in by_speech.values() for r in rs if r.model == model]
-        prompt_tokens = sum(r.prompt_tokens for r in results)
-        completion_tokens = sum(r.completion_tokens for r in results)
+        rows = rows_by_model.get(model, [])
+        prompt_tokens = sum(r.get("prompt_tokens") or 0 for r in rows)
+        completion_tokens = sum(r.get("completion_tokens") or 0 for r in rows)
         per_model[model] = {
-            "calls": len(results),
-            "failures": sum(1 for r in results if not r.ok),
+            "calls": len(rows),
+            "failed_attempts": sum(1 for r in rows if not is_ok(r)),
+            "failures": sum(1 for r in effective_rows(rows).values() if not is_ok(r)),
+            "served_models": sorted(
+                {r["served_model"] for r in rows if r.get("served_model")}
+            ),
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "cost_usd": estimate_cost(model, prompt_tokens, completion_tokens),
         }
+        for r in rows:
+            stage = per_stage[str(r.get("stage", 1))]
+            stage["calls"] += 1
+            stage["cost_usd"] += estimate_cost(
+                model, r.get("prompt_tokens") or 0, r.get("completion_tokens") or 0
+            )
 
     by_party: dict[str, dict[str, Any]] = {}
     for party in sorted({row["party"] for row in ensemble}):
@@ -431,6 +519,7 @@ def summarize(
         "speeches_scored": sum(1 for row in ensemble if row["n_models"] > 0),
         "speeches_sampled": len(ensemble),
         "per_model": per_model,
+        "per_stage": dict(sorted(per_stage.items(), key=lambda item: int(item[0]))),
         "total_cost_usd": sum(m["cost_usd"] for m in per_model.values()),
         "ideology_by_party": by_party,
         "disagreement_threshold": ENSEMBLE_DISAGREEMENT_THRESHOLD,
@@ -453,14 +542,18 @@ def print_summary(summary: dict[str, Any]) -> None:
             f"{len(ENSEMBLE_MODELS)} models - see n_models"
         )
 
-    print("\nper model")
+    print("\nper model (all stages; cost counts every attempt)")
     for model, stats in summary["per_model"].items():
         print(
             f"  {model:<30} in {stats['prompt_tokens']:>9,}  "
             f"out {stats['completion_tokens']:>8,}  ${stats['cost_usd']:7.3f}"
-            + (f"  ({stats['failures']} failed)" if stats["failures"] else "")
+            + (f"  ({stats['failures']} unscored)" if stats["failures"] else "")
         )
+        if len(stats["served_models"]) > 1:
+            print(f"    *** served by several models: {stats['served_models']} ***")
     print(f"  {'TOTAL':<30} {'':>13} {'':>12}  ${summary['total_cost_usd']:7.3f}")
+    for stage, stats in summary["per_stage"].items():
+        print(f"  stage {stage}: {stats['calls']:,} calls, ${stats['cost_usd']:.3f}")
 
     print("\nsanity check - ideology by party (expect R positive, D negative)")
     for party, stats in summary["ideology_by_party"].items():
@@ -492,8 +585,9 @@ def model_manifest(specs: dict[str, ModelSpec]) -> dict[str, dict[str, object]]:
 
     ``max_output_tokens`` is recorded because it decides whether a reasoning
     model answers at all: its reasoning is billed from the same budget, and at
-    a shared 1,024 cap ``deepseek-reasoner`` returned nothing (docs/decisions.md
-    S10, O6).
+    a shared 1,024 cap the DeepSeek reasoner returned nothing (docs/decisions.md
+    S10, O6). ``request_options`` (DeepSeek's thinking mode and effort) change
+    what the model does. Both are part of what a resume must find unchanged.
     """
     return {
         name: {
@@ -501,6 +595,7 @@ def model_manifest(specs: dict[str, ModelSpec]) -> dict[str, dict[str, object]]:
             "provider": spec.provider,
             "effective_temperature": spec.effective_temperature,
             "max_output_tokens": spec.max_output_tokens,
+            "request_options": spec.request_options,
         }
         for name, spec in specs.items()
     }
@@ -513,8 +608,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--per-cell",
         type=int,
-        default=PILOT_PER_CELL,
-        help=f"speeches per {' x '.join(STRATIFY_BY)} cell (default {PILOT_PER_CELL})",
+        default=None,
+        help=f"speeches per {' x '.join(STRATIFY_BY)} cell (default "
+        f"{PILOT_PER_CELL}; when resuming, the run's current size)",
     )
     parser.add_argument(
         "--sample-size",
@@ -526,6 +622,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-words", type=int, default=MIN_WORD_COUNT)
     parser.add_argument("--output-dir", type=Path, default=SCORES_DIR)
     parser.add_argument("--metrics-dir", type=Path, default=METRICS_DIR)
+    parser.add_argument(
+        "--label",
+        default=None,
+        help=f"names a new run's files, e.g. s8 (default {DEFAULT_LABEL!r}); "
+        "a resumed run keeps its own",
+    )
+    parser.add_argument(
+        "--resume",
+        metavar="TIMESTAMP",
+        default=None,
+        help="extend or finish that run: score only what has no score yet",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -539,20 +647,110 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def load_manifest(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
+    """The label and manifest of the run named by ``--resume``.
+
+    Raises:
+        FileNotFoundError: no manifest for the run.
+        ValueError: ``--label`` names a different label than the run has.
+    """
+    run = args.resume
+    label = find_label(args.output_dir, run)
+    if args.label is not None and args.label != label:
+        raise ValueError(
+            f"run {run} is labelled {label!r}, not {args.label!r}; "
+            "leave out --label when resuming"
+        )
+    return label, json.loads(manifest_path(args.output_dir, label, run).read_text())
+
+
+def sample_design(
+    args: argparse.Namespace, manifest: dict[str, Any] | None
+) -> tuple[int | None, int | None]:
+    """(per_cell, sample_size) to draw: as given, else the run's current size.
+
+    A bare ``--resume`` therefore finishes the run as declared -- retrying its
+    failures -- and only an explicit ``--per-cell`` extends it.
+    """
+    if args.sample_size is not None:
+        return None, args.sample_size
+    if args.per_cell is not None:
+        return args.per_cell, None
+    if manifest is None:
+        return PILOT_PER_CELL, None
+    if manifest.get("per_cell") is not None:
+        return manifest["per_cell"], None
+    return None, manifest["stages"][-1]["requested_sample_size"]
+
+
+def check_run(
+    args: argparse.Namespace,
+    label: str,
+    manifest: dict[str, Any],
+    settings: dict[str, Any],
+    speeches: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Check the resumed run may take this sample; return its rows per model.
+
+    Raises:
+        ValueError: a score-defining setting changed, or the new sample would
+            leave out speeches the run already scored.
+    """
+    run = args.resume
+    check_resumable(manifest, settings)
+    rows_by_model = {
+        model: read_rows(model_path(args.output_dir, label, model, run))
+        for model in ENSEMBLE_MODELS
+    }
+    check_nested(
+        {str(row["speech_id"]) for rows in rows_by_model.values() for row in rows},
+        {speech["speech_id"] for speech in speeches},
+    )
+    return rows_by_model
+
+
+def write_outputs(
+    args: argparse.Namespace, label: str, run: str, speeches: list[dict[str, Any]]
+) -> tuple[dict[str, Any], Path, Path]:
+    """Rebuild the ensemble and summary from everything the run's files hold."""
+    rows_by_model = {
+        model: read_rows(model_path(args.output_dir, label, model, run))
+        for model in ENSEMBLE_MODELS
+    }
+    ensemble = build_ensemble(speeches, results_by_speech(rows_by_model))
+    ensemble_file = ensemble_path(args.output_dir, label, run)
+    with ensemble_file.open("w", encoding="utf-8") as fh:
+        for row in ensemble:
+            fh.write(json.dumps(row) + "\n")
+
+    summary = summarize(ensemble, rows_by_model)
+    summary_file = summary_path(args.metrics_dir, label, run)
+    summary_file.write_text(json.dumps(summary, indent=2) + "\n")
+    return summary, ensemble_file, summary_file
+
+
 async def main(argv: list[str] | None = None) -> int:
-    """Sample, confirm the spend, score, aggregate and report."""
+    """Sample, price what is left, confirm the spend, score and report."""
     args = parse_args(argv)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    label, manifest = args.label or DEFAULT_LABEL, None
+    if args.resume:
+        try:
+            label, manifest = load_manifest(args)
+        except (FileNotFoundError, ValueError) as error:
+            print(f"pilot_run: {error}", file=sys.stderr)
+            return 2
+    per_cell, sample_size = sample_design(args, manifest)
 
     template = load_prompt_template(SCORE_PROMPT_PATH)
+    specs = specs_for(ENSEMBLE_MODELS)
     speeches = load_sample(
         args.corpus,
         seed=args.seed,
         min_words=args.min_words,
-        per_cell=None if args.sample_size else args.per_cell,
-        sample_size=args.sample_size,
+        per_cell=per_cell,
+        sample_size=sample_size,
     )
-    prompts = [render_prompt(template, s["text"]) for s in speeches]
     # The path alone does not identify the data: corpus.parquet was the
     # Stanford-only build until 2026-09-29 and is the merged corpus since (D19).
     corpus_sha256 = _fingerprint(args.corpus)
@@ -562,12 +760,71 @@ async def main(argv: list[str] | None = None) -> int:
     for speech in speeches:
         cells[tuple(speech[k] for k in STRATIFY_BY)] += 1
     print(
-        f"sampled {len(speeches):,} speeches across {len(cells)} "
+        f"sample  {len(speeches):,} speeches across {len(cells)} "
         f"{' x '.join(STRATIFY_BY)} cells "
         f"({min(cells.values())}-{max(cells.values())} per cell, seed {args.seed})"
     )
 
-    estimate = preflight(prompts, ENSEMBLE_MODELS)
+    # Everything that decides what a score means. A run resumes only if all of
+    # it is unchanged (S13).
+    settings = {
+        "corpus_sha256": corpus_sha256,
+        "prompt_template": template,
+        "models": model_manifest(specs),
+        "random_seed": args.seed,
+        "min_word_count": args.min_words,
+        "stratify_by": list(STRATIFY_BY),
+    }
+
+    if manifest is not None:
+        run = args.resume
+        try:
+            rows_by_model = check_run(args, label, manifest, settings, speeches)
+        except ValueError as error:
+            print(f"pilot_run: {error}", file=sys.stderr)
+            return 2
+    else:
+        run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        rows_by_model = {model: [] for model in ENSEMBLE_MODELS}
+
+    pending = pending_models(
+        [speech["speech_id"] for speech in speeches], rows_by_model, ENSEMBLE_MODELS
+    )
+    attempted = {
+        (str(row["speech_id"]), model)
+        for model, rows in rows_by_model.items()
+        for row in rows
+    }
+    retries = sum(
+        (speech_id, model) in attempted
+        for speech_id, models in pending.items()
+        for model in models
+    )
+    print(
+        f"run     {label} {run}"
+        + (" (resumed)" if args.resume else " (new)")
+        + f": {len(speeches) - len(pending):,} of {len(speeches):,} speeches fully "
+        f"scored; {retries:,} failed call(s) to retry"
+    )
+
+    if not pending:
+        print("\nNothing left to score.")
+        if args.resume and not args.dry_run:
+            summary, _, _ = write_outputs(args, label, run, speeches)
+            print_summary(summary)
+        return 0
+
+    by_id = {speech["speech_id"]: speech for speech in speeches}
+    owed = list(pending)
+    token_counts = dict(
+        zip(
+            owed,
+            count_prompt_tokens(
+                [render_prompt(template, by_id[s]["text"]) for s in owed]
+            ),
+        )
+    )
+    estimate = preflight(token_counts, pending, ENSEMBLE_MODELS)
     print_preflight(estimate)
 
     if args.dry_run:
@@ -576,7 +833,6 @@ async def main(argv: list[str] | None = None) -> int:
 
     # Check keys before asking anyone to approve a spend -- failing after the
     # confirmation, on a missing key, would be a needless round trip.
-    specs = specs_for(ENSEMBLE_MODELS)
     clients = build_clients(specs)
 
     if not args.yes:
@@ -591,50 +847,57 @@ async def main(argv: list[str] | None = None) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.metrics_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest = {
-        "timestamp": timestamp,
-        "corpus_path": str(args.corpus),
-        "corpus_sha256": corpus_sha256,
-        "sample_size": len(speeches),
-        "stratify_by": list(STRATIFY_BY),
-        "per_cell": args.per_cell if not args.sample_size else None,
-        "random_seed": args.seed,
-        "min_word_count": args.min_words,
-        "models": model_manifest(specs),
-        "prompt_path": str(SCORE_PROMPT_PATH),
-        "prompt_template": template,
-        "cost_estimate": estimate,
-    }
-    manifest_path = args.output_dir / f"pilot_manifest_{timestamp}.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    if manifest is None:
+        manifest = {
+            "timestamp": run,
+            "label": label,
+            "corpus_path": str(args.corpus),
+            **settings,
+            "prompt_path": str(SCORE_PROMPT_PATH),
+            "stages": [],
+        }
+    stage = len(manifest["stages"]) + 1
+    manifest["per_cell"] = per_cell
+    manifest["sample_size"] = len(speeches)
+    manifest["stages"].append(
+        {
+            "stage": stage,
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "per_cell": per_cell,
+            "requested_sample_size": sample_size,
+            "speeches_in_sample": len(speeches),
+            "speeches_to_score": len(pending),
+            "calls_planned": estimate["calls"],
+            "retries_planned": retries,
+            "call_timeout_seconds": CALL_TIMEOUT_SECONDS,
+            "cost_estimate": estimate,
+        }
+    )
+    manifest_file = manifest_path(args.output_dir, label, run)
+    manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
 
     handles: dict[str, TextIO] = {}
     try:
         for model in ENSEMBLE_MODELS:
-            safe = model.replace("/", "_")
-            handles[model] = (args.output_dir / f"pilot_{safe}_{timestamp}.jsonl").open(
-                "w", encoding="utf-8"
+            handles[model] = model_path(args.output_dir, label, model, run).open(
+                "a", encoding="utf-8"
             )
-        by_speech = await score_all(speeches, template, handles, specs, clients)
+        await score_all(speeches, template, handles, specs, clients, pending, stage)
     finally:
         for handle in handles.values():
             handle.close()
 
-    ensemble = build_ensemble(speeches, by_speech)
-    ensemble_path = args.output_dir / f"pilot_ensemble_{timestamp}.jsonl"
-    with ensemble_path.open("w", encoding="utf-8") as fh:
-        for row in ensemble:
-            fh.write(json.dumps(row) + "\n")
-
-    summary = summarize(ensemble, by_speech)
-    summary_path = args.metrics_dir / f"pilot_summary_{timestamp}.json"
-    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
-
+    summary, ensemble_file, summary_file = write_outputs(args, label, run, speeches)
     print_summary(summary)
-    print(f"\nraw scores  {args.output_dir}")
-    print(f"ensemble    {ensemble_path}")
-    print(f"manifest    {manifest_path}")
-    print(f"summary     {summary_path}")
+    print(f"\nrun         {label} {run} (stage {stage})")
+    print(f"raw scores  {args.output_dir}")
+    print(f"ensemble    {ensemble_file}")
+    print(f"manifest    {manifest_file}")
+    print(f"summary     {summary_file}")
+    print(
+        f"\nTo extend or finish this run: python code/scripts/pilot_run.py "
+        f"--resume {run} --per-cell <n> --dry-run"
+    )
     return 0
 
 

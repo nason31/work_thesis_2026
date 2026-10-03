@@ -1,4 +1,4 @@
-"""Score congressional speeches through the three-model ensemble.
+"""Score congressional speeches through the model ensemble.
 
 Provider wiring, prompt rendering, response parsing and retry logic. The pilot
 (`code/scripts/pilot_run.py`) and any later sampled run import this, so the
@@ -12,10 +12,10 @@ clipped, because a model ignoring the scale is a finding and not something to
 quietly rescue.
 
 No temperature is set on any model. The providers removed the control rather
-than us declining to use it: `deepseek-reasoner` ignores it, and the anthropic
+than us declining to use it: DeepSeek ignores it, and the anthropic
 SDK dropped the parameter outright (current models answer "`temperature` is
 deprecated for this model"). Setting it on GPT-4o alone would imply an ensemble
-tuned alike, so all three run at their provider default and every run manifest
+tuned alike, so every model runs at its provider default and every run manifest
 says so. `ModelSpec.effective_temperature` is what belongs in the write-up.
 
 Anthropic returns JSON through structured outputs (`output_config.format`).
@@ -25,9 +25,10 @@ returns a 400 on current Claude models and is not an option.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from tenacity import (
 )
 
 from src.config import (
+    CALL_TIMEOUT_SECONDS,
     ENSEMBLE_MODELS,
     IDEOLOGY_SCORE_RANGE,
     MODEL_PRICING,
@@ -59,7 +61,7 @@ MAX_OUTPUT_TOKENS = 1024
 
 #: Reasoning models need far more headroom, because their reasoning tokens are
 #: spent from the SAME budget as the answer. At 1024 on a 623-word speech,
-#: `deepseek-reasoner` used the entire cap reasoning and returned empty content
+#: the DeepSeek reasoner used the entire cap reasoning and returned empty content
 #: with finish_reason="length". Raising the cap also costs LESS: given room to
 #: finish, it reasoned to a natural stop in 486 tokens instead of being
 #: truncated at 1024. Billing is on tokens used, not the cap.
@@ -96,6 +98,9 @@ class ModelSpec:
     supports_json_schema: bool = False
     #: Output cap. Reasoning models need headroom for reasoning tokens.
     max_output_tokens: int = MAX_OUTPUT_TOKENS
+    #: Extra arguments sent with every call. Recorded in the run manifest,
+    #: because they change what the model does.
+    request_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def effective_temperature(self) -> str:
@@ -109,15 +114,22 @@ class ModelSpec:
 
 #: Keyed by the entries of ENSEMBLE_MODELS in config.py. Change models there.
 MODEL_SPECS: dict[str, ModelSpec] = {
-    "deepseek-reasoner": ModelSpec(
-        model="deepseek-reasoner",
+    "deepseek-flash": ModelSpec(
+        model="deepseek-flash",
         provider="openai_compatible",
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com",
-        # Reasoning output precedes the answer, so JSON mode does not apply.
+        # JSON mode is not used: the answer is parsed out of the content, as for
+        # every run so far, so the scored output is produced the same way.
         supports_json_mode=False,
         # Reasoning is billed from the same budget as the answer.
         max_output_tokens=REASONING_MAX_OUTPUT_TOKENS,
+        # Thinking mode at high effort. Both are DeepSeek's defaults today;
+        # pinned so a changed default cannot silently change the scores (M3b).
+        request_options={
+            "reasoning_effort": "high",
+            "extra_body": {"thinking": {"type": "enabled"}},
+        },
     ),
     "gpt-4o-2024-11-20": ModelSpec(
         model="gpt-4o-2024-11-20",
@@ -147,6 +159,14 @@ class ScoreResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     error: str | None = None
+    #: The model id the provider says answered. A model name can be repointed
+    #: by the provider, so the requested name alone does not say this.
+    served_model: str | None = None
+    #: OpenAI-compatible backends' build identifier; None for Anthropic.
+    system_fingerprint: str | None = None
+    #: Output tokens spent reasoning, where the provider reports them; shows
+    #: that thinking mode was actually on.
+    reasoning_tokens: int | None = None
 
     @property
     def ok(self) -> bool:
@@ -154,12 +174,35 @@ class ScoreResult:
         return self.error is None and self.ideology_score is not None
 
 
+@dataclass(frozen=True)
+class RawResponse:
+    """What one provider call returned, before parsing."""
+
+    text: str
+    prompt_tokens: int
+    completion_tokens: int
+    served_model: str | None = None
+    system_fingerprint: str | None = None
+    reasoning_tokens: int | None = None
+
+
 class ScoreParseError(ValueError):
     """A response could not be turned into two valid scores."""
 
 
+class CallTimeoutError(TimeoutError):
+    """A provider call gave no answer within CALL_TIMEOUT_SECONDS."""
+
+
 class TruncatedResponseError(ScoreParseError):
-    """The model hit its output cap before producing an answer."""
+    """The model hit its output cap before producing an answer.
+
+    Carries the response, because the tokens it burned were billed.
+    """
+
+    def __init__(self, message: str, response: RawResponse) -> None:
+        super().__init__(message)
+        self.response = response
 
 
 # --- prompt ------------------------------------------------------------
@@ -290,6 +333,7 @@ def build_clients(
 #: Transient failures worth retrying. Anything else is a real error and should
 #: surface immediately rather than being retried three times.
 RETRYABLE = (
+    CallTimeoutError,
     openai.RateLimitError,
     openai.APIConnectionError,
     openai.APITimeoutError,
@@ -301,11 +345,15 @@ RETRYABLE = (
 )
 
 
+#: Back-off between attempts.
+RETRY_WAIT = wait_exponential(multiplier=2, min=2, max=30)
+
+
 def _retrying() -> AsyncRetrying:
     """Three attempts, exponential backoff from 2s, reraising the final error."""
     return AsyncRetrying(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
+        wait=RETRY_WAIT,
         retry=retry_if_exception_type(RETRYABLE),
         reraise=True,
     )
@@ -313,8 +361,8 @@ def _retrying() -> AsyncRetrying:
 
 async def _call_openai_compatible(
     spec: ModelSpec, client: openai.AsyncOpenAI, prompt: str
-) -> tuple[str, int, int]:
-    """Call an OpenAI-compatible endpoint; return (text, prompt_tok, completion_tok)."""
+) -> RawResponse:
+    """Call an OpenAI-compatible endpoint."""
     kwargs: dict[str, Any] = {
         "model": spec.model,
         "messages": [{"role": "user", "content": prompt}],
@@ -322,12 +370,20 @@ async def _call_openai_compatible(
     }
     if spec.supports_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
+    kwargs.update(spec.request_options)
 
     response = await client.chat.completions.create(**kwargs)
     usage = response.usage
     choice = response.choices[0]
-    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "completion_tokens_details", None)
+    raw = RawResponse(
+        text=choice.message.content or "",
+        prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+        completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+        served_model=response.model,
+        system_fingerprint=response.system_fingerprint,
+        reasoning_tokens=getattr(details, "reasoning_tokens", None),
+    )
 
     # Say so explicitly. A reasoning model that runs out of budget returns
     # empty content, which would otherwise surface as a confusing "no JSON
@@ -335,15 +391,16 @@ async def _call_openai_compatible(
     if choice.finish_reason == "length":
         raise TruncatedResponseError(
             f"{spec.model} hit its {spec.max_output_tokens}-token cap before "
-            f"answering (used {completion_tokens}); raise max_output_tokens"
+            f"answering (used {raw.completion_tokens}); raise max_output_tokens",
+            raw,
         )
-    return choice.message.content or "", prompt_tokens, completion_tokens
+    return raw
 
 
 async def _call_anthropic(
     spec: ModelSpec, client: anthropic.AsyncAnthropic, prompt: str
-) -> tuple[str, int, int]:
-    """Call Anthropic; return (text, input_tok, output_tok).
+) -> RawResponse:
+    """Call Anthropic.
 
     JSON comes back through structured outputs, which the server enforces
     against RESPONSE_SCHEMA. Assistant prefill -- the older trick for forcing
@@ -358,15 +415,22 @@ async def _call_anthropic(
     }
     if spec.supports_json_schema:
         kwargs["output_config"] = {"format": RESPONSE_SCHEMA}
+    kwargs.update(spec.request_options)
 
     response = await client.messages.create(**kwargs)
-    text = "".join(block.text for block in response.content if block.type == "text")
+    raw = RawResponse(
+        text="".join(block.text for block in response.content if block.type == "text"),
+        prompt_tokens=response.usage.input_tokens,
+        completion_tokens=response.usage.output_tokens,
+        served_model=response.model,
+    )
     if response.stop_reason == "max_tokens":
         raise TruncatedResponseError(
             f"{spec.model} hit its {spec.max_output_tokens}-token cap before "
-            f"answering; raise max_output_tokens"
+            f"answering; raise max_output_tokens",
+            raw,
         )
-    return text, response.usage.input_tokens, response.usage.output_tokens
+    return raw
 
 
 async def score_one(
@@ -378,29 +442,43 @@ async def score_one(
 
     A single bad response must not end a run that has already been paid for, so
     everything is caught and recorded. Token counts are kept even on a parse
-    failure, because those tokens were billed.
+    failure or a truncation, because those tokens were billed.
     """
     result = ScoreResult(model=spec.model)
-    raw, prompt_tokens, completion_tokens = "", 0, 0
+
+    def record(raw: RawResponse) -> None:
+        result.prompt_tokens = raw.prompt_tokens
+        result.completion_tokens = raw.completion_tokens
+        result.served_model = raw.served_model
+        result.system_fingerprint = raw.system_fingerprint
+        result.reasoning_tokens = raw.reasoning_tokens
+
+    call = _call_anthropic if spec.provider == "anthropic" else _call_openai_compatible
     try:
         async for attempt in _retrying():
             with attempt:
-                if spec.provider == "anthropic":
-                    raw, prompt_tokens, completion_tokens = await _call_anthropic(
-                        spec, client, prompt
+                # Our own deadline: the SDK's timeout did not fire on a call
+                # that hung for 20 minutes (S14). Tokens of an abandoned call
+                # are unknown, so they cannot be recorded.
+                try:
+                    raw = await asyncio.wait_for(
+                        call(spec, client, prompt), timeout=CALL_TIMEOUT_SECONDS
                     )
-                else:
-                    raw, prompt_tokens, completion_tokens = (
-                        await _call_openai_compatible(spec, client, prompt)
-                    )
+                except TimeoutError as error:
+                    raise CallTimeoutError(
+                        f"{spec.model} gave no answer within {CALL_TIMEOUT_SECONDS:g}s"
+                    ) from error
+    except TruncatedResponseError as error:
+        record(error.response)
+        result.error = f"{type(error).__name__}: {error}"
+        return result
     except Exception as error:  # noqa: BLE001 - recorded, not swallowed
         result.error = f"{type(error).__name__}: {error}"
         return result
 
-    result.prompt_tokens = prompt_tokens
-    result.completion_tokens = completion_tokens
+    record(raw)
     try:
-        ideology, tone, reasoning = validate_scores(extract_json(raw))
+        ideology, tone, reasoning = validate_scores(extract_json(raw.text))
     except ScoreParseError as error:
         result.error = f"{type(error).__name__}: {error}"
         return result

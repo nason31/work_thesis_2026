@@ -51,7 +51,7 @@ collapsed into one "extremeness" score.
 ---
 
 ### M3 — Ensemble of three models from different providers
-**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member · **Commit:** 112343d
+**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member, by [M3b] on the DeepSeek member, and by [S15] on the number of models in the S8 run · **Commit:** 112343d
 
 DeepSeek R1 (`deepseek-reasoner`), GPT-4o (`gpt-4o-2024-11-20`), Claude 3.5
 Sonnet (`claude-3-5-sonnet-20241022`). Averaged for continuous scores, with all
@@ -1148,6 +1148,10 @@ cost concentrated in Claude ($15.90) rather than the reasoner ($5.39).
 
 **Maintenance:** `PILOT_MEASURED_TOKENS` in `config.py` is pinned to the
 2026-09-23 pilot. Re-measure if the prompt, the models or the corpus change.
+*Re-measured 2026-10-03* on the 208-speech S8 stage ([P6]), after the corpus
+merge and with DeepSeek served by `deepseek-flash` ([M3b]): tiktoken 967.7
+per speech; input/output per speech DeepSeek 997.3/498.9, GPT-4o 972.8/69.3,
+Sonnet 1,241.9/95.6.
 
 ---
 ### S10 — The output cap is per model: 8,192 for the reasoner, 1,024 for the rest
@@ -1252,8 +1256,8 @@ reconsidered, as a new entry here. It is still a sample, not a full run.
 ---
 
 ### S12 — The ensemble stays at three models (closes O5)
-**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · reaffirms
-[M3]
+**Date:** 2026-10-03 · **Status:** **SUPERSEDED by [S15]** the same day (two
+models for the S8 run) · **Decided by:** Justus · reaffirms [M3]
 
 O5 asked whether to trim the ensemble, because the three models agree at
 r ≈ 0.95 (P2), so averaging buys little error reduction. A full run would also
@@ -1277,6 +1281,261 @@ cost ~$53, DeepSeek alone ~$9.
 
 ---
 
+### S13 — The S8 run is one run, scored in stages; nothing is paid for twice
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · implements
+[S8]/[S11]; keeps the CLAUDE.md pilot rule as its first stage
+
+*Update 2026-10-03:* the first run under this plan, `20261003T100851Z`,
+completed stage 1 ([P6]) but cannot be resumed after the DeepSeek switch
+([M3b]); the S8 run restarts with the same plan under a new timestamp.
+
+Justus wants the S8 sample scored **once**, as the final run, and run again only
+if the analysis shows it is not enough. The S8 sample is therefore one run
+(label `s8`, one timestamp) extended in stages:
+
+1. **Stage 1, the gate:** `pilot_run.py --label s8 --per-cell 4` — 4 per cell,
+   208 speeches, 624 calls, **$2.13** estimated. It is the CLAUDE.md pilot over
+   the merged corpus: the 2026-09-23 pilot scored Stanford speeches only, and no
+   govinfo speech (115th–119th, D17-cut text) had been through the models.
+2. **Stage 2:** `pilot_run.py --resume <timestamp> --per-cell 100` — the
+   same run at the full 5,200. Only the 4,992 speeches not yet scored are
+   called, ~$50.83, so the whole run costs the same ~$53 as scoring S8 directly.
+3. **Later, only if needed:** extend the same run (e.g. `--per-cell 150`).
+   The first 100 per cell are reused; only new speeches are billed.
+
+**Why this works:** a sample drawn with the same seed and a larger per-cell
+quota *contains* the smaller one — pandas draws a seeded permutation per cell
+and takes its first n. Verified on the merged corpus (sha256 `f49c7bb2…`): all
+208 stage-1 speeches are in the 5,200 draw. The draw depends on the corpus
+file, so a rebuilt corpus breaks this, and the resume refuses (below).
+
+**What `--resume` does** (`code/src/runs.py`, `code/scripts/pilot_run.py`):
+
+- Scores only (speech, model) pairs with no successful score — so it also
+  finishes a crashed run and retries failed calls. A bare `--resume <ts>`
+  keeps the run's current size; only an explicit `--per-cell` extends it.
+- **Refuses** if anything that defines a score differs from the manifest:
+  corpus SHA-256, prompt text, models and their settings (incl. output caps),
+  seed, minimum words, strata. Also refuses if the new sample would leave out
+  speeches the run already scored. Scores under two instruments do not belong
+  in one run.
+- Appends to the per-model files; every attempt is kept (each was billed).
+  A failed attempt and its retry are two rows; the successful one counts
+  (`effective_rows`), in the ensemble and in `validate_scores.py` alike.
+- Rebuilds the ensemble and summary from the files after each stage. The
+  summary bills every attempt, splits cost by stage, and counts as failures
+  only speeches still unscored.
+- Each row records `stage`, `scored_at`, and the model the provider says
+  answered (`served_model`, plus `system_fingerprint` for OpenAI-compatible
+  APIs). `deepseek-reasoner` is an alias the provider can repoint; the summary
+  lists every served model and flags a change mid-run.
+
+**Fixed on the way:** a truncated call was logged with 0 tokens although the
+provider billed it (8,192 output tokens for the reasoner). It now records what
+was billed. The 2026-09-23 pilot under-reported by that one call, ~$0.02 of P1's
+$1.911.
+
+**Also decided (Justus):**
+- **Live calls, not batch APIs.** Batch would save ~$22 on GPT-4o and Sonnet
+  but is code that has never run; stage 1 would not test the path that scores
+  the other 96%.
+- **DeepSeek keeps the 8,192 cap** ([S10]); stage 1 tests it. See [O6].
+- **What would justify extending the run** is left to the analysis — [O11].
+
+**Rejected:**
+- *Scoring S8 straight through* — no gate on the govinfo side, and a crash or a
+  bad setting costs the whole ~$53 instead of ~$2.
+- *A separate pilot, then S8 from scratch* — pays for the 208 speeches twice.
+- *Batch APIs* — above.
+
+---
+
+### M3b — DeepSeek member: `deepseek-flash` (DeepSeek-V4.1-Flash, thinking mode) replaces `deepseek-reasoner`
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · amends
+[M3], as [M3a] did for Claude
+
+`ENSEMBLE_MODELS`' DeepSeek member is now `deepseek-flash`, called with thinking
+mode on and `reasoning_effort="high"`, both pinned explicitly
+(`request_options` on its `ModelSpec`, recorded in every run manifest).
+
+**Why:**
+- **"DeepSeek R1" was not what we were calling.** The first S8 stage recorded
+  the served model for the first time: all 208 `deepseek-reasoner` calls were
+  answered by `deepseek-flash` (one system fingerprint). The 2026-09-23 pilot
+  did not record it, so its DeepSeek scores cannot be attributed to a model.
+  V4.1-Flash was released 2026-09-10 (secondary sources), so the pilot ran on
+  V4-Flash or V4.1-Flash, not R1.
+- **The alias is on its way out.** DeepSeek's API docs (checked 2026-10-03)
+  list only `deepseek-flash` (DeepSeek-V4.1-Flash) and `deepseek-v4-pro`, and
+  no longer mention `deepseek-reasoner`; secondary sources report it was
+  announced for retirement on 2026-07-24. It still answered on 2026-10-03 but
+  could stop at any time: mid-run, or before a later extension ([O11]), which
+  could then not continue the run, because the model is score-defining ([S13]).
+- **Thinking mode at high effort** are `deepseek-flash`'s documented defaults
+  ("Thinking mode is enabled by default, with the default effort being
+  `high`"), and the alias was routed to thinking mode. Pinning both keeps the
+  instrument fixed if DeepSeek changes a default.
+
+M3's rationale still holds: a reasoning model from a third provider.
+**Open weights:** secondary sources report V4.1-Flash as MIT-licensed on
+Hugging Face — verify the release before the methodology says so.
+`deepseek-flash` is not a dated snapshot (DeepSeek repoints names: its docs say
+the retired `deepseek-v4-flash` is now served by V4.1-Flash), so every row
+records `served_model`, `system_fingerprint` and `reasoning_tokens`, and the
+run summary flags a change of served model mid-run.
+
+**Consequences:**
+- **A new S8 run.** The model is score-defining, so run `20261003T100851Z`
+  cannot be resumed under the new name; it stands as a pilot over the merged
+  corpus ([P6]). The new run starts at 4 per cell again (~$2): the same 208
+  speeches, so its DeepSeek scores against the old run's check that the alias
+  and the new name behave as one instrument. Then resume to 100 per cell.
+- **Prices:** `deepseek-flash` lists $0.30 / $1.20 per 1M tokens (peak, cache
+  miss; $0.15 / $0.60 off-peak). `config.py` carried R1's $0.55 / $2.19 until
+  now, so the DeepSeek cost in the 2026-09-23 and `20261003T100851Z` summaries
+  is overstated.
+- JSON mode stays off for DeepSeek: the answer is parsed from the content, as
+  in every run so far.
+- **Thesis:** name the model "DeepSeek-V4.1-Flash, thinking mode (API name
+  `deepseek-flash`)", not R1.
+
+**Rejected:**
+- *Keep `deepseek-reasoner`* — free, and today's run continues; but it is past
+  its announced retirement and undocumented, and if it stops the run can be
+  neither finished nor extended. ~$2 buys the stable name.
+- *`deepseek-v4-pro`* — a different, larger model: breaks comparability with
+  every DeepSeek score so far, at about twice the price.
+- *Leave thinking mode and effort at their defaults* — identical today, but a
+  changed default would change the instrument unseen.
+
+---
+
+### S14 — Every provider call has a hard 300-second deadline, then a retry
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus
+
+`score_one` wraps each call in `asyncio.wait_for` with `CALL_TIMEOUT_SECONDS`
+(300, `config.py`). A call past it raises `CallTimeoutError`, retried like a
+rate limit (3 attempts in all); after the third it is a failed row, which
+`--resume` retries ([S13]).
+
+**Why:** in the first S8 stage one call hung for 20 minutes, on speech 147 of
+208 (`gov-6853a24a8dbe839f`, 377 words, scored normally on resume), and the run
+sat still until stopped by hand. The SDK's own timeout never fired. Answered
+speeches took 3.75 s on average and at most 21 s, so 300 s is ~14× headroom.
+At one stall per ~150 speeches, the 5,200-speech run would otherwise stall ~30
+times.
+
+**Not score-defining:** it decides whether an answer arrives, not what it says,
+so a resume does not compare it; each stage records the value it ran with
+(`call_timeout_seconds` in the manifest).
+
+**Caveats:** tokens of an abandoned call are unknown and not recorded, though a
+provider may still bill them. Which model hung on 2026-10-03 is unknown — all
+three calls for the speech were in flight.
+
+**Rejected:**
+- *The SDK's timeout setting* — the SDK timeout is what did not fire.
+- *A short deadline (e.g. 60 s)* — the reasoner's longest answers need room,
+  and a tight deadline would turn long reasoning into failures, biasing which
+  speeches DeepSeek scores.
+- *Supervising by hand* — a ~5-hour run.
+
+---
+
+### P6 — First S8 stage (run `20261003T100851Z`): the gate passed; now a pilot
+**Date:** 2026-10-03 · **Status:** finding · per-Congress figures
+**indicative only — do not cite**
+**Data:** `results/metrics/s8_summary_20261003T100851Z.json`,
+`results/metrics/validation_20261003T100851Z.json`
+
+208 speeches (4 per Congress × party × chamber, 107th–119th), 624 calls,
+**0 failures, 0 truncations** (DeepSeek's longest answer 3,914 of 8,192
+tokens — [O6]'s cap held). $2.07 at the prices then configured (estimate
+$2.13; DeepSeek overstated, [M3b]). Run in two invocations: stopped by hand
+after the 20-minute stall ([S14]) and resumed — the resume worked as designed,
+re-scoring nothing.
+
+- **Party check:** ensemble R − D = **+0.683** (D −0.380, R +0.303; Welch
+  p ≈ 1e-28). It holds in both sources (Stanford +0.55, govinfo +0.90), both
+  chambers, and per model (DeepSeek +0.67, GPT-4o +0.71, Sonnet +0.67).
+- **Agreement:** pairwise r 0.952 (DeepSeek–GPT-4o), 0.952 (DeepSeek–Sonnet),
+  0.969 (GPT-4o–Sonnet); P2 had 0.949 on average.
+- **DW-NOMINATE** (ensemble vs `nominate_dim1`): overall +0.72; **within D
+  +0.26** [0.07, 0.43], **within R +0.39** [0.22, 0.54] — P5 had R +0.14, not
+  significant. `nokken_poole_dim1` within D: +0.16, CI includes 0.
+- **Procedural** (all three at 0.0): 41 of 208.
+- **govinfo text** (D17's cut) reads as the member's own words in all four
+  speeches spot-checked: opens at "Mr. Speaker"/"Mr. President", ends at the
+  member's own close.
+- **Per Congress** (n = 8 per party): the gap is ~0.45 in the 107th–110th,
+  0.69–0.80 in the 112th–113th, 0.79–1.05 in the govinfo Congresses, and in
+  this sample the rise is mostly Republican. **That contradicts [P4]**, where
+  Democrats moved and Republicans did not. Both samples hold 8–13 speeches per
+  party-Congress; neither can answer RQ2, which is what the S8 run is for.
+- **Source break:** govinfo separates the parties more than Stanford (+0.90
+  vs +0.55). The rise begins inside Stanford (112th), so it is not only the
+  source change, but a level shift at 2016-09-10 cannot be excluded. The
+  114th Congress holds both sources; the full run allows a within-Congress
+  comparison there.
+
+Superseded as the S8 run by [M3b]; it stays as the pilot over the merged
+corpus, and its 208 speeches are re-scored first in the new run.
+
+---
+
+### S15 — The S8 run scores with two models: DeepSeek and GPT-4o; Sonnet is dropped
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus ·
+**supersedes [S12]**, amends [M3]
+
+`ENSEMBLE_MODELS` is now `deepseek-flash` and `gpt-4o-2024-11-20`. Claude
+Sonnet 4.6 scores nothing in the S8 run. Its spec and price stay in the code,
+so the three-model runs remain readable and re-validatable
+(`validate_scores.py` now reads each run's models from its manifest).
+
+**Why:**
+1. **Sonnet adds the least.** It is the model GPT-4o predicts best: r = 0.969
+   on the 208 speeches of [P6] and 0.961 on the 200 of [P2] — the closest
+   pair both times (DeepSeek–GPT-4o 0.952 / 0.935, DeepSeek–Sonnet 0.952 /
+   0.953). Each model alone reproduces the party gap per Congress ([P6]), and
+   against DW-NOMINATE within party Sonnet and GPT-4o are indistinguishable (P6:
+   D +0.25 vs +0.26, R +0.42 vs +0.38; every CI overlaps).
+2. **Sonnet costs the most.** It was ~56% of stage 1's cost at current prices
+   ($1.07 of ~$1.91). Over the 5,200-speech run: ~$21 for two models against
+   ~$48 for three.
+3. **Why Sonnet and not GPT-4o:** the two are near-duplicates, so dropping
+   either keeps most of the information. GPT-4o is cheaper and is the baseline
+   prior work used ([M3]). DeepSeek stays as the only reasoning model and the
+   one least correlated with the others, so it carries the most independent
+   signal.
+
+**What is lost — state it in the methodology:**
+- Provider diversity falls from three training paradigms to two; the
+  Constitutional AI member ([M3a]) is gone from the main results.
+- With two members, the cross-model spread of a speech is one difference
+  (`ideology_score_std` = |a − b| / √2), and a speech the two disagree on has
+  no third opinion. The disagreement threshold (0.3) was set for three.
+- The per-model robustness check in the thesis has two lines, not three.
+
+**The thesis argument rests on evidence already scored:** three-model scores on
+408 speeches ([P2]: 200 Stanford speeches; [P6]: 208 over the merged corpus,
+all 13 Congresses). That is where the redundancy is shown; the S8 run is two
+models from its first call, because the model list is score-defining ([S13]).
+
+**Rejected:**
+- *Keep three ([S12])* — ~$27 more for a member whose scores GPT-4o predicts at
+  r ≈ 0.97.
+- *Drop GPT-4o instead* — keeps the more expensive of two near-duplicates.
+- *DeepSeek alone* — loses the cross-provider check entirely (S12's argument
+  still holds against one model).
+- *Sonnet on a subsample of the S8 run* — a run has one model list ([S13]); the
+  three-model evidence already exists in P2 and P6.
+
+**Consequences:** the new S8 run's first stage (4 per cell, the same 208
+speeches as [P6]) costs ~$0.85 instead of ~$2; the full run ~$21. [M3b]'s
+"new S8 run" is this two-model run.
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
@@ -1296,6 +1555,17 @@ scale with word count in any simple way — 732 words is unremarkable in a corpu
 filtered at 50 words — so it is the reasoning that runs long, not the input.
 Measure output tokens against the word-count distribution before the S8 run
 rather than guessing again.
+
+**Measured 2026-10-03** (the 2026-09-23 pilot files): output length barely
+follows speech length — Spearman 0.37 between word count and the reasoner's
+output tokens. Of the 199 answers, 99% stay under 2,003 tokens, the maximum is
+3,792, and the median rises only from 299 (shortest quarter of speeches) to 562
+(longest). The one failure spent all 8,192 tokens on an unremarkable 732-word
+speech: a runaway, not a long input. A higher cap costs little (billing is on
+tokens used, ≤ ~$0.07 per runaway at 32,768), but whether it would rescue a
+runaway is unknown. **Decision (Justus, 2026-10-03): keep 8,192** and see what
+stage 1 of the S8 run ([S13]) shows; changing it later means a new run, because
+the cap is a score-defining setting.
 
 ### O7 — Recover the ~23k ambiguous House speeches?
 **Raised:** 2026-09-27 (from D16) · **Settled:** 2026-10-03 by [D25] — option
@@ -1437,6 +1707,25 @@ thesis
    score — is the defensible one.
 4. **Procedural speeches:** keep or drop (P1 and P5 both show they change the
    overall figure, not the within-party one).
+
+**Update 2026-10-03 — the S8 draw supports a member-level check after all**,
+at career level. P5 expected it not to, because S8 balances cells, not
+members; but frequent speakers recur. In the 5,200-speech draw, 5,196 speeches
+are `in_validation`, from 1,010 members (ICPSR): **297 members have ≥ 5
+speeches** (3,793 speeches) and 131 have ≥ 10. Per member × Congress — what
+`nokken_poole_dim1` needs — it is thin: 160 member-Congresses with ≥ 5, 502
+with ≥ 3. Caveat: members with many sampled speeches are the frequent
+speakers, not a random draw of members.
+
+### O11 — What would justify extending the S8 run?
+**Raised:** 2026-10-03 (from [S13]) · **To be decided:** during the analysis
+
+S13 makes extending cheap and waste-free, which is exactly why the trigger
+should be written down before the results are read: otherwise a second run is a
+reaction to numbers someone disliked. Candidates: party × Congress means too
+imprecise to tell whether each party moved (RQ2); too few members with several
+speeches for the member-level validation (O9); a chamber stratum too noisy for
+the separate-chamber trends O8 requires.
 
 ### O10 — govinfo compound surnames the Record shortens
 **Raised:** 2026-10-03 (from D25's build) · **Blocks:** nothing; ~620 speeches
