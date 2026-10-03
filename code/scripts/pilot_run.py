@@ -1,7 +1,8 @@
 """Pilot: score ~200 sampled speeches through the three-model ensemble.
 
-This is the gate before the full run. It answers two questions: do the scores
-look plausible, and what would the whole corpus cost?
+This is the gate before the S8 sample run; there is no full-corpus run
+(docs/decisions.md S11). It answers two questions: do the scores look
+plausible, and what does the run cost?
 
 Usage (from the repo root):
 
@@ -15,7 +16,7 @@ built -- `make corpus`.
 The sanity check at the end is the point of the exercise. score_speech.txt
 defines ideology as -1.0 liberal to +1.0 conservative, so Republicans should
 average positive and Democrats negative. If that comes out flat or inverted, do
-not proceed to the full run.
+not proceed to the S8 run.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ from src.config import (
 )
 from src.corpus import _fingerprint
 from src.scoring import (
+    ModelSpec,
     ScoreResult,
     build_clients,
     estimate_cost,
@@ -485,6 +487,25 @@ def print_summary(summary: dict[str, Any]) -> None:
 # --- entry point -------------------------------------------------------
 
 
+def model_manifest(specs: dict[str, ModelSpec]) -> dict[str, dict[str, object]]:
+    """Per-model settings for the run manifest.
+
+    ``max_output_tokens`` is recorded because it decides whether a reasoning
+    model answers at all: its reasoning is billed from the same budget, and at
+    a shared 1,024 cap ``deepseek-reasoner`` returned nothing (docs/decisions.md
+    S10, O6).
+    """
+    return {
+        name: {
+            "model": spec.model,
+            "provider": spec.provider,
+            "effective_temperature": spec.effective_temperature,
+            "max_output_tokens": spec.max_output_tokens,
+        }
+        for name, spec in specs.items()
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -579,14 +600,7 @@ async def main(argv: list[str] | None = None) -> int:
         "per_cell": args.per_cell if not args.sample_size else None,
         "random_seed": args.seed,
         "min_word_count": args.min_words,
-        "models": {
-            name: {
-                "model": spec.model,
-                "provider": spec.provider,
-                "effective_temperature": spec.effective_temperature,
-            }
-            for name, spec in specs.items()
-        },
+        "models": model_manifest(specs),
         "prompt_path": str(SCORE_PROMPT_PATH),
         "prompt_template": template,
         "cost_estimate": estimate,

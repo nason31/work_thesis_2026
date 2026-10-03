@@ -16,9 +16,10 @@ member_id is source-native
 Stanford rows carry Gentzkow's ``speakerid`` (unique per member *per
 Congress*), govinfo rows the bioguide id. The formats cannot collide, but the
 same person has different ids on either side of the break. Party-level
-analysis is unaffected; member-level analysis across the break waits for the
-speakerid -> bioguide/ICPSR crosswalk, which will also fill ``icpsr`` on
-Stanford rows (null until then).
+analysis is unaffected; member-level analysis across the break goes through
+the member crosswalk (``crosswalk.py``, docs/decisions.md D21), a separate
+table. ``icpsr`` stays null on Stanford rows, and on govinfo rows it is not the
+DW-NOMINATE join key -- use the crosswalk for both.
 
 Why a temp file
 ---------------

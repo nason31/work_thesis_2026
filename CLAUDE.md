@@ -107,20 +107,29 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   build (mostly procedural entries, e.g. the Clerk reading a bill title).
   **[assumed]** how many — the drop count is not yet recorded. Quantify it
   ("X of Y rows, Z%") before the methodology chapter is written.
-- **Not yet reproducible:** the build script is announced as
-  `code/scripts/build_stanford_dataset.py` but does not exist yet. Until it
-  does, the parquet cannot be rebuilt or independently checked.
+- **Build recipe:** Konsti's
+  [`code/notebooks/01_stanford_dataset.ipynb`](code/notebooks/01_stanford_dataset.ipynb)
+  (Colab, committed 2026-10-02) downloads `hein-daily.zip`, merges each
+  session and keeps rows with a `speakerid`. It prints counts only *after* that
+  drop, and its CSV reads use `on_bad_lines="skip"`, which discards malformed
+  lines uncounted — so the drop count above is still unrecorded (O4).
 - Note: Yufei said we **can drop this** if our govinfo pipeline produces sufficient coverage
 
 ### Sep 2016 – 2025: govinfo.gov (Konsti's pipeline)
 
-**[verified 2026-09-27]** — see
-[`docs/notes/2026-09-27_govinfo_data_reality.md`](docs/notes/2026-09-27_govinfo_data_reality.md).
+**[verified 2026-09-27; re-fetched file verified 2026-10-03]** — see
+[`docs/notes/2026-09-27_govinfo_data_reality.md`](docs/notes/2026-09-27_govinfo_data_reality.md)
+and D25 / O8 in `docs/decisions.md`.
 
 - **Raw file:** `data/raw/govinfo/congress_speeches_2016_present.jsonl` (team
-  drive), built by Konsti's `02_govinfo_dataset.ipynb` — **not in the repo**, so
-  the raw file cannot be rebuilt here. 6 columns: `date`, `speaker` (surname),
-  `party`, `icpsr`, `chamber`, `speech`.
+  drive), built by Konsti's
+  [`code/notebooks/02_govinfo_dataset.ipynb`](code/notebooks/02_govinfo_dataset.ipynb)
+  (Colab; needs an api.govinfo.gov key, so it is not run here). The current
+  file is the **2026-10-02 re-fetch**: 276,513 rows, 2016-09-12 → 2026-09-30,
+  7 columns: `date`, `speaker` (surname), `party`, `icpsr`, **`state`** (full
+  name as the Record writes it beside the speaker, null on ~85% of rows),
+  `chamber`, `speech`. The build refuses a file without `state` — the older
+  file had the Senate fetch cap (O8).
 - **Seam settled (D15):** the file starts 2016-09-12, Stanford ends 2016-09-09 —
   no gap, no overlap. The build keeps 2016-09-10 → 2025-12-31 and drops 2026.
 - **Do not trust the file's `party`/`icpsr`, and do not use its text raw.** The
@@ -133,16 +142,28 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   `data/processed/corpus_govinfo.parquet`, stats in
   `results/metrics/govinfo_build_stats.json`.
 - **`member_id` is the bioguide id** on this side (Stanford uses `speakerid`),
-  plus an extra `icpsr` column — the direct DW-NOMINATE join key, missing for
-  many members first elected 2021+.
-- **Not repairable here (O7):** the parser dropped the state from
-  `Mr. SMITH of Texas.`, so 23,075 House speeches cannot be attributed. They
-  lean Republican (~60/40), so House Republicans are under-represented.
-- **Discontinuity, measured:** ~11–15k speeches/year after filtering vs ~22k/year
-  in Stanford's 114th — about a third fewer at the break. Address it in the
-  methodology; it is not a political trend. The drop is concentrated in the
-  **Senate** (−71% vs −32% for the House) and is not yet explained — see O8 in
-  `docs/decisions.md`. Do not pool chambers in a trend until it is.
+  plus an extra `icpsr` column from congress-legislators, missing for many
+  members first elected 2021+. **It is not the DW-NOMINATE join key:** it holds
+  a party switcher's original number, while Voteview gives them a new one
+  (D21). Join through the member crosswalk — see External Validation.
+- **`chamber` is the member's chamber**, not the Record section the speech
+  appears in: House impeachment managers at the 2020/2021 Senate trials are `H`
+  (478 speeches, D20).
+- **The state settles namesakes (D25, closes O7):** when the Record names a
+  recognized state, the member must be from it. 23,606 speeches that surname,
+  chamber and date left ambiguous are resolved this way; 47 stay ambiguous, and
+  5 are dropped because no name match is from the named state (4 of them Record
+  items naming a House member, which surname and chamber alone gave to a
+  senator). The old House Republican under-representation is gone (R share
+  48.8% → 50.9%).
+- **Discontinuity, measured (O8, still open):** the re-fetch removed the
+  100-granule fetch cap that cut the Senate. Against Stanford 2011–15, govinfo
+  2017–25 now has **−20% House and −38% Senate** speeches per year (was −32% /
+  −71%); the Senate share is 25–37% a year against Stanford's 34–38%. Address
+  it in the methodology; it is not a political trend. Part of the remaining
+  Senate gap comes from our own text cut (D17) leaving short exchanges under 50
+  words, and that is not yet compared with how Stanford splits speakers. Until
+  it is, **do not pool chambers in a trend**: plot or stratify them separately.
 - **Merged (D19)** with the Stanford side into `data/processed/corpus.parquet`
   by `make corpus` — see Processed / Combined below.
 
@@ -157,14 +178,15 @@ Other dtype and value facts, all **[verified 2026-09-21]**:
   `party_original` preserves the pre-reassignment party so the party rules stay
   auditable. Without these, either job means re-streaming the 681 MB raw file.
   `first_name` is deliberately NOT retained — `"Unknown"` on 97.2% of rows.
-- **Merged corpus:** `data/processed/corpus.parquet`, 538,804 rows,
+- **Merged corpus:** `data/processed/corpus.parquet`, 580,007 rows,
   2001-01-03 → 2025-12-19, built by `make corpus`
   (`code/scripts/build_merged_corpus.py`, logic in `code/src/merge.py`) from
   the two processed sides:
   - `corpus_stanford.parquet` — `make stanford` (`build_corpus.py`, `corpus.py`)
   - `corpus_govinfo.parquet` — `make govinfo` (`build_govinfo_corpus.py`,
     `govinfo.py`); adds an `icpsr` column, which the merge carries (null on
-    Stanford rows until the crosswalk exists)
+    Stanford rows). Do not join DW-NOMINATE on it — use the member crosswalk
+    (External Validation below)
 
   The merge drops nothing and fails on any seam overlap, repeated `speech_id`,
   unexpected code or stale input. `member_id` is source-native: Stanford
@@ -188,24 +210,88 @@ side needs an explicit mapping step:
 | `word_count` | `word_count` | string → `int32` |
 | `source` | **does not exist in either source — added at build time** | |
 
-`source` is what keeps the 2017 break visible in the data itself. Every row
+`source` is what keeps the 2016-09-10 break visible in the data itself. Every row
 must carry `stanford` or `govinfo`. Do not merge without it.
 
 ### External Validation
 
 - **DW-NOMINATE scores** — voting-based ideological measure from VoteView.com
 - Used to validate LLM-derived ideological scores against a non-ML, voting-based benchmark
-- Path: `data/raw/dw_nominate/`
-- **Open blocker:** VoteView identifies members by **ICPSR** number; the Stanford
-  data carries `speakerid`, Gentzkow's own identifier. There is currently no
-  join path between our speeches and DW-NOMINATE. A crosswalk
-  (`speakerid` → ICPSR, e.g. via the Stanford speaker map plus name/state/congress
-  matching) has to be built and its match rate reported. Since CLAUDE.md treats
-  the DW-NOMINATE check as the primary methodological defense, this blocks the
-  validation entirely — resolve it early, not at the end. A rough first probe
-  (2026-09-29) matched 97.4% of Stanford speeches to an ICPSR through
-  congress-legislators on state + chamber + date + surname — see the M5 note in
-  `docs/decisions.md`. The govinfo side already carries `icpsr`.
+- Path: `data/raw/dw_nominate/HSall_members.csv` (Voteview member file, all
+  Congresses; read-only). `data/processed/dw_nominate_107_119.csv` is the same
+  table filtered to the 107th–119th, House and Senate — made by hand, and
+  identical to what `load_voteview()` in `code/src/crosswalk.py` produces from
+  the raw file, so prefer the function.
+
+#### Member crosswalk — how to join speeches to DW-NOMINATE [verified 2026-09-29]
+
+VoteView keys members on **ICPSR**; our speeches carry Gentzkow's `speakerid`
+(Stanford) or the bioguide id (govinfo). The crosswalk links them. **This was
+the blocker on the validation; it is resolved** (M5, D21–D24).
+
+- **Build:** `make crosswalk` (3 s) → `data/processed/member_crosswalk.parquet`.
+  Logic in `code/src/crosswalk.py`, runner `code/scripts/build_crosswalk.py`,
+  tests `code/tests/test_crosswalk.py`. **Re-run it after every `make corpus`** —
+  it is keyed on the corpus as built, and its stats record the corpus SHA-256.
+- **Outputs** (committed): `results/metrics/crosswalk_build_stats.json` (match
+  rates per source, per Congress × chamber, per method; party switchers;
+  unscored members; ICPSR disagreements) and
+  `results/metrics/crosswalk_unmatched.csv` (every unmatched member, with speech
+  count, reason and the Voteview candidates).
+- **One row per** `source` × `member_id` × `congress_number` × `chamber` ×
+  `party_original` — the **join key**. `party_original` is in it because
+  govinfo records party by day (Van Drew has a D and an R row in the 116th).
+- **Coverage:** 99.82% of Stanford and 100% of govinfo speeches matched;
+  579,242 of 580,007 speeches (99.87%) usable for validation. Not usable: Tom
+  and Jo Ann Davis (VA, 742 speeches — nothing separates them), 5 OCR-garbage
+  speeches, and Kwanza Hall (18 speeches, no score).
+
+**Use it like this** — always `validate="many_to_one"`, always filter on
+`in_validation`, and **only for the validation**:
+
+```python
+import pandas as pd
+from src.config import CORPUS_PATH, CROSSWALK_PATH
+
+KEY = ["source", "member_id", "congress_number", "chamber", "party_original"]
+crosswalk = pd.read_parquet(CROSSWALK_PATH)
+speeches = pd.read_parquet(CORPUS_PATH, columns=["speech_id", "party", *KEY])
+speeches = speeches.merge(crosswalk, on=KEY, how="left", validate="many_to_one")
+validation = speeches[speeches["in_validation"]]  # scored speeches: join on speech_id
+```
+
+Columns worth knowing:
+
+| Column | Meaning |
+|---|---|
+| `icpsr`, `bioguide_id`, `bioname` | the matched Voteview member; null when unmatched |
+| `nominate_dim1` | DW-NOMINATE 1st dim. **Constant over a member's career** (checked: all 1,248 multi-Congress members) — cannot show a member moving |
+| `nokken_poole_dim1` | per-Congress score; varies over time |
+| `in_validation` | matched **and** scored — the only rows the validation may use |
+| `party_switch` | Voteview has two ICPSRs for this member in that Congress. On Stanford rows (Jeffords, Goode, Hall, Specter, Griffith) every speech got the record of the party Stanford lists — drop these in a robustness check (D23) |
+| `candidate_key`, `resolved_by`, `unmatched_reason`, `n_candidates` | how the match was made (D21, D22) — for auditing |
+
+Rules:
+
+- **Never drop an unmatched speech from the trend analysis.** `in_validation`
+  is a filter for the DW-NOMINATE check only.
+- **Do not join on the corpus `icpsr` column** (see the govinfo section above).
+- **Which score validates the LLM scores is not decided** — `nominate_dim1`
+  (career-constant) vs `nokken_poole_dim1` (per Congress). RQ2 is about
+  movement over time, which only the latter can show. Record the choice in
+  `docs/decisions.md` when it is made.
+- **Validating a scoring run** needs no code of your own:
+  `python code/scripts/validate_scores.py --run <timestamp>` (no API calls)
+  joins a run's per-model scores through the crosswalk and writes every
+  combination — ensemble and each model, both benchmarks, all and
+  non-procedural speeches, overall and **within each party** — to
+  `results/metrics/validation_<timestamp>.json`. Read the within-party rows
+  first: across parties r mostly re-measures the party gap (P5). Logic in
+  `code/src/validation.py`.
+- **If the build fails**, it names the problem — two members on one ICPSR, a
+  `speakerid` that no longer encodes its Congress, an unknown `source`. Each
+  means an assumption broke (usually a replaced dataset); fix the cause, do not
+  loosen the check.
 
 ### RQ5 Data (not yet committed to)
 - Check govinfo.gov for press releases / official statements pre-2010 before starting
@@ -249,8 +335,11 @@ than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
 
 **Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
 member in September 2026 and was already a 404 by the time the first call was
-made. Verify every pinned model still answers before a run that costs money —
-`make smoke` does this for free.
+made. Verify every pinned model still answers before a run that costs money.
+No tool in the repo does this: `make smoke` is the Stanford corpus build and
+never contacts a model. The practical check is `pilot_run.py --sample-size 6`,
+which is a real (cheap) API call, so it needs a human's go-ahead like any other
+(see DO NOT).
 
 **4. Feed full speeches, not fragments**
 Do not split speeches into short chunks unless a model's context window absolutely requires it. Chunking breaks cross-sentence rhetorical context, which matters for detecting ideological framing. Current frontier models (GPT-4o, Llama 4, Gemini 2.5, DeepSeek R1) all handle full congressional speeches comfortably. Verify context length per model before deciding.
@@ -299,8 +388,9 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 
 ### Key boundaries
 - The source discontinuity sits at **2016-09-10**, inside the 114th Congress
-  (Stanford stops 2016-09-09, govinfo takes over — D15). govinfo yields about a
-  third fewer speeches per year. It must be addressed in the methodology
+  (Stanford stops 2016-09-09, govinfo takes over — D15). govinfo yields about
+  20% fewer House and 38% fewer Senate speeches per year (O8). It must be
+  addressed in the methodology
   section — flag it in code comments and make it visible in every time-series
   plot (e.g. a vertical dashed line). `SOURCE_BREAK_DATE`, `SOURCE_BREAK_YEAR`
   (2016) and `SOURCE_BREAK_CONGRESS` (114, the mixed-source point on a
@@ -317,7 +407,7 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
 work_thesis_2026/
 ├── CLAUDE.md               ← this file
 ├── README.md               ← setup instructions for the team
-├── Makefile                ← make setup / test / lint / stanford / govinfo / corpus / lock
+├── Makefile                ← make setup / test / lint / stanford / govinfo / corpus / crosswalk / lock
 ├── requirements.txt        ← direct dependencies (edit this)
 ├── requirements.lock.txt   ← pinned versions (generated by `make lock`)
 ├── pytest.ini              ← pythonpath = code
@@ -329,10 +419,12 @@ work_thesis_2026/
 │   │   ├── corpus.py       ← Stanford side: load, map, clean, write
 │   │   ├── govinfo.py      ← govinfo side: re-resolve speakers, cut text, write
 │   │   ├── merge.py        ← both sides → corpus.parquet, with checks
+│   │   ├── crosswalk.py    ← corpus members → Voteview ICPSR (DW-NOMINATE join)
 │   │   └── prompts/        ← prompt templates as files, logged with every run
 │   ├── scripts/            ← one-off analysis and pipeline scripts
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
-│   └── notebooks/          ← exploratory work; not used in production
+│   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
+│                              (Colab), which produce the raw files
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/
@@ -393,15 +485,21 @@ work_thesis_2026/
 
 ### Reproducibility
 - Set and log random seeds where randomness is involved
-- Log model name, version, temperature, and full prompt template with every run
+- Log model name, version, temperature, output cap (`max_output_tokens`), and
+  full prompt template with every run
 - Save raw LLM outputs alongside derived scores — never only keep the aggregated result
 - Store ensemble inputs and outputs separately so individual model behavior can be inspected
 
 ### Cost awareness
-- The merged corpus is **538,804 speeches** (Stanford 823,341 raw → 426,718;
-  govinfo 225,564 raw → 112,086), not millions. Budget from the real number;
-  see `results/metrics/merged_build_stats.json`
-- Always run on a small sample (100–500 speeches) before any full run
+- **No external API call without a human's explicit go-ahead** — see the first
+  rule under DO NOT below
+- The merged corpus is **580,007 speeches** (Stanford 823,341 raw → 426,718;
+  govinfo 276,513 raw → 153,289), not millions — and it is the sampling frame,
+  not what gets scored. **There is no full-corpus run** (`docs/decisions.md`
+  S11): the main results come from the S8 stratified sample, 5,200 speeches,
+  ~$53 (`pilot_run.py --dry-run`). Budget from the sample. Corpus counts:
+  `results/metrics/merged_build_stats.json`
+- Always run on a small sample (100–500 speeches) before any larger run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
 - Reasoning models cost more per call — use them only for the scoring step, not preprocessing
@@ -420,20 +518,32 @@ work_thesis_2026/
 - Flag in a comment when a methodological decision is still open
 - Log all key parameters and results to `results/metrics/`
 - Write modular, reusable code in `src/` that scripts in `scripts/` call
-- Mark 2017 discontinuity visibly in all time-series plots
+- Mark the 2016-09-10 source break visibly in all time-series plots
 - Always save raw per-model scores before aggregating into an ensemble score
 - Validate LLM scores against DW-NOMINATE as part of every scoring experiment
 - Prefer clarity over cleverness — this is academic code, not production software
 
 ### DO NOT
+- **Make any external API call without first asking a human and getting an
+  explicit yes in the current session.** This covers every LLM provider
+  (OpenAI, DeepSeek, Anthropic) and every data API (govinfo / api.data.gov,
+  congress.gov, …), including cheap test calls, `pilot_run.py --sample-size 6`
+  and checks that a model still answers. Before asking, say what will be
+  called, how many requests, and the estimated cost — `pilot_run.py --dry-run`
+  prints it without calling anything. An approval covers the run it was given
+  for, not later ones. Never pass `--yes` to skip `pilot_run.py`'s
+  confirmation prompt. No approval is needed for code that makes no calls:
+  the corpus builds, `make crosswalk`, `validate_scores.py`,
+  `pilot_run.py --dry-run`. (docs/decisions.md E7)
 - Make irreversible changes to `data/raw/`
 - Hardcode model names, prompt text, or thresholds in multiple places — centralize in config
 - Build RQ5 pipeline without confirming govinfo coverage first
 - Output binary classifications as the final scoring result — the goal is continuous scores
 - Fragment speeches into short chunks unless a model's context window genuinely requires it
 - Generate thesis text — students write first; AI polishes at the end only
-- Ignore the 2017 coverage gap — flag it explicitly in outputs and plots
-- Run full corpus through an LLM API without a sampled pilot first
+- Ignore the 2016-09-10 source break — flag it explicitly in outputs and plots
+- Score the full corpus through an LLM API — ruled out (S11); and never run a
+  sample larger than the decided one without a pilot first and a new decision
 - Commit API keys or large raw data files to git
 
 ---
@@ -441,8 +551,9 @@ work_thesis_2026/
 ## Priorities Until Meeting 2 (Oct 1–15, 2026)
 
 1. **Literature Review** — concise, justifies novelty; Yufei will scrutinize this
-2. **Finish Dataset** — merge Stanford + govinfo, document the 2017 gap
-   (merged 2026-09-29, D19; the Senate drop at the break is still open, O8)
+2. **Finish Dataset** — merge Stanford + govinfo, document the 2016-09-10 break
+   (merged 2026-09-29, D19; re-fetched govinfo merged 2026-10-03, D25 — the
+   fetch cap is fixed, a smaller Senate drop remains, O8)
 3. **Run models and summarize findings** — at least pilot results; per-party position plots
 4. **Start written document** — chapter structure, table of contents, introduction draft
 5. **Check formal requirements** — ~20 pages per person; Yufei says hitting the page limit is the actual risk, so be concise
@@ -458,8 +569,12 @@ work_thesis_2026/
 
 ---
 
-*Last updated: September 20, 2026 — corpus build implemented
-(`code/scripts/build_corpus.py`, logic in `code/src/corpus.py`, tests in
+*Last updated: October 3, 2026 — Konsti's re-fetched govinfo file (pagination
+fixed, `state` added) built and merged; the state now resolves same-surname
+speakers (D25). Corpus 580,007 rows. Previously, September 29, 2026 — member
+crosswalk to DW-NOMINATE built (`make crosswalk`, see External Validation); the
+validation is unblocked. Before that, September 20, 2026 — corpus build
+implemented (`code/scripts/build_corpus.py`, logic in `code/src/corpus.py`, tests in
 `code/tests/`); the data decisions it settles are recorded above. Everything
 still marked **[assumed]** is a planning estimate awaiting verification —
 including the Stanford speaker-match drop count, which this build cannot

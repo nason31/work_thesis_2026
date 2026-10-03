@@ -1,6 +1,6 @@
 {
   "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
-  "built_at": "2026-09-29T19:23:31+00:00",
+  "built_at": "2026-10-03T09:13:10+00:00",
   "inputs": {
     "stanford": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus_stanford.parquet",
@@ -12,17 +12,17 @@
     },
     "govinfo": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus_govinfo.parquet",
-      "bytes": 172209404,
-      "sha256": "511c2b79bdfb7be4a8e87b474b5c737b27560326ef7b416bb37c61e2c8670523",
-      "rows": 112086,
+      "bytes": 258799251,
+      "sha256": "b6415c5eda8e9946a6779050bc4f9c330d78998114fd44ac96b7c64de22b36ba",
+      "rows": 153289,
       "stats_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/results/metrics/govinfo_build_stats.json",
-      "raw_source_sha256": "822d1c80dcbb7932bcb366e83a3cd4bdc8c9fd73bda00895c682af6d85ed49a6"
+      "raw_source_sha256": "58bcc59b8e69dfaa761a3b1ff2ca22531889963f22d3d8d7afbec9f65d9795f0"
     }
   },
-  "rows_written": 538804,
+  "rows_written": 580007,
   "rows_by_source": {
     "stanford": 426718,
-    "govinfo": 112086
+    "govinfo": 153289
   },
   "cell_counts": {
     "107": {
@@ -112,12 +112,12 @@
     "114": {
       "govinfo": {
         "H": {
-          "D": 1074,
-          "R": 1132
+          "D": 1147,
+          "R": 1496
         },
         "S": {
-          "D": 238,
-          "R": 205
+          "D": 688,
+          "R": 709
         }
       },
       "stanford": {
@@ -134,60 +134,60 @@
     "115": {
       "govinfo": {
         "H": {
-          "D": 11749,
-          "R": 11613
+          "D": 12699,
+          "R": 14068
         },
         "S": {
-          "D": 2504,
-          "R": 2691
+          "D": 5966,
+          "R": 6051
         }
       }
     },
     "116": {
       "govinfo": {
         "H": {
-          "D": 11253,
-          "R": 8940
+          "D": 13111,
+          "R": 10798
         },
         "S": {
-          "D": 2353,
-          "R": 2757
+          "D": 4319,
+          "R": 5472
         }
       }
     },
     "117": {
       "govinfo": {
         "H": {
-          "D": 8573,
-          "R": 8388
+          "D": 9941,
+          "R": 10252
         },
         "S": {
-          "D": 3085,
-          "R": 2397
+          "D": 5644,
+          "R": 4387
         }
       }
     },
     "118": {
       "govinfo": {
         "H": {
-          "D": 8867,
-          "R": 10190
+          "D": 10243,
+          "R": 12415
         },
         "S": {
-          "D": 1638,
-          "R": 1347
+          "D": 4425,
+          "R": 3215
         }
       }
     },
     "119": {
       "govinfo": {
         "H": {
-          "D": 4450,
-          "R": 4020
+          "D": 5160,
+          "R": 5113
         },
         "S": {
-          "D": 1494,
-          "R": 1128
+          "D": 3343,
+          "R": 2627
         }
       }
     }
@@ -285,8 +285,8 @@
     },
     "2016": {
       "govinfo": {
-        "H": 2206,
-        "S": 443
+        "H": 2643,
+        "S": 1397
       },
       "stanford": {
         "H": 9160,
@@ -295,56 +295,56 @@
     },
     "2017": {
       "govinfo": {
-        "H": 12826,
-        "S": 2222
+        "H": 15408,
+        "S": 6606
       }
     },
     "2018": {
       "govinfo": {
-        "H": 10536,
-        "S": 2945
+        "H": 11359,
+        "S": 5383
       }
     },
     "2019": {
       "govinfo": {
-        "H": 12298,
-        "S": 1600
+        "H": 14378,
+        "S": 5200
       }
     },
     "2020": {
       "govinfo": {
-        "H": 7895,
-        "S": 3512
+        "H": 9531,
+        "S": 4593
       }
     },
     "2021": {
       "govinfo": {
-        "H": 8913,
-        "S": 2923
+        "H": 10464,
+        "S": 5459
       }
     },
     "2022": {
       "govinfo": {
-        "H": 8048,
-        "S": 2585
+        "H": 9729,
+        "S": 4598
       }
     },
     "2023": {
       "govinfo": {
-        "H": 9756,
-        "S": 1460
+        "H": 11657,
+        "S": 3972
       }
     },
     "2024": {
       "govinfo": {
-        "H": 9301,
-        "S": 1525
+        "H": 11001,
+        "S": 3668
       }
     },
     "2025": {
       "govinfo": {
-        "H": 8470,
-        "S": 2622
+        "H": 10273,
+        "S": 5970
       }
     }
   },
@@ -354,7 +354,7 @@
   },
   "icpsr_missing_by_source": {
     "stanford": 426718,
-    "govinfo": 13036
+    "govinfo": 15767
   },
   "date_min": "2001-01-03",
   "date_max": "2025-12-19"
