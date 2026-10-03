@@ -9,7 +9,9 @@
 #   make stanford build data/processed/corpus_stanford.parquet (2001-2016)
 #   make smoke    the same on the first 50k raw rows; run it first
 #   make govinfo  build data/processed/corpus_govinfo.parquet (2016-2025)
+#   make govinfo-smoke  the same on the first 20k raw rows
 #   make corpus   merge both into data/processed/corpus.parquet
+#   make crosswalk match corpus members to DW-NOMINATE ICPSR ids
 #   make lock     re-pin requirements.lock.txt after changing requirements.txt
 
 PYTHON ?= python3
@@ -19,7 +21,7 @@ BIN    := $(VENV)/bin
 # changed -- not on every `make test`.
 STAMP  := $(VENV)/.installed
 
-.PHONY: help setup test lint format stanford corpus smoke govinfo govinfo-smoke lock clean
+.PHONY: help setup test lint format stanford corpus smoke govinfo govinfo-smoke crosswalk lock clean
 
 help:
 	@grep -E '^#   make' $(MAKEFILE_LIST) | sed 's/^#   //'
@@ -71,6 +73,13 @@ govinfo-smoke: $(STAMP)
 # since it is rebuilt from inputs that stay on disk.
 corpus: $(STAMP)
 	$(BIN)/python code/scripts/build_merged_corpus.py --overwrite
+
+# Corpus member -> Voteview ICPSR, into data/processed/member_crosswalk.parquet,
+# with match rates and the unmatched members in results/metrics/. Needs
+# `make corpus` first and HSall_members.csv in data/raw/dw_nominate/. Re-run it
+# after every `make corpus`: it is keyed on the corpus as built.
+crosswalk: $(STAMP)
+	$(BIN)/python code/scripts/build_crosswalk.py --overwrite
 
 # Re-pin after editing requirements.txt. Builds a throwaway environment so the
 # lock records exactly what requirements.txt resolves to, with nothing left

@@ -1,19 +1,22 @@
 """Build the processed govinfo side of the corpus from Konsti's JSONL.
 
-The raw file (``congress_speeches_2016_present.jsonl``) was produced by
-``02_govinfo_dataset.ipynb``, which is not in this repo. Profiling it on
-2026-09-27 found four upstream problems; this module repairs the three that the
-file still carries enough information to repair, and counts the fourth.
-See docs/notes/2026-09-27_govinfo_data_reality.md.
+The raw file (``congress_speeches_2016_present.jsonl``) is produced by
+``code/notebooks/02_govinfo_dataset.ipynb`` (Konsti, run in Colab). Profiling
+it on 2026-09-27 found four upstream problems; see
+docs/notes/2026-09-27_govinfo_data_reality.md. The 2026-10-02 re-fetch fixed a
+fifth at the source -- only the first 100 granules of each day were fetched,
+which cut the Senate (O8) -- and restored the state, which settles problem 2.
 
 1. **Party lookup ignored chamber.** A surname counted as ambiguous if anyone in
    Congress shared it, so e.g. every Senate speech by Mike Lee (518) came out
    with no party. Fixed: every speaker is re-resolved here against
-   congress-legislators, filtered by chamber *and* date.
+   congress-legislators, filtered by chamber *and* date. (The notebook still
+   ignores chamber, so its own ``party`` remains unreliable.)
 2. **The state was dropped** from House headers ("Mr. SMITH of Texas."), so
-   same-surname House members cannot be told apart. NOT fixable here -- the
-   header is not in the file. Those rows stay unresolved and are dropped, and
-   the stats count them by chamber and year so the bias is measurable.
+   same-surname House members could not be told apart. The file now carries
+   it as ``state``; a recognized state must agree with the member, and decides
+   between namesakes (D25). Rows still unresolved are dropped and counted by
+   chamber and year.
 3. **Speeches were split only when a member began speaking.** Presiding-officer
    turns, Record narration and inserted material were glued onto the previous
    member's speech. Fixed: each speech is cut at the first of those.
@@ -53,6 +56,7 @@ from src.config import (
     GOVINFO_START_DATE,
     LEGISLATORS_FILES,
     MIN_WORD_COUNT,
+    STATE_CODES,
 )
 from src.corpus import CORPUS_SCHEMA, _fingerprint
 
@@ -63,8 +67,10 @@ SOURCE_TAG = "govinfo"
 #: which is the join key for DW-NOMINATE. ``member_id`` is the bioguide id.
 GOVINFO_SCHEMA = CORPUS_SCHEMA.append(pa.field("icpsr", pa.int32()))
 
-#: Raw keys every JSONL record must carry.
-REQUIRED_KEYS: tuple[str, ...] = ("date", "speaker", "chamber", "speech")
+#: Raw keys every JSONL record must carry. ``state`` (null when the Record names
+#: none) arrived with the 2026-10-02 re-fetch; a file without it predates the
+#: pagination fix (O8) and must not be built from.
+REQUIRED_KEYS: tuple[str, ...] = ("date", "speaker", "state", "chamber", "speech")
 
 BATCH_SIZE = 50_000
 
@@ -78,6 +84,10 @@ PARTY_CODES: dict[str, str] = {
 
 _CHAMBER_TYPES: dict[str, str] = {"HOUSE": "rep", "SENATE": "sen"}
 _CHAMBER_CODES: dict[str, str] = {"HOUSE": "H", "SENATE": "S"}
+#: congress-legislators term type -> corpus chamber code. The written ``chamber``
+#: is the member's, not the Record section's: a House impeachment manager
+#: speaking at a Senate trial stays "H" (docs/decisions.md D20).
+_TERM_CHAMBER_CODES: dict[str, str] = {"rep": "H", "sen": "S"}
 
 
 # --- text cleaning -----------------------------------------------------
@@ -207,6 +217,18 @@ def _fold(name: str) -> str:
     return "".join(c for c in decomposed if not unicodedata.combining(c)).upper()
 
 
+def state_code(raw: str | None) -> str | None:
+    """Two-letter code for the state written beside a speaker, or None.
+
+    None both when the Record named no state and when the string is not a state
+    (``"Virgina"``, ``"Massachusetts Mr"``, ``"Japan"``) -- a garbled state is
+    treated as no state, so it can never narrow a match to the wrong member.
+    """
+    if raw is None:
+        return None
+    return STATE_CODES.get(_fold(raw).strip())
+
+
 @dataclass(frozen=True)
 class Term:
     """One congress-legislators term, flattened with its member's identity."""
@@ -274,8 +296,9 @@ def load_terms(paths: Iterable[Path] = LEGISLATORS_FILES) -> list[Term]:
 class Resolution:
     """Outcome of resolving one speaker string."""
 
-    status: str  # "resolved", "no_candidate", "ambiguous"
+    status: str  # "resolved", "no_candidate", "ambiguous", "state_mismatch"
     term: Term | None = None
+    by_state: bool = False  # the state, not the name, picked the member
 
 
 class MemberIndex:
@@ -300,13 +323,20 @@ class MemberIndex:
         }
         return list(found.values())
 
-    def resolve(self, speaker: str, chamber: str, day: dt.date) -> Resolution:
+    def resolve(
+        self, speaker: str, chamber: str, day: dt.date, state: str | None = None
+    ) -> Resolution:
         """Resolve ``speaker`` as it appears in the govinfo file.
 
         Handles the forms the file uses: a bare surname ("LEE"), a compound
         surname ("JACKSON LEE", "VAN HOLLEN"), a full name the Record gives to
         disambiguate ("CAROLYN B. MALONEY", "AUSTIN SCOTT"), and the "Manager"
         prefix for House impeachment managers speaking in the Senate.
+
+        ``state`` is the code from :func:`state_code` for "Mr. SMITH of Texas.".
+        When given, the member must be from it -- even a lone name match from
+        another state is rejected, because the Record named someone else
+        (docs/decisions.md D25).
         """
         name = _fold(speaker).strip()
         chamber_type = _CHAMBER_TYPES[chamber]
@@ -332,9 +362,16 @@ class MemberIndex:
 
         if not candidates:
             return Resolution("no_candidate")
+        by_state = False
+        if state is not None:
+            from_state = [t for t in candidates if t.state == state]
+            if not from_state:
+                return Resolution("state_mismatch")
+            by_state = len(candidates) > 1 and len(from_state) == 1
+            candidates = from_state
         if len(candidates) > 1:
             return Resolution("ambiguous")
-        return Resolution("resolved", candidates[0])
+        return Resolution("resolved", candidates[0], by_state)
 
 
 # --- helpers -----------------------------------------------------------
@@ -353,7 +390,7 @@ def speech_id_for(record: dict[str, object]) -> str:
 
     The file has no id. A content hash survives re-ordering and partial reruns
     of the upstream notebook, unlike a line number. (date, chamber, speaker,
-    speech) was checked unique across all 225,564 rows.
+    speech) was checked unique across all 276,513 rows of the 2026-10-02 file.
     """
     key = "\x1f".join(str(record[k]) for k in ("date", "chamber", "speaker", "speech"))
     return "gov-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
@@ -387,11 +424,16 @@ class GovinfoBuildStats:
     rows_dropped_after_end: int = 0
     rows_dropped_unresolved_no_candidate: int = 0
     rows_dropped_unresolved_ambiguous: int = 0
+    # The Record's state contradicts every name match -- someone else was named.
+    rows_dropped_unresolved_state_mismatch: int = 0
     rows_dropped_delegate: int = 0
     rows_dropped_excluded_member: int = 0
     rows_dropped_short: int = 0
     rows_dropped_duplicate_id: int = 0
     independents_reassigned: int = 0
+    # Rows whose member sits in the other chamber from the Record section they
+    # appear in -- House impeachment managers at a Senate trial.
+    rows_chamber_reassigned: int = 0
     # Text repairs, counted over rows in the date window.
     rows_cut: dict[str, int] = field(default_factory=dict)
     words_removed_by_cleaning: int = 0
@@ -400,6 +442,9 @@ class GovinfoBuildStats:
     html_tags_removed: int = 0
     heading_lines_removed: int = 0
     # Speaker resolution, over rows in the date window.
+    rows_with_state: int = 0
+    rows_resolved_by_state: int = 0  # ambiguous by name, settled by the state
+    state_unrecognized: dict[str, int] = field(default_factory=dict)
     unresolved_by_chamber: dict[str, int] = field(default_factory=dict)
     unresolved_by_year: dict[str, int] = field(default_factory=dict)
     unresolved_top_speakers: dict[str, int] = field(default_factory=dict)
@@ -560,11 +605,19 @@ def build_govinfo_corpus(
                 continue
 
             speaker, chamber = str(record["speaker"]), str(record["chamber"])
-            resolution = index.resolve(speaker, chamber, day)
+            raw_state = record["state"]
+            state = state_code(None if raw_state is None else str(raw_state))
+            if raw_state is not None:
+                stats.rows_with_state += 1
+                if state is None:
+                    counters["state_unrecognized"][str(raw_state)] += 1
+            resolution = index.resolve(speaker, chamber, day, state=state)
             file_party = str(record.get("party"))
             if resolution.term is None:
                 if resolution.status == "ambiguous":
                     stats.rows_dropped_unresolved_ambiguous += 1
+                elif resolution.status == "state_mismatch":
+                    stats.rows_dropped_unresolved_state_mismatch += 1
                 else:
                     stats.rows_dropped_unresolved_no_candidate += 1
                 counters["unresolved_chamber"][chamber] += 1
@@ -573,6 +626,7 @@ def build_govinfo_corpus(
                 counters["file_vs_resolved"][f"{file_party} -> unresolved"] += 1
                 continue
             term = resolution.term
+            stats.rows_resolved_by_state += resolution.by_state
 
             file_icpsr = record.get("icpsr")
             if file_icpsr is not None and file_icpsr != term.icpsr:
@@ -611,6 +665,8 @@ def build_govinfo_corpus(
             seen_ids.add(speech_id)
 
             stats.independents_reassigned += reassigned
+            member_chamber = _TERM_CHAMBER_CODES[term.chamber]
+            stats.rows_chamber_reassigned += member_chamber != _CHAMBER_CODES[chamber]
             congress = congress_for(day)
             buffer.append(
                 {
@@ -618,7 +674,7 @@ def build_govinfo_corpus(
                     "date": day,
                     "member_id": term.bioguide,
                     "party": party,
-                    "chamber": _CHAMBER_CODES[chamber],
+                    "chamber": member_chamber,
                     "congress_number": congress,
                     "text": cleaned.text,
                     "source": SOURCE_TAG,
@@ -634,7 +690,7 @@ def build_govinfo_corpus(
             counters["party_original"][party_original] += 1
             counters["congress"][str(congress)] += 1
             counters["year"][str(day.year)] += 1
-            counters["chamber"][_CHAMBER_CODES[chamber]] += 1
+            counters["chamber"][member_chamber] += 1
             stats.icpsr_missing += term.icpsr is None
             iso = day.isoformat()
             stats.date_min = min(stats.date_min or iso, iso)
@@ -652,6 +708,7 @@ def build_govinfo_corpus(
         writer.close()
 
     stats.rows_cut = dict(sorted(counters["cut"].items()))
+    stats.state_unrecognized = dict(counters["state_unrecognized"].most_common())
     stats.unresolved_by_chamber = dict(sorted(counters["unresolved_chamber"].items()))
     stats.unresolved_by_year = dict(sorted(counters["unresolved_year"].items()))
     stats.unresolved_top_speakers = dict(counters["unresolved_speaker"].most_common(40))

@@ -2,3 +2,7 @@
 # rather than third-party. Mirrors `pythonpath = code` in pytest.ini and the
 # sys.path insert in code/scripts/.
 src = ["code"]
+
+# Konsti's dataset notebooks run in Colab and are not production code (CLAUDE.md:
+# production logic lives in code/src/). Excluded so `make lint` stays meaningful.
+extend-exclude = ["code/notebooks"]

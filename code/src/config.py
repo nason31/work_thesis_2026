@@ -43,8 +43,9 @@ STANFORD_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_stanford.parquet"
 # download it into RAW_STANFORD before running the corpus build.
 STANFORD_PARQUET: Path = RAW_STANFORD / "congress_speeches_2001_2017.parquet"
 
-# The govinfo speeches as published on the team drive (built by Konsti's
-# 02_govinfo_dataset.ipynb, not in this repo). Download into RAW_GOVINFO.
+# The govinfo speeches as published on the team drive, built by Konsti's
+# code/notebooks/02_govinfo_dataset.ipynb (Colab). Download into RAW_GOVINFO.
+# Must be the 2026-10-02 re-fetch or later: the build requires its `state` key.
 GOVINFO_JSONL: Path = RAW_GOVINFO / "congress_speeches_2016_present.jsonl"
 
 # unitedstates/congress-legislators, JSON build (CC0). The govinfo file's own
@@ -61,6 +62,19 @@ LEGISLATORS_FILES: tuple[Path, ...] = (
 # plus `icpsr`. Built by `make govinfo`; merged into CORPUS_PATH by `make corpus`.
 GOVINFO_CORPUS_PATH: Path = PROCESSED_DIR / "corpus_govinfo.parquet"
 
+# Voteview member file, every Congress (https://voteview.com/data, "Member
+# Ideology", HSall_members.csv). Read-only; the crosswalk filters it in code.
+# data/processed/dw_nominate_107_119.csv is exactly that filter, written by hand
+# before the crosswalk existed -- identical values, verified 2026-09-29.
+DW_NOMINATE_MEMBERS: Path = RAW_DW_NOMINATE / "HSall_members.csv"
+
+# Speech corpus member -> Voteview ICPSR, one row per source x member_id x
+# congress x chamber x party_original. Built by `make crosswalk` from
+# CORPUS_PATH; joins back onto the corpus on those five columns. Only rows with
+# in_validation=True enter the DW-NOMINATE validation -- the trend analysis
+# uses every speech regardless. See docs/decisions.md D21-D24.
+CROSSWALK_PATH: Path = PROCESSED_DIR / "member_crosswalk.parquet"
+
 # --- results -----------------------------------------------------------
 RESULTS_DIR: Path = REPO_ROOT / "results"
 PLOTS_DIR: Path = RESULTS_DIR / "plots"  # committed
@@ -73,14 +87,19 @@ STANFORD_BUILD_STATS_PATH: Path = METRICS_DIR / "stanford_build_stats.json"
 GOVINFO_BUILD_STATS_PATH: Path = METRICS_DIR / "govinfo_build_stats.json"
 MERGED_BUILD_STATS_PATH: Path = METRICS_DIR / "merged_build_stats.json"
 
+# Crosswalk match rates (per source, Congress and chamber) and the members left
+# unmatched, with speech counts, so gaps in the validation can be judged.
+CROSSWALK_STATS_PATH: Path = METRICS_DIR / "crosswalk_build_stats.json"
+CROSSWALK_UNMATCHED_PATH: Path = METRICS_DIR / "crosswalk_unmatched.csv"
+
 # --- thesis ------------------------------------------------------------
 THESIS_DIR: Path = REPO_ROOT / "thesis"
 FIGURES_DIR: Path = THESIS_DIR / "figures"  # final figures, copied from PLOTS_DIR
 
 # --- analysis constants ------------------------------------------------
-# Where Stanford hands over to govinfo. govinfo yields about a third fewer
-# speeches per year (measured, see docs/notes/2026-09-27_govinfo_data_reality.md),
-# so mark the break in every time-series plot (CLAUDE.md: "do not ignore the
+# Where Stanford hands over to govinfo. govinfo yields about 20% fewer House and
+# 38% fewer Senate speeches per year (measured, docs/decisions.md O8), so mark
+# the break in every time-series plot (CLAUDE.md: "do not ignore the
 # gap"). The break falls inside the 114th Congress, not on a Congress boundary:
 # on a per-Congress axis, the 114th is the mixed-source point.
 SOURCE_BREAK_DATE: dt.date = dt.date(2016, 9, 10)
@@ -179,6 +198,29 @@ EXPECTED_PARTIES: frozenset[str] = frozenset({"D", "R"})
 GOVINFO_START_DATE: dt.date = SOURCE_BREAK_DATE
 GOVINFO_END_DATE: dt.date = dt.date(YEAR_RANGE[1], 12, 31)
 
+# The state as the Record writes it beside a speaker ("Mr. SMITH of Texas.") ->
+# the congress-legislators code. Keys are upper-case; lookup folds case. A
+# string not listed here (misspellings, regex overruns, "of Japan") counts as no
+# state, never as a guess. Territories are listed so their delegates resolve and
+# are then dropped as delegates. See docs/decisions.md D25.
+STATE_CODES: dict[str, str] = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR",
+    "CALIFORNIA": "CA", "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE",
+    "FLORIDA": "FL", "GEORGIA": "GA", "HAWAII": "HI", "IDAHO": "ID",
+    "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA", "KANSAS": "KS",
+    "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN",
+    "MISSISSIPPI": "MS", "MISSOURI": "MO", "MONTANA": "MT", "NEBRASKA": "NE",
+    "NEVADA": "NV", "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ", "NEW MEXICO": "NM",
+    "NEW YORK": "NY", "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH",
+    "OKLAHOMA": "OK", "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI",
+    "SOUTH CAROLINA": "SC", "SOUTH DAKOTA": "SD", "TENNESSEE": "TN",
+    "TEXAS": "TX", "UTAH": "UT", "VERMONT": "VT", "VIRGINIA": "VA",
+    "WASHINGTON": "WA", "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY",
+    "AMERICAN SAMOA": "AS", "DISTRICT OF COLUMBIA": "DC", "GUAM": "GU",
+    "NORTHERN MARIANA ISLANDS": "MP", "PUERTO RICO": "PR", "VIRGIN ISLANDS": "VI",
+}  # fmt: skip
+
 # Keyed on bioguide id, not speakerid: govinfo rows are resolved against
 # congress-legislators, which has no speakerid. Applied only while the member's
 # party *on that date* is not Democrat/Republican (congress-legislators records
@@ -199,6 +241,24 @@ GOVINFO_EXCLUDED_MEMBERS: frozenset[str] = frozenset(
         "A000367",  # Justin Amash (MI-3) — Independent 2019-07-04, then Libertarian
     }
 )
+
+# --- DW-NOMINATE crosswalk ---------------------------------------------
+# Congresses the corpus spans: 107th (Stanford, from 2001) to 119th (govinfo,
+# to 2025). Voteview rows outside are ignored.
+VOTEVIEW_CONGRESS_RANGE: tuple[int, int] = (107, 119)
+
+# Corpus party code -> Voteview party_code, used ONLY to break a tie between
+# same-surname candidates, and only on `party_original` -- the caucus rule
+# rewrites `party` (Jeffords I -> D), while Voteview codes independents 328.
+# Voteview gives a member who switches party a new ICPSR, so a switcher has two
+# rows in that Congress; this picks the one matching the corpus's party label.
+VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
+
+# Voteview scores the LLM ideology scores are validated against. Both are
+# reported until one is chosen -- NOT YET DECIDED (docs/decisions.md O9):
+# nominate_dim1 is constant over a member's career, nokken_poole_dim1 is
+# estimated per Congress and so can show a member moving.
+VALIDATION_BENCHMARKS: tuple[str, ...] = ("nominate_dim1", "nokken_poole_dim1")
 
 # Ensemble composition decided — three models from distinct providers and
 # training paradigms. Pin specific snapshot versions for reproducibility;
@@ -227,14 +287,15 @@ SCORE_PROMPT_PATH: Path = PROMPTS_DIR / "score_speech.txt"
 # Seed for every sampling step, logged with each run so a pilot can be redrawn.
 RANDOM_SEED: int = 42
 
-# Pilot size. CLAUDE.md: always run 100-500 speeches before any full run.
+# Pilot size. CLAUDE.md: always run 100-500 speeches before any larger run.
+# There is no full-corpus run; the main results use the S8 sample below (S11).
 # The first pilot (2026-09-23) used 200, stratified party x congress.
 PILOT_SAMPLE_SIZE: int = 200
 
 # Stratification keys for the sample, and how many speeches per cell.
 # party x congress x chamber = 2 x 13 x 2 = 52 cells over the merged corpus
 # (107th-119th); at 100 each that is 5,200 speeches. The smallest cell (119th,
-# R, Senate) holds 1,128 rows, so the quota is never short.
+# R, Senate) holds 2,627 rows, so the quota is never short.
 # Chamber was added after the first pilot: House and Senate floor rhetoric differ
 # in length and formality, and an unbalanced split would confound a per-Congress
 # comparison with a drift in chamber mix.

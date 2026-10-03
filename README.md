@@ -53,8 +53,10 @@ make lint        # ruff + black --check
 make format      # apply black, autofix ruff
 make smoke       # Stanford build on the first 50k rows (needs raw data)
 make stanford    # Stanford side           (needs raw data)
+make govinfo-smoke  # govinfo build on the first 20k rows (needs raw data)
 make govinfo     # govinfo side            (needs raw data)
 make corpus      # merge both into data/processed/corpus.parquet
+make crosswalk   # corpus members -> DW-NOMINATE ICPSR (after make corpus)
 ```
 
 `make test` and `make lint` need no data and should pass on a fresh clone.
@@ -67,7 +69,8 @@ code/
     prompts/    prompt templates as files, so runs can log the exact text used
     config.py   all paths and shared constants — import, never hardcode
   scripts/      one-off pipeline / analysis scripts that call src/
-  notebooks/    exploration only
+  notebooks/    exploration, plus Konsti's three dataset notebooks (Colab)
+                that produce the raw files: 01 Stanford, 02 govinfo, 03 checks
 data/
   raw/          stanford/ govinfo/ dw_nominate/ — read-only, git-ignored
   processed/    merged corpus — git-ignored
@@ -93,16 +96,27 @@ The raw files are not in the repo — download them from the team drive first:
 
 - `congress_speeches_2001_2017.parquet` (~681 MB) into `data/raw/stanford/` —
   see [data/raw/stanford/README.md](data/raw/stanford/README.md)
-- `congress_speeches_2016_present.jsonl` into `data/raw/govinfo/`, plus the
-  congress-legislators JSON into `data/raw/congress_legislators/` — see
-  [data/raw/govinfo/README.md](data/raw/govinfo/README.md)
+- `congress_speeches_2016_present.jsonl` (~763 MB, the 2026-10-02 re-fetch)
+  into `data/raw/govinfo/`, plus the congress-legislators JSON into
+  `data/raw/congress_legislators/` — see
+  [data/raw/govinfo/README.md](data/raw/govinfo/README.md). An older copy of
+  the file has no `state` column and the build refuses it (it also lacks most
+  Senate speeches — `docs/decisions.md` O8, D25)
+- Voteview's `HSall_members.csv` (https://voteview.com/data, "Member
+  Ideology") into `data/raw/dw_nominate/` — only for `make crosswalk`
 
 ```bash
 make smoke       # Stanford, first 50k rows; seconds. Run this first.
 make stanford    # -> data/processed/corpus_stanford.parquet (2001-01-03 .. 2016-09-09)
 make govinfo     # -> data/processed/corpus_govinfo.parquet  (2016-09-12 .. 2025-12-19)
-make corpus      # -> data/processed/corpus.parquet, both merged (538,804 rows)
+make corpus      # -> data/processed/corpus.parquet, both merged (580,007 rows)
+make crosswalk   # -> data/processed/member_crosswalk.parquet (re-run after make corpus)
 ```
+
+`make crosswalk` links every corpus member to their Voteview ICPSR for the
+DW-NOMINATE validation, and lists who could not be matched in
+`results/metrics/crosswalk_unmatched.csv`. How to join it onto the speeches:
+the "Member crosswalk" section of `CLAUDE.md`.
 
 Each step writes its stats to `results/metrics/` (`stanford_build_stats.json`,
 `govinfo_build_stats.json`, `merged_build_stats.json`) — quote those files for
@@ -126,5 +140,5 @@ carries a `source` column; mark the break in every time-series plot.
 - `data/raw/` is read-only. Scripts never write there.
 - Pilot on 100–500 speeches before any full API run; log tokens and cost.
 - Save raw per-model scores to `results/scores/` *before* aggregating.
-- Mark the 2017 source break (Stanford → govinfo) in every time-series plot.
+- Mark the 2016-09-10 source break (Stanford → govinfo) in every time-series plot.
 - Format with `black`, lint with `ruff`.

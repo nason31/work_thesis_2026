@@ -1,0 +1,685 @@
+{
+  "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/member_crosswalk.parquet",
+  "built_at": "2026-10-03T09:13:17+00:00",
+  "inputs": {
+    "corpus": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+      "bytes": 906160386,
+      "sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704",
+      "rows": 580007
+    },
+    "voteview": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/raw/dw_nominate/HSall_members.csv",
+      "bytes": 6201428,
+      "sha256": "57c7e9c27c3e61587542da77edde3e6ad808fb6176e07670d965ea841525dd97",
+      "rows": 7161,
+      "congress_range": [
+        107,
+        119
+      ]
+    }
+  },
+  "summary": {
+    "govinfo": {
+      "units": 3196,
+      "units_matched": 3196,
+      "units_in_validation": 3195,
+      "speeches": 153289,
+      "speeches_matched": 153289,
+      "speeches_in_validation": 153271,
+      "unit_match_rate": 1.0,
+      "speech_match_rate": 1.0,
+      "speech_validation_rate": 0.9999
+    },
+    "stanford": {
+      "units": 4334,
+      "units_matched": 4322,
+      "units_in_validation": 4322,
+      "speeches": 426718,
+      "speeches_matched": 425971,
+      "speeches_in_validation": 425971,
+      "unit_match_rate": 0.9972,
+      "speech_match_rate": 0.9982,
+      "speech_validation_rate": 0.9982
+    }
+  },
+  "by_congress_chamber": {
+    "govinfo": {
+      "114": {
+        "H": {
+          "units": 389,
+          "units_matched": 389,
+          "speeches": 2643,
+          "speeches_matched": 2643,
+          "speeches_in_validation": 2643
+        },
+        "S": {
+          "units": 98,
+          "units_matched": 98,
+          "speeches": 1397,
+          "speeches_matched": 1397,
+          "speeches_in_validation": 1397
+        }
+      },
+      "115": {
+        "H": {
+          "units": 444,
+          "units_matched": 444,
+          "speeches": 26767,
+          "speeches_matched": 26767,
+          "speeches_in_validation": 26767
+        },
+        "S": {
+          "units": 105,
+          "units_matched": 105,
+          "speeches": 12017,
+          "speeches_matched": 12017,
+          "speeches_in_validation": 12017
+        }
+      },
+      "116": {
+        "H": {
+          "units": 439,
+          "units_matched": 439,
+          "speeches": 23909,
+          "speeches_matched": 23909,
+          "speeches_in_validation": 23891
+        },
+        "S": {
+          "units": 101,
+          "units_matched": 101,
+          "speeches": 9791,
+          "speeches_matched": 9791,
+          "speeches_in_validation": 9791
+        }
+      },
+      "117": {
+        "H": {
+          "units": 443,
+          "units_matched": 443,
+          "speeches": 20193,
+          "speeches_matched": 20193,
+          "speeches_in_validation": 20193
+        },
+        "S": {
+          "units": 102,
+          "units_matched": 102,
+          "speeches": 10031,
+          "speeches_matched": 10031,
+          "speeches_in_validation": 10031
+        }
+      },
+      "118": {
+        "H": {
+          "units": 442,
+          "units_matched": 442,
+          "speeches": 22658,
+          "speeches_matched": 22658,
+          "speeches_in_validation": 22658
+        },
+        "S": {
+          "units": 104,
+          "units_matched": 104,
+          "speeches": 7640,
+          "speeches_matched": 7640,
+          "speeches_in_validation": 7640
+        }
+      },
+      "119": {
+        "H": {
+          "units": 429,
+          "units_matched": 429,
+          "speeches": 10273,
+          "speeches_matched": 10273,
+          "speeches_in_validation": 10273
+        },
+        "S": {
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 5970,
+          "speeches_matched": 5970,
+          "speeches_in_validation": 5970
+        }
+      }
+    },
+    "stanford": {
+      "107": {
+        "H": {
+          "units": 438,
+          "units_matched": 436,
+          "speeches": 28697,
+          "speeches_matched": 28469,
+          "speeches_in_validation": 28469
+        },
+        "S": {
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 29546,
+          "speeches_matched": 29546,
+          "speeches_in_validation": 29546
+        }
+      },
+      "108": {
+        "H": {
+          "units": 436,
+          "units_matched": 433,
+          "speeches": 32980,
+          "speeches_matched": 32770,
+          "speeches_in_validation": 32770
+        },
+        "S": {
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 31551,
+          "speeches_matched": 31551,
+          "speeches_in_validation": 31551
+        }
+      },
+      "109": {
+        "H": {
+          "units": 438,
+          "units_matched": 436,
+          "speeches": 34590,
+          "speeches_matched": 34434,
+          "speeches_in_validation": 34434
+        },
+        "S": {
+          "units": 101,
+          "units_matched": 101,
+          "speeches": 26066,
+          "speeches_matched": 26066,
+          "speeches_in_validation": 26066
+        }
+      },
+      "110": {
+        "H": {
+          "units": 448,
+          "units_matched": 445,
+          "speeches": 40492,
+          "speeches_matched": 40341,
+          "speeches_in_validation": 40341
+        },
+        "S": {
+          "units": 102,
+          "units_matched": 102,
+          "speeches": 26235,
+          "speeches_matched": 26235,
+          "speeches_in_validation": 26235
+        }
+      },
+      "111": {
+        "H": {
+          "units": 441,
+          "units_matched": 441,
+          "speeches": 30926,
+          "speeches_matched": 30926,
+          "speeches_in_validation": 30926
+        },
+        "S": {
+          "units": 108,
+          "units_matched": 108,
+          "speeches": 18970,
+          "speeches_matched": 18970,
+          "speeches_in_validation": 18970
+        }
+      },
+      "112": {
+        "H": {
+          "units": 440,
+          "units_matched": 438,
+          "speeches": 30868,
+          "speeches_matched": 30866,
+          "speeches_in_validation": 30866
+        },
+        "S": {
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 17176,
+          "speeches_matched": 17176,
+          "speeches_in_validation": 17176
+        }
+      },
+      "113": {
+        "H": {
+          "units": 442,
+          "units_matched": 442,
+          "speeches": 26756,
+          "speeches_matched": 26756,
+          "speeches_in_validation": 26756
+        },
+        "S": {
+          "units": 105,
+          "units_matched": 105,
+          "speeches": 15204,
+          "speeches_matched": 15204,
+          "speeches_in_validation": 15204
+        }
+      },
+      "114": {
+        "H": {
+          "units": 435,
+          "units_matched": 435,
+          "speeches": 23977,
+          "speeches_matched": 23977,
+          "speeches_in_validation": 23977
+        },
+        "S": {
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 12684,
+          "speeches_matched": 12684,
+          "speeches_in_validation": 12684
+        }
+      }
+    }
+  },
+  "methods": {
+    "govinfo": {
+      "unique": {
+        "units": 3189,
+        "speeches": 152907
+      },
+      "party": {
+        "units": 7,
+        "speeches": 382
+      }
+    },
+    "stanford": {
+      "unique": {
+        "units": 4229,
+        "speeches": 419229
+      },
+      "party": {
+        "units": 51,
+        "speeches": 3876
+      },
+      "elimination": {
+        "units": 16,
+        "speeches": 703
+      },
+      "unmatched: ambiguous": {
+        "units": 8,
+        "speeches": 742
+      },
+      "speakerid": {
+        "units": 26,
+        "speeches": 2163
+      },
+      "unmatched: no_candidate": {
+        "units": 4,
+        "speeches": 5
+      }
+    }
+  },
+  "party_switch": [
+    {
+      "source": "govinfo",
+      "member_id": "A000367",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 21143,
+      "bioname": "AMASH, Justin",
+      "n_speeches": 5
+    },
+    {
+      "source": "govinfo",
+      "member_id": "K000401",
+      "congress_number": 119,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 22336,
+      "bioname": "KILEY, Kevin",
+      "n_speeches": 166
+    },
+    {
+      "source": "govinfo",
+      "member_id": "M001183",
+      "congress_number": 118,
+      "chamber": "S",
+      "party_original": "D",
+      "icpsr": 40915,
+      "bioname": "MANCHIN, Joe, III",
+      "n_speeches": 26
+    },
+    {
+      "source": "govinfo",
+      "member_id": "M001183",
+      "congress_number": 118,
+      "chamber": "S",
+      "party_original": "I",
+      "icpsr": 90915,
+      "bioname": "MANCHIN, Joe, III",
+      "n_speeches": 16
+    },
+    {
+      "source": "govinfo",
+      "member_id": "M001201",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 21737,
+      "bioname": "MITCHELL, Paul",
+      "n_speeches": 40
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "D",
+      "icpsr": 21980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 85
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 91980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 44
+    },
+    {
+      "source": "stanford",
+      "member_id": "107113101",
+      "congress_number": 107,
+      "chamber": "S",
+      "party_original": "I",
+      "icpsr": 94240,
+      "bioname": "JEFFORDS, James Merrill",
+      "n_speeches": 260
+    },
+    {
+      "source": "stanford",
+      "member_id": "107114830",
+      "congress_number": 107,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 89767,
+      "bioname": "GOODE, Virgil H., Jr.",
+      "n_speeches": 15
+    },
+    {
+      "source": "stanford",
+      "member_id": "108117630",
+      "congress_number": 108,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 94828,
+      "bioname": "HALL, Ralph Moody",
+      "n_speeches": 24
+    },
+    {
+      "source": "stanford",
+      "member_id": "111114511",
+      "congress_number": 111,
+      "chamber": "S",
+      "party_original": "D",
+      "icpsr": 94910,
+      "bioname": "SPECTER, Arlen",
+      "n_speeches": 222
+    },
+    {
+      "source": "stanford",
+      "member_id": "111115600",
+      "congress_number": 111,
+      "chamber": "H",
+      "party_original": "R",
+      "icpsr": 90901,
+      "bioname": "GRIFFITH, Parker",
+      "n_speeches": 17
+    }
+  ],
+  "no_nominate": [
+    {
+      "source": "govinfo",
+      "member_id": "H001092",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "D",
+      "icpsr": 21991,
+      "bioname": "HALL, Kwanza",
+      "n_speeches": 18
+    }
+  ],
+  "icpsr_disagreements": [
+    {
+      "source": "govinfo",
+      "member_id": "D000613",
+      "congress_number": 114,
+      "chamber": "H",
+      "party_original": "R",
+      "corpus_icpsr": 21127,
+      "icpsr": 21518,
+      "bioname": "DOLD, Robert",
+      "n_speeches": 24
+    },
+    {
+      "source": "govinfo",
+      "member_id": "M001183",
+      "congress_number": 118,
+      "chamber": "S",
+      "party_original": "I",
+      "corpus_icpsr": 40915,
+      "icpsr": 90915,
+      "bioname": "MANCHIN, Joe, III",
+      "n_speeches": 16
+    },
+    {
+      "source": "govinfo",
+      "member_id": "S001191",
+      "congress_number": 118,
+      "chamber": "S",
+      "party_original": "I",
+      "corpus_icpsr": 21300,
+      "icpsr": 91300,
+      "bioname": "SINEMA, Kyrsten",
+      "n_speeches": 8
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 116,
+      "chamber": "H",
+      "party_original": "R",
+      "corpus_icpsr": 21980,
+      "icpsr": 91980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 44
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 117,
+      "chamber": "H",
+      "party_original": "R",
+      "corpus_icpsr": 21980,
+      "icpsr": 91980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 22
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 118,
+      "chamber": "H",
+      "party_original": "R",
+      "corpus_icpsr": 21980,
+      "icpsr": 91980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 40
+    },
+    {
+      "source": "govinfo",
+      "member_id": "V000133",
+      "congress_number": 119,
+      "chamber": "H",
+      "party_original": "R",
+      "corpus_icpsr": 21980,
+      "icpsr": 91980,
+      "bioname": "VAN DREW, Jefferson",
+      "n_speeches": 18
+    }
+  ],
+  "unmatched": [
+    {
+      "source": "stanford",
+      "member_id": "108114700",
+      "congress_number": 108,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 163,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "110114700",
+      "congress_number": 110,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 144,
+      "unmatched_reason": "ambiguous",
+      "name_variants": ".DAVIS | DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "109114700",
+      "congress_number": 109,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 132,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "107114700",
+      "congress_number": 107,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 115,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "107114690",
+      "congress_number": 107,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 113,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "108114690",
+      "congress_number": 108,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 46,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "109114690",
+      "congress_number": 109,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 24,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "110114690",
+      "congress_number": 110,
+      "chamber": "H",
+      "state": "VA",
+      "party_original": "R",
+      "last_name": "DAVIS",
+      "n_speeches": 5,
+      "unmatched_reason": "ambiguous",
+      "name_variants": "DAVIS",
+      "candidates": "DAVIS, Jo Ann (20141) | DAVIS, Thomas M., III (29576)"
+    },
+    {
+      "source": "stanford",
+      "member_id": "110116360",
+      "congress_number": 110,
+      "chamber": "H",
+      "state": "OR",
+      "party_original": "D",
+      "last_name": "WIU",
+      "n_speeches": 2,
+      "unmatched_reason": "no_candidate",
+      "name_variants": "WIU | WVU",
+      "candidates": ""
+    },
+    {
+      "source": "stanford",
+      "member_id": "108116660",
+      "congress_number": 108,
+      "chamber": "H",
+      "state": "CA",
+      "party_original": "R",
+      "last_name": "SCHMITT",
+      "n_speeches": 1,
+      "unmatched_reason": "no_candidate",
+      "name_variants": "SCHMITT",
+      "candidates": ""
+    },
+    {
+      "source": "stanford",
+      "member_id": "112116360",
+      "congress_number": 112,
+      "chamber": "H",
+      "state": "OR",
+      "party_original": "D",
+      "last_name": "WKU",
+      "n_speeches": 1,
+      "unmatched_reason": "no_candidate",
+      "name_variants": "WKU",
+      "candidates": ""
+    },
+    {
+      "source": "stanford",
+      "member_id": "112121620",
+      "congress_number": 112,
+      "chamber": "H",
+      "state": "MD",
+      "party_original": "D",
+      "last_name": "SMITH",
+      "n_speeches": 1,
+      "unmatched_reason": "no_candidate",
+      "name_variants": "SMITH",
+      "candidates": ""
+    }
+  ]
+}
