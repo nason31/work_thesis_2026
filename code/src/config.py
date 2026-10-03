@@ -321,6 +321,13 @@ PILOT_MEASURED_TOKENS: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 1241.9, "output": 95.6},
 }
 
+# Earlier model names whose answers may be carried into a new run as this
+# model's (S16). Only `deepseek-reasoner` -> `deepseek-flash`: every one of its
+# 208 answers in run 20261003T100851Z records `deepseek-flash` as the model that
+# served it, in thinking mode -- the same model and mode the new name pins.
+# The carry-over still checks each row's served model before importing it.
+CARRY_OVER_EQUIVALENTS: dict[str, str] = {"deepseek-flash": "deepseek-reasoner"}
+
 # Hard deadline for one provider call, in seconds; a call past it is abandoned
 # and retried (S14). On 2026-10-03 one call hung for 20 minutes and the SDK's
 # own timeout never fired. The slowest answered speech in that run took 21 s,

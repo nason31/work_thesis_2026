@@ -24,8 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import pilot_run
 from pilot_run import preflight, summarize
 
-from src.config import ENSEMBLE_MODELS
-from src.scoring import ScoreResult
+from src.config import ENSEMBLE_MODELS, SCORE_PROMPT_PATH
+from src.corpus import _fingerprint
+from src.scoring import ScoreResult, load_prompt_template
 
 DEEPSEEK, GPT = ENSEMBLE_MODELS
 
@@ -190,7 +191,13 @@ def run_env(tmp_path: Path, monkeypatch):
         ]  # fmt: skip
         return asyncio.run(pilot_run.main(argv))
 
-    return {"run": run, "scores": scores, "metrics": metrics, "providers": providers}
+    return {
+        "run": run,
+        "scores": scores,
+        "metrics": metrics,
+        "providers": providers,
+        "corpus": corpus,
+    }
 
 
 def _only_run(scores: Path, label: str = "s8") -> str:
@@ -305,3 +312,150 @@ def test_a_resume_that_would_mix_runs_is_refused(
     assert message in capsys.readouterr().err
     assert second.calls == []
     assert {p.name: p.read_bytes() for p in run_env["scores"].iterdir()} == before
+
+
+# --- carrying an earlier run's answers into a new run (S16) ----------------
+
+OLD = "20261003T100851Z"
+
+
+def _legacy_run(
+    run_env,
+    served: str = "deepseek-flash",
+    gpt_cap: int = 1024,
+    prompt: str | None = None,
+) -> list[str]:
+    """An earlier run as 20261003T100851Z was: three models, DeepSeek by alias.
+
+    Its manifest predates `request_options`, and its DeepSeek rows were
+    requested as `deepseek-reasoner` but served by `served`. Returns the
+    speech ids it scored (the 2-per-cell sample).
+    """
+    scores = run_env["scores"]
+    scores.mkdir(parents=True, exist_ok=True)
+    speeches = pilot_run.load_sample(run_env["corpus"], 42, 50, per_cell=2)
+
+    def entry(model, provider, cap):
+        return {
+            "model": model,
+            "provider": provider,
+            "effective_temperature": "provider default",
+            "max_output_tokens": cap,
+        }
+
+    manifest = {
+        "timestamp": OLD,
+        "label": "s8",
+        "corpus_sha256": _fingerprint(run_env["corpus"]),
+        "prompt_template": prompt or load_prompt_template(SCORE_PROMPT_PATH),
+        "models": {
+            "deepseek-reasoner": entry("deepseek-reasoner", "openai_compatible", 8192),
+            GPT: entry(GPT, "openai_compatible", gpt_cap),
+            "claude-sonnet-4-6": entry("claude-sonnet-4-6", "anthropic", 1024),
+        },
+        "random_seed": 42,
+        "min_word_count": 50,
+        "stratify_by": ["congress_number", "party", "chamber"],
+        "per_cell": 2,
+        "stages": [{"stage": 1, "per_cell": 2}],
+    }
+    (scores / f"s8_manifest_{OLD}.json").write_text(json.dumps(manifest))
+    served_by = {"deepseek-reasoner": served, GPT: GPT, "claude-sonnet-4-6": "claude"}
+    for model, served_model in served_by.items():
+        rows = [
+            {
+                "speech_id": sp["speech_id"],
+                "party": sp["party"],
+                "chamber": sp["chamber"],
+                "congress_number": sp["congress_number"],
+                "ideology_score": 0.2,
+                "tone_score": 0.1,
+                "reasoning": "r",
+                "model": model,
+                "served_model": served_model,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "error": None,
+                "stage": 1,
+            }
+            for sp in speeches
+        ]
+        (scores / f"s8_{model}_{OLD}.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows)
+        )
+    return [sp["speech_id"] for sp in speeches]
+
+
+def _new_run(scores: Path) -> str:
+    (manifest,) = [p for p in scores.glob("s8_manifest_*.json") if OLD not in p.name]
+    return manifest.stem.removeprefix("s8_manifest_")
+
+
+def test_carry_over_scores_only_what_the_earlier_run_did_not(run_env) -> None:
+    carried = set(_legacy_run(run_env))
+
+    fake = FakeProviders()
+    code = run_env["run"](
+        "--label", "s8", "--per-cell", "4", "--carry-over-from", OLD, fake=fake
+    )  # fmt: skip
+
+    assert code == 0
+    assert len(fake.calls) == 4 * len(ENSEMBLE_MODELS)
+    assert not {speech for speech, _ in fake.calls} & carried
+    run = _new_run(run_env["scores"])
+    deepseek = _rows(run_env["scores"] / f"s8_{DEEPSEEK}_{run}.jsonl")
+    assert len(deepseek) == 8
+    imported = [r for r in deepseek if r.get("carried_from")]
+    assert {r["speech_id"] for r in imported} == carried
+    assert {r["model"] for r in imported} == {"deepseek-reasoner"}
+    assert {r["carried_from"]["run"] for r in imported} == {OLD}
+    assert not list(run_env["scores"].glob(f"s8_claude-sonnet-4-6_{run}.jsonl"))
+    ensemble = _rows(run_env["scores"] / f"s8_ensemble_{run}.jsonl")
+    assert {r["n_models"] for r in ensemble} == {len(ENSEMBLE_MODELS)}
+    manifest = json.loads((run_env["scores"] / f"s8_manifest_{run}.json").read_text())
+    assert manifest["carried_over_from"]["run"] == OLD
+    assert manifest["carried_over_from"]["models"] == {
+        DEEPSEEK: "deepseek-reasoner",
+        GPT: GPT,
+    }
+    assert [st.get("carried_over_from") for st in manifest["stages"]] == [OLD, None]
+
+
+def test_a_carry_over_dry_run_calls_nothing_and_writes_nothing(run_env) -> None:
+    _legacy_run(run_env)
+    before = {p.name: p.read_bytes() for p in run_env["scores"].iterdir()}
+
+    fake = FakeProviders()
+    code = run_env["run"](
+        "--label", "s8", "--per-cell", "4", "--carry-over-from", OLD, "--dry-run",
+        fake=fake,
+    )  # fmt: skip
+
+    assert code == 0 and fake.calls == []
+    assert {p.name: p.read_bytes() for p in run_env["scores"].iterdir()} == before
+
+
+@pytest.mark.parametrize(
+    ("legacy", "message"),
+    [
+        ({"served": "deepseek-v4-pro"}, "deepseek-v4-pro"),
+        ({"gpt_cap": 2048}, GPT),
+        ({"prompt": "Another prompt: {speech_text}"}, "prompt_template"),
+    ],
+    ids=["deepseek-served-by-another-model", "changed-gpt-setting", "changed-prompt"],
+)
+def test_a_carry_over_that_would_mix_instruments_is_refused(
+    run_env, capsys, legacy, message
+) -> None:
+    _legacy_run(run_env, **legacy)
+    before = {p.name for p in run_env["scores"].iterdir()}
+
+    fake = FakeProviders()
+    code = run_env["run"](
+        "--label", "s8", "--per-cell", "4", "--carry-over-from", OLD, fake=fake
+    )  # fmt: skip
+
+    assert code != 0
+    assert message in capsys.readouterr().err
+    assert fake.calls == []
+    assert {p.name for p in run_env["scores"].iterdir()} == before

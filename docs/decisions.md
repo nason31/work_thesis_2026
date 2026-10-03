@@ -1387,7 +1387,8 @@ run summary flags a change of served model mid-run.
 **Consequences:**
 - **A new S8 run.** The model is score-defining, so run `20261003T100851Z`
   cannot be resumed under the new name; it stands as a pilot over the merged
-  corpus ([P6]). The new run starts at 4 per cell again (~$2): the same 208
+  corpus ([P6]). *Changed by [S16]: no second stage 1 — the new run carries
+  over the old run's GPT-4o and DeepSeek answers.* The new run starts at 4 per cell again (~$2): the same 208
   speeches, so its DeepSeek scores against the old run's check that the alias
   and the new name behave as one instrument. Then resume to 100 per cell.
 - **Prices:** `deepseek-flash` lists $0.30 / $1.20 per 1M tokens (peak, cache
@@ -1531,8 +1532,62 @@ models from its first call, because the model list is score-defining ([S13]).
   three-model evidence already exists in P2 and P6.
 
 **Consequences:** the new S8 run's first stage (4 per cell, the same 208
-speeches as [P6]) costs ~$0.85 instead of ~$2; the full run ~$21. [M3b]'s
+speeches as [P6]) costs ~$0.85 instead of ~$2; the full run ~$21. *[S16]:
+that stage is carried over from [P6] instead — ~$20 for the remaining 4,992.* [M3b]'s
 "new S8 run" is this two-model run.
+
+---
+
+### S16 — The S8 run starts from stage 1's answers instead of re-scoring them
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · changes
+the consequences of [M3b] and [S15]
+
+The S8 run is started with
+
+    pilot_run.py --label s8 --per-cell 100 --carry-over-from 20261003T100851Z
+
+Its stage 1 is the 416 GPT-4o and DeepSeek answers to [P6]'s 208 speeches,
+carried over; stage 2 scores only the other 4,992 speeches (~$20). Sonnet's
+208 answers stay in the old run as pilot evidence ([S15]).
+
+**Why:** those answers come from the models the run uses. GPT-4o: same snapshot,
+same settings. DeepSeek: requested as `deepseek-reasoner`, but every one of the
+208 rows records `deepseek-flash` as the model that answered (one system
+fingerprint); DeepSeek documents that name as Flash's thinking mode, and
+thinking at high effort is Flash's default — the settings [M3b] pins. A
+second stage 1 would have cost ~$0.84 and bought a test-retest comparison;
+Justus judged that not worth another run.
+
+**Assumption — state it in the methodology:** the old DeepSeek calls relied on
+the default effort instead of sending it, and did not record reasoning tokens,
+so "high effort" for those 208 answers is inferred from the documented
+default, not observed. **Check after stage 2:** DeepSeek's output tokens per
+speech on the carried speeches (mean 499) against the new ones; a clear shift
+would put the equivalence in doubt.
+
+**Guards** (`--carry-over-from`, `code/src/runs.py`):
+- corpus, prompt, seed, length filter and strata must be identical;
+- a model under the same name must have identical settings (a manifest from
+  before request options were recorded counts as having sent none, which is
+  what the code did);
+- a renamed model is allowed only as a declared pair
+  (`CARRY_OVER_EQUIVALENTS` in `config.py`, today only `deepseek-reasoner` →
+  `deepseek-flash`) and only if every carried row's served model is the new
+  name;
+- the old run's speeches must lie inside the new sample.
+
+Carried rows keep everything they recorded — including the model name they
+were requested under — plus `carried_from` (run, stage, model); the new
+manifest records `carried_over_from`.
+
+**Rejected:**
+- *A second stage 1 under the new name* ([M3b]'s plan) — ~$0.84 and 15 minutes
+  for answers already in hand.
+- *Resuming the old run with Sonnet dropped* — its manifest and file names
+  record three models and the alias; continuing it would make the run's own
+  record wrong.
+- *A general switch to ignore model changes on resume* — would let any change
+  of instrument through. The pair is declared, and checked row by row.
 
 ---
 
