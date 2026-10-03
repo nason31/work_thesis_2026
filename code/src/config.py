@@ -260,19 +260,24 @@ VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
 # estimated per Congress and so can show a member moving.
 VALIDATION_BENCHMARKS: tuple[str, ...] = ("nominate_dim1", "nokken_poole_dim1")
 
-# Ensemble composition decided — three models from distinct providers and
-# training paradigms. Pin specific snapshot versions for reproducibility;
+# Ensemble composition decided (M3, M3a, M3b, S15) — models from distinct
+# providers and training paradigms. Pin specific snapshot versions for reproducibility;
 # update these constants (and CLAUDE.md) if a version is changed mid-project.
-#   deepseek-reasoner  — DeepSeek R1, reasoning model, open-weight (RL-trained)
+#   deepseek-flash     — DeepSeek-V4.1-Flash, thinking mode (DeepSeek)
 #   gpt-4o-2024-11-20  — GPT-4o snapshot, industry-standard baseline (OpenAI)
 #   claude-sonnet-4-6  — Claude Sonnet 4.6, Constitutional AI paradigm (Anthropic)
 # Claude 3.5 Sonnet was the original choice but was RETIRED (404) before the
-# first run; Sonnet 4.6 replaces it at the same tier and price. See
-# docs/decisions.md M3a.
+# first run; Sonnet 4.6 replaces it at the same tier and price (M3a).
+# `deepseek-reasoner` (once "DeepSeek R1") was a legacy alias that DeepSeek
+# routed to its current Flash model and announced for retirement; replaced by
+# the current name on 2026-10-03 (M3b). `deepseek-flash` is not a dated
+# snapshot either: every row records the model the provider says answered.
+# Claude Sonnet 4.6 was dropped for the S8 run on 2026-10-03 (S15): it agreed
+# with GPT-4o at r = 0.97 and was the most expensive member. Its spec and price
+# stay in scoring.py/below, so the three-model pilots remain readable.
 ENSEMBLE_MODELS: tuple[str, ...] = (
-    "deepseek-reasoner",  # DeepSeek R1 — reasoning model, open-weight
+    "deepseek-flash",  # DeepSeek-V4.1-Flash — reasoning (thinking) mode
     "gpt-4o-2024-11-20",  # GPT-4o — industry-standard baseline
-    "claude-sonnet-4-6",  # Claude Sonnet 4.6 — Constitutional AI
 )
 
 # Prompt templates live as files next to this module so every run can log the
@@ -302,24 +307,33 @@ PILOT_SAMPLE_SIZE: int = 200
 STRATIFY_BY: tuple[str, ...] = ("congress_number", "party", "chamber")
 PILOT_PER_CELL: int = 100
 
-# Measured per-speech token usage from the 200-speech pilot
-# (results/metrics/pilot_summary_20260923T103556Z.json). Used to estimate cost
-# from observation rather than a flat guess: the providers differ by ~30% on
-# input tokens for identical text because their tokenizers differ, and
-# deepseek-reasoner emits ~7x the output of the other two because its reasoning
-# is billed as output.
-PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 903.5
+# Measured per-speech token usage, used to estimate cost from observation
+# rather than a flat guess: the providers differ by ~30% on input tokens for
+# identical text because their tokenizers differ, and the DeepSeek reasoner
+# emits ~7x the output of the other two because its reasoning is billed as
+# output. Re-measured 2026-10-03 on the first S8 stage (208 speeches over the
+# merged corpus, run 20261003T100851Z, DeepSeek served by deepseek-flash),
+# replacing the Stanford-only 200-speech pilot of 2026-09-23 (S9).
+PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 967.7
 PILOT_MEASURED_TOKENS: dict[str, dict[str, float]] = {
-    "deepseek-reasoner": {"input": 926.8, "output": 529.0},
-    "gpt-4o-2024-11-20": {"input": 909.1, "output": 69.1},
-    "claude-sonnet-4-6": {"input": 1172.2, "output": 93.7},
+    "deepseek-flash": {"input": 997.3, "output": 498.9},
+    "gpt-4o-2024-11-20": {"input": 972.8, "output": 69.3},
+    "claude-sonnet-4-6": {"input": 1241.9, "output": 95.6},
 }
 
+# Hard deadline for one provider call, in seconds; a call past it is abandoned
+# and retried (S14). On 2026-10-03 one call hung for 20 minutes and the SDK's
+# own timeout never fired. The slowest answered speech in that run took 21 s,
+# so 300 s is ~14x headroom. Not score-defining: it decides whether an answer
+# arrives, not what it says.
+CALL_TIMEOUT_SECONDS: float = 300.0
+
 # NO TEMPERATURE IS SET. Not a preference -- the providers removed the control:
-# `deepseek-reasoner` ignores it, and the anthropic SDK dropped the parameter
+# DeepSeek ignores it (its docs: "will not trigger an error but will also have
+# no effect"), and the anthropic SDK dropped the parameter
 # entirely (current models return "`temperature` is deprecated for this model").
 # Rather than set it on one model of three and imply the ensemble is uniformly
-# configured, all three run at their provider default, and every run manifest
+# configured, every model runs at its provider default, and every run manifest
 # records that. See docs/decisions.md S2a.
 SCORING_TEMPERATURE = None
 
@@ -333,10 +347,12 @@ TONE_SCORE_RANGE: tuple[float, float] = (0.0, 1.0)
 # distribution of disagreement.
 ENSEMBLE_DISAGREEMENT_THRESHOLD: float = 0.3
 
-# USD per 1M tokens, list prices as of September 2026. Approximate and provider
-# pricing changes, so treat every cost figure as an estimate, not an invoice.
+# USD per 1M tokens, list prices as of September 2026 (DeepSeek: October 2026).
+# Approximate and provider pricing changes, so treat every cost figure as an
+# estimate, not an invoice. DeepSeek is priced at its peak-hour, cache-miss
+# rate; off-peak is half ($0.15 / $0.60), so its figure is an upper bound.
 MODEL_PRICING: dict[str, dict[str, float]] = {
-    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    "deepseek-flash": {"input": 0.30, "output": 1.20},
     "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }

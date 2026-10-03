@@ -8,15 +8,21 @@ wrappers around two SDKs and are exercised by the `--sample-size 6` run.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from anthropic.types import Message
+from openai.types.chat import ChatCompletion
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from pilot_run import _mean_std, allocate, build_ensemble, model_manifest
+from tenacity import wait_none
 
+from src import scoring
 from src.scoring import (
     MODEL_SPECS,
     ModelSpec,
@@ -26,6 +32,7 @@ from src.scoring import (
     extract_json,
     load_prompt_template,
     render_prompt,
+    score_one,
     specs_for,
     validate_scores,
 )
@@ -194,7 +201,7 @@ def test_reasoning_model_gets_more_output_headroom() -> None:
     At 1024 the reasoner spent the whole cap reasoning on a 623-word speech and
     returned empty content.
     """
-    reasoner = MODEL_SPECS["deepseek-reasoner"]
+    reasoner = MODEL_SPECS[DEEPSEEK]
 
     assert (
         reasoner.max_output_tokens > MODEL_SPECS["gpt-4o-2024-11-20"].max_output_tokens
@@ -209,12 +216,223 @@ def test_truncation_is_recorded_not_raised() -> None:
     assert issubclass(TruncatedResponseError, ScoreParseError)
 
 
+# --- what one call records ----------------------------------------------
+# The network is replaced, nothing else: the fakes hand back real SDK response
+# objects, so parsing, validation and retry logic all run as in production.
+
+ANSWER = '{"ideology_score": -0.4, "tone_score": 0.2, "reasoning": "r"}'
+DEEPSEEK = "deepseek-flash"
+
+
+def _chat_completion(
+    content: str,
+    finish_reason: str,
+    completion_tokens: int,
+    model: str,
+    reasoning_tokens: int | None = None,
+) -> ChatCompletion:
+    usage = {
+        "prompt_tokens": 800,
+        "completion_tokens": completion_tokens,
+        "total_tokens": 800 + completion_tokens,
+    }
+    if reasoning_tokens is not None:
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning_tokens}
+    return ChatCompletion.model_validate(
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": model,
+            "system_fingerprint": "fp_test",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": finish_reason,
+                    "logprobs": None,
+                    "message": {"role": "assistant", "content": content},
+                }
+            ],
+            "usage": usage,
+        }
+    )
+
+
+def _openai_client(
+    response: ChatCompletion, calls: list | None = None
+) -> SimpleNamespace:
+    async def create(**kwargs):
+        if calls is not None:
+            calls.append(kwargs)
+        return response
+
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+
+
+def test_a_truncated_call_still_records_the_tokens_it_was_billed_for() -> None:
+    """The reasoner burns its whole cap and answers nothing -- that was paid for."""
+    response = _chat_completion("", "length", 8192, DEEPSEEK)
+
+    result = asyncio.run(
+        score_one(MODEL_SPECS[DEEPSEEK], _openai_client(response), "p")
+    )
+
+    assert result.error is not None and "TruncatedResponseError" in result.error
+    assert result.ideology_score is None
+    assert result.prompt_tokens == 800
+    assert result.completion_tokens == 8192
+
+
+def test_a_call_records_the_model_the_provider_actually_served() -> None:
+    """A model name can be repointed; the response says what answered."""
+    response = _chat_completion(ANSWER, "stop", 400, "deepseek-v9-served")
+
+    result = asyncio.run(
+        score_one(MODEL_SPECS[DEEPSEEK], _openai_client(response), "p")
+    )
+
+    assert result.ideology_score == -0.4
+    assert result.served_model == "deepseek-v9-served"
+    assert result.system_fingerprint == "fp_test"
+
+
+def test_an_anthropic_call_records_the_served_model() -> None:
+    response = Message.model_validate(
+        {
+            "id": "msg_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-6-served",
+            "content": [{"type": "text", "text": ANSWER}],
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 1100, "output_tokens": 90},
+        }
+    )
+
+    async def create(**kwargs):
+        return response
+
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    result = asyncio.run(score_one(MODEL_SPECS["claude-sonnet-4-6"], client, "p"))
+
+    assert result.ideology_score == -0.4
+    assert result.served_model == "claude-sonnet-4-6-served"
+    assert (result.prompt_tokens, result.completion_tokens) == (1100, 90)
+
+
+def test_a_call_records_how_many_tokens_went_to_reasoning() -> None:
+    """Shows thinking mode was actually on, not just requested."""
+    response = _chat_completion(ANSWER, "stop", 500, DEEPSEEK, reasoning_tokens=430)
+
+    result = asyncio.run(
+        score_one(MODEL_SPECS[DEEPSEEK], _openai_client(response), "p")
+    )
+
+    assert result.reasoning_tokens == 430
+
+
+def test_the_deepseek_call_pins_thinking_mode_and_its_effort() -> None:
+    """Both are on by default today; pinned so a changed default cannot move scores."""
+    calls: list = []
+    response = _chat_completion(ANSWER, "stop", 500, DEEPSEEK)
+
+    asyncio.run(score_one(MODEL_SPECS[DEEPSEEK], _openai_client(response, calls), "p"))
+
+    assert calls[0]["model"] == "deepseek-flash"
+    assert calls[0]["extra_body"] == {"thinking": {"type": "enabled"}}
+    assert calls[0]["reasoning_effort"] == "high"
+
+
+def test_a_model_without_request_options_sends_none() -> None:
+    calls: list = []
+    response = _chat_completion(ANSWER, "stop", 60, "gpt-4o-2024-11-20")
+
+    asyncio.run(
+        score_one(
+            MODEL_SPECS["gpt-4o-2024-11-20"], _openai_client(response, calls), "p"
+        )
+    )
+
+    assert "extra_body" not in calls[0] and "reasoning_effort" not in calls[0]
+
+
+def test_the_manifest_records_each_models_request_options() -> None:
+    """They change what the model does, so a resume must see them (S13)."""
+    from src.config import ENSEMBLE_MODELS
+
+    models = model_manifest(specs_for(ENSEMBLE_MODELS))
+
+    assert models[DEEPSEEK]["request_options"] == {
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    assert models["gpt-4o-2024-11-20"]["request_options"] == {}
+
+
+# --- a call that never answers ---------------------------------------------
+
+
+def _hanging_client(hang_first: int, calls: list) -> SimpleNamespace:
+    """Hangs on its first `hang_first` calls, then answers."""
+    response = _chat_completion(ANSWER, "stop", 60, "gpt-4o-2024-11-20")
+
+    async def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) <= hang_first:
+            await asyncio.sleep(10)
+        return response
+
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+
+
+@pytest.fixture
+def short_deadline(monkeypatch):
+    """A 50 ms deadline and no back-off, so the tests run in milliseconds."""
+    monkeypatch.setattr(scoring, "CALL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(scoring, "RETRY_WAIT", wait_none())
+
+
+def test_a_hung_call_is_abandoned_and_retried(short_deadline) -> None:
+    """On 2026-10-03 one call hung for 20 minutes and stalled the whole run."""
+    calls: list = []
+    spec = MODEL_SPECS["gpt-4o-2024-11-20"]
+
+    result = asyncio.run(score_one(spec, _hanging_client(1, calls), "p"))
+
+    assert result.ok and result.ideology_score == -0.4
+    assert len(calls) == 2
+
+
+def test_a_call_that_never_answers_becomes_a_failed_row(short_deadline) -> None:
+    calls: list = []
+    spec = MODEL_SPECS["gpt-4o-2024-11-20"]
+
+    result = asyncio.run(score_one(spec, _hanging_client(99, calls), "p"))
+
+    assert not result.ok
+    assert "TimeoutError" in result.error
+    assert len(calls) == 3
+
+
 def test_retired_model_is_gone_from_the_ensemble() -> None:
     """claude-3-5-sonnet-20241022 was retired (404) before the first run."""
     from src.config import ENSEMBLE_MODELS
 
     assert "claude-3-5-sonnet-20241022" not in ENSEMBLE_MODELS
     assert "claude-3-5-sonnet-20241022" not in MODEL_SPECS
+
+
+def test_the_legacy_deepseek_alias_is_gone_from_the_ensemble() -> None:
+    """`deepseek-reasoner` is past its announced retirement (M3b)."""
+    from src.config import ENSEMBLE_MODELS
+
+    assert "deepseek-reasoner" not in ENSEMBLE_MODELS
+    assert DEEPSEEK in ENSEMBLE_MODELS
 
 
 # --- cost --------------------------------------------------------------
@@ -424,4 +642,5 @@ def test_manifest_records_each_models_own_output_cap() -> None:
         "provider": "anthropic",
         "effective_temperature": "provider default",
         "max_output_tokens": 512,
+        "request_options": {},
     }

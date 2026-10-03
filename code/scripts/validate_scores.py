@@ -31,12 +31,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config import (
     CORPUS_PATH,
     CROSSWALK_PATH,
-    ENSEMBLE_MODELS,
     METRICS_DIR,
     SCORES_DIR,
     VALIDATION_BENCHMARKS,
 )
 from src.corpus import _fingerprint
+from src.runs import find_label, latest_run, model_path, run_models
 from src.validation import (
     ENSEMBLE_COLUMN,
     attach_benchmarks,
@@ -49,14 +49,6 @@ SUBSETS = {
     "all_speeches": lambda frame: frame,
     "non_procedural": lambda frame: frame[~frame["procedural"]],
 }
-
-
-def latest_run(scores_dir: Path) -> str:
-    """Timestamp of the newest run manifest in ``scores_dir``."""
-    manifests = sorted(scores_dir.glob("pilot_manifest_*.json"))
-    if not manifests:
-        raise FileNotFoundError(f"No run manifest in {scores_dir}")
-    return manifests[-1].stem.removeprefix("pilot_manifest_")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -96,13 +88,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         run = args.run or latest_run(args.scores_dir)
-        scores = load_run_scores(args.scores_dir, run)
+        models = run_models(args.scores_dir, run)
+        scores = load_run_scores(args.scores_dir, run, models)
         frame = attach_benchmarks(scores, corpus=args.corpus, crosswalk=args.crosswalk)
-    except (FileNotFoundError, ValueError) as error:
+    except (FileNotFoundError, KeyError, ValueError) as error:
         print(f"validate_scores: {error}", file=sys.stderr)
         return 1
 
-    score_columns = [ENSEMBLE_COLUMN] + [score_column(m) for m in ENSEMBLE_MODELS]
+    score_columns = [ENSEMBLE_COLUMN] + [score_column(m) for m in models]
     results: dict[str, object] = {}
     for subset, select in SUBSETS.items():
         rows = select(frame)
@@ -121,9 +114,11 @@ def main(argv: list[str] | None = None) -> int:
         "inputs": {
             "scores": {
                 model: _fingerprint(
-                    args.scores_dir / f"pilot_{model.replace('/', '_')}_{run}.jsonl"
+                    model_path(
+                        args.scores_dir, find_label(args.scores_dir, run), model, run
+                    )
                 )
-                for model in ENSEMBLE_MODELS
+                for model in models
             },
             "corpus": {"path": str(args.corpus), "sha256": _fingerprint(args.corpus)},
             "crosswalk": {

@@ -27,10 +27,13 @@ MODELS = ("model-a", "model-b")
 # --- fixture helpers ---------------------------------------------------
 
 
-def _write_run(tmp_path: Path, per_model: dict[str, list[dict]]) -> Path:
-    """Per-model JSONL files as pilot_run.py writes them."""
+def _write_run(
+    tmp_path: Path, per_model: dict[str, list[dict]], label: str = "pilot"
+) -> Path:
+    """A manifest and per-model JSONL files as pilot_run.py writes them."""
+    (tmp_path / f"{label}_manifest_{RUN}.json").write_text("{}")
     for model, rows in per_model.items():
-        path = tmp_path / f"pilot_{model}_{RUN}.jsonl"
+        path = tmp_path / f"{label}_{model}_{RUN}.jsonl"
         path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     return tmp_path
 
@@ -152,6 +155,58 @@ def test_speech_every_model_scored_zero_is_procedural(tmp_path: Path) -> None:
     assert scores.loc["s1", "procedural"]
     # Mean 0.0 from disagreeing models is not procedural.
     assert not scores.loc["s2", "procedural"]
+
+
+def test_a_retried_speech_counts_once_with_its_successful_score(
+    tmp_path: Path,
+) -> None:
+    """A resumed run keeps the failed attempt and its retry in one file (S13)."""
+    scores_dir = _write_run(
+        tmp_path,
+        {
+            "model-a": [
+                _score("s1", "model-a", None, error="RateLimitError"),
+                _score("s1", "model-a", 0.6),
+            ],
+            "model-b": [_score("s1", "model-b", 0.2)],
+        },
+    )
+    scores = load_run_scores(scores_dir, RUN, models=MODELS)
+    assert len(scores) == 1
+    row = scores.iloc[0]
+    assert row["ideology_model-a"] == 0.6
+    assert row["ideology_ensemble"] == pytest.approx(0.4) and row["n_models"] == 2
+
+
+def test_a_run_is_read_under_its_own_label(tmp_path: Path) -> None:
+    scores_dir = _write_run(
+        tmp_path,
+        {
+            "model-a": [_score("s1", "model-a", 0.1)],
+            "model-b": [_score("s1", "model-b", 0.3)],
+        },
+        label="s8",
+    )
+    row = load_run_scores(scores_dir, RUN, models=MODELS).iloc[0]
+    assert row["ideology_ensemble"] == pytest.approx(0.2)
+
+
+def test_a_run_is_read_with_the_models_its_manifest_lists(tmp_path: Path) -> None:
+    """Old runs keep their own models after the ensemble changes (S15)."""
+    scores_dir = _write_run(
+        tmp_path,
+        {
+            "model-a": [_score("s1", "model-a", 0.1)],
+            "model-b": [_score("s1", "model-b", 0.3)],
+        },
+    )
+    manifest = {"models": {"model-a": {}, "model-b": {}}}
+    (scores_dir / f"pilot_manifest_{RUN}.json").write_text(json.dumps(manifest))
+
+    row = load_run_scores(scores_dir, RUN).iloc[0]
+
+    assert row["n_models"] == 2
+    assert row["ideology_ensemble"] == pytest.approx(0.2)
 
 
 def test_missing_model_file_raises(tmp_path: Path) -> None:

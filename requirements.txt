@@ -29,7 +29,7 @@ seaborn>=0.13
 scipy>=1.13
 statsmodels>=0.14
 
-# --- LLM APIs (ensemble fixed: DeepSeek R1 / GPT-4o / Claude 3.5 Sonnet) ---
+# --- LLM APIs (S8 ensemble: DeepSeek-V4.1-Flash / GPT-4o; Claude Sonnet 4.6 in pilots) ---
 openai>=1.40           # GPT-4o, and DeepSeek via its OpenAI-compatible API
 anthropic>=0.34        # Claude 3.5 Sonnet
 tiktoken>=0.7          # token counting for cost estimates

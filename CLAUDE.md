@@ -313,29 +313,42 @@ Each speech gets scored on two independent dimensions:
 - **Tone / hostility** — emotional charge of the language, independent of ideological content
 
 **3. Ensemble across multiple models — composition decided**
-Run three LLMs and combine their outputs (average for continuous scores). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
+Run several LLMs and combine their outputs (average for continuous scores). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
 
-The ensemble is fixed at three models from distinct providers and training paradigms:
-- **DeepSeek R1** (`deepseek-reasoner`) — reasoning model, open-weight; selected for explicit chain-of-thought reasoning prior to scoring, well-suited to the multi-step ideological inference required
+**The S8 run uses two models: DeepSeek and GPT-4o** (`docs/decisions.md` S15,
+2026-10-03, superseding S12). Claude Sonnet 4.6 was dropped: it agreed with
+GPT-4o at r ≈ 0.97 and was the most expensive member. The three-model evidence
+for that is the 408 speeches of the two pilots (P2, P6). The three models
+chosen originally, from distinct providers and training paradigms:
+- **DeepSeek-V4.1-Flash, thinking mode** (`deepseek-flash`) — reasoning model;
+  selected for explicit chain-of-thought reasoning prior to scoring, well-suited
+  to the multi-step ideological inference required. **Replaced the
+  `deepseek-reasoner` alias on 2026-10-03** (`docs/decisions.md` M3b): that
+  alias — once "DeepSeek R1" — was being served by `deepseek-flash` and is past
+  its announced retirement. Thinking mode and `reasoning_effort="high"` are
+  pinned in `MODEL_SPECS`. Open weights (MIT, Hugging Face) are reported by
+  secondary sources only — **[assumed]**, verify before the methodology claims it
 - **GPT-4o** (`gpt-4o-2024-11-20`) — industry-standard baseline (OpenAI); widely cited in NLP research, enables direct comparison with prior work
 - **Claude Sonnet 4.6** (`claude-sonnet-4-6`) — Constitutional AI paradigm (Anthropic);
-  provides architectural and training diversity. **Replaced Claude 3.5 Sonnet on
+  provides architectural and training diversity. **Pilots only since S15.** **Replaced Claude 3.5 Sonnet on
   2026-09-23**, which was retired by Anthropic and returns 404. Same tier and
   same price ($3/$15 per 1M), so the budget and the diversity rationale are
   unchanged — see `docs/decisions.md` M3a.
 
-This combination covers: one reasoning model + two instruction-following models; one open-weight model (reproducible checkpoint); three independent training approaches. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else.
+The S8 pair covers one reasoning model + one instruction-following model, from two providers. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else. `validate_scores.py` reads each run's models from its manifest, so older three-model runs stay readable.
 
 **No temperature is set on any model, and this is not a choice we made.** The
-providers removed the control: `deepseek-reasoner` ignores it, and the anthropic
+providers removed the control: DeepSeek ignores it, and the anthropic
 SDK dropped the parameter outright (current models answer "`temperature` is
-deprecated for this model"). All three run at their provider default, every run
+deprecated for this model"). Every model runs at its provider default, every run
 manifest records that per model, and the methodology chapter must say so rather
 than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
 
 **Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
 member in September 2026 and was already a 404 by the time the first call was
-made. Verify every pinned model still answers before a run that costs money.
+made; DeepSeek's `deepseek-reasoner` was past its announced retirement when the
+first S8 stage called it (M3b). Verify every pinned model still answers before a
+run that costs money, and check the run summary's `served_models`.
 No tool in the repo does this: `make smoke` is the Stanford corpus build and
 never contacts a model. The practical check is `pilot_run.py --sample-size 6`,
 which is a real (cheap) API call, so it needs a human's go-ahead like any other
@@ -497,8 +510,15 @@ work_thesis_2026/
   govinfo 276,513 raw → 153,289), not millions — and it is the sampling frame,
   not what gets scored. **There is no full-corpus run** (`docs/decisions.md`
   S11): the main results come from the S8 stratified sample, 5,200 speeches,
-  ~$53 (`pilot_run.py --dry-run`). Budget from the sample. Corpus counts:
+  ~$21 with two models (S15; `pilot_run.py --dry-run`). Budget from the
+  sample. Corpus counts:
   `results/metrics/merged_build_stats.json`
+- **S8 is one run in stages, never re-scored** (S13): stage 1
+  `pilot_run.py --label s8 --per-cell 4` (the pilot gate), then
+  `pilot_run.py --resume <timestamp> --per-cell 100`. A resume scores only what
+  has no score yet and refuses if the corpus, prompt, models, caps or seed
+  changed. Files: `results/scores/s8_*_<timestamp>.*`,
+  `results/metrics/s8_summary_<timestamp>.json`
 - Always run on a small sample (100–500 speeches) before any larger run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
