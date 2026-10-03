@@ -9,6 +9,7 @@
 #   make stanford build data/processed/corpus_stanford.parquet (2001-2016)
 #   make smoke    the same on the first 50k raw rows; run it first
 #   make govinfo  build data/processed/corpus_govinfo.parquet (2016-2025)
+#   make govinfo-smoke  the same on the first 20k raw rows
 #   make corpus   merge both into data/processed/corpus.parquet
 #   make crosswalk match corpus members to DW-NOMINATE ICPSR ids
 #   make lock     re-pin requirements.lock.txt after changing requirements.txt

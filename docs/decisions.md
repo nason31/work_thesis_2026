@@ -103,7 +103,8 @@ bioguide id on both sides of the break.
 govinfo speeches** to a Voteview ICPSR; 538,039 of 538,804 speeches (99.86%)
 can enter the validation. The probe above matched against congress-legislators
 on the most common spelling only; the build matches against Voteview directly
-and uses every spelling, which is why it does better.
+and uses every spelling, which is why it does better. *(Rebuilt 2026-10-03 on
+the re-fetched govinfo file, D25: 579,242 of 580,007, 99.87%.)*
 
 ---
 
@@ -368,7 +369,8 @@ among same-name candidates (would put speeches in the wrong party).
 surname, so 23,075 House rows stay ambiguous. They lean **Republican** — about
 13,900 R vs 9,100 D by candidate weight — so their loss under-represents House
 Republicans. Fixing it needs the parser to keep the state and a re-fetch.
-7,029 of them have candidates who all share one party. See O7.
+7,029 of them have candidates who all share one party. See O7. *(Fixed by D25,
+2026-10-03: the re-fetched file keeps the state; 47 rows remain ambiguous.)*
 
 **ICPSR gap:** congress-legislators has no ICPSR for many members first elected
 2021 or later (missing on 12% of 117th, 29% of 118th, 34% of 119th rows). The
@@ -434,7 +436,7 @@ the window is extended the build will stop and ask.
 
 `data/processed/corpus.parquet` now holds both sources: **538,804 rows**
 (426,718 Stanford + 112,086 govinfo), 2001-01-03 → 2025-12-19, Congresses
-107–119. `make corpus` builds it from `corpus_stanford.parquet` (the Stanford
+107–119. *(Since 2026-10-03, D25: 580,007 rows, 153,289 of them govinfo.)* `make corpus` builds it from `corpus_stanford.parquet` (the Stanford
 build, which used to write `corpus.parquet`; `make stanford`) and
 `corpus_govinfo.parquet` (`make govinfo`). Stats:
 `results/metrics/merged_build_stats.json`; the Stanford stats file is renamed
@@ -482,7 +484,8 @@ chamber of the resolved member's term on that date, as on the Stanford side
 (`chamber_map`). Counted as `rows_chamber_reassigned` in
 `govinfo_build_stats.json`.
 
-**Effect, verified by rebuilding:** exactly **425 rows** move S → H (373 in the
+**Effect, verified by rebuilding:** exactly **425 rows** *(478 on the
+2026-10-02 file, D25)* move S → H (373 in the
 116th, 52 in the 117th, all Democrats); nothing else in the govinfo or merged
 stats changes. The smallest S8 sampling cell this touches, 116th/S/D, falls from
 2,353 to 1,980 speeches — still far above 100.
@@ -504,7 +507,7 @@ chamber-level plot and the S8 sampler read.
 (`code/src/crosswalk.py`) from the merged corpus and Voteview's raw
 `HSall_members.csv`. One row per `source` × `member_id` × `congress_number` ×
 `chamber` × `party_original` — the key it joins back onto the corpus with — so
-7,176 rows, not 538,804. Match rates:
+7,176 rows, not 538,804 (7,530 since D25). Match rates:
 `results/metrics/crosswalk_build_stats.json`; unmatched members with speech
 counts: `results/metrics/crosswalk_unmatched.csv`.
 
@@ -512,6 +515,7 @@ counts: `results/metrics/crosswalk_unmatched.csv`.
 |---|---|---|---|---|---|
 | Stanford | 4,334 | 4,322 | 426,718 | 425,971 (99.82%) | 425,971 |
 | govinfo | 2,842 | 2,842 | 112,086 | 112,086 (100%) | 112,068 |
+| govinfo, 2026-10-02 file (D25) | 3,196 | 3,196 | 153,289 | 153,289 (100%) | 153,271 |
 
 - **Stanford: surname + state + Congress + chamber.** Matched against the
   Voteview surname (the part of `bioname` before the comma), normalized:
@@ -629,6 +633,71 @@ the trend analysis.
 
 ---
 
+### D25 — govinfo: the Record's state must agree with the speaker (settles O7)
+**Date:** 2026-10-03 · **Status:** active · **Data:** raw file SHA-256
+`58bcc59b…`, `results/metrics/govinfo_build_stats.json`
+
+Konsti's re-fetch of 2026-10-02 (276,513 rows, 2016-09-12 → 2026-09-30) follows
+the API's pagination, which fixes O8's cause, and keeps the state the Record
+writes beside a speaker (`Mr. SMITH of Texas.`) as a new `state` column. It is
+present on 40,642 rows (39,838 House, 804 Senate) as a full name, mapped to the
+congress-legislators code by `STATE_CODES` in `config.py`.
+
+**Rule:** when the state is recognized, the resolved member must be from it.
+Among same-surname candidates it picks the one; if no candidate is from that
+state, the row is unresolved (`state_mismatch`) and dropped. An unrecognized
+string counts as no state, so the row falls back to D16's surname-only match.
+`state` is a required key: a file without it predates the pagination fix and
+the build refuses it.
+
+**Result, measured on the full build:**
+
+| | Before (old file) | After |
+|---|---|---|
+| ambiguous House + Senate rows dropped | 23,075 | **47** |
+| settled by the state | — | **23,606** (22,903 House, 703 Senate) |
+| dropped because the state contradicts | — | 5 |
+| govinfo speeches written | 112,086 | **153,289** |
+| Republican share, House | 48.8% | 50.9% |
+
+(The before/after compares two raw files, so the gain mixes this rule with the
+re-fetch. The 23,606 is this rule's own contribution; it is counted in the
+build as `rows_resolved_by_state`.) The House Republican under-representation
+that O7 predicted (~60/40 R among the ambiguous) is gone. 47 rows stay
+ambiguous: 42 with no usable state, 5 where namesakes share a state (Carolyn and
+Sean Maloney, NY).
+
+**Why strict, not a tie-breaker only.** The first design used the state only
+when the name was ambiguous. The data said otherwise: of the 13,629 rows where
+the name already matched exactly one member *and* a state was given, 4
+disagree, and none of them is that member speaking. "Mr. BROWN of Maryland" in
+the Senate section (2020-05-04) is a House message naming Anthony Brown, not
+Sherrod Brown; "Ms. LEE of California" (2021-02-12, twice) is the January 6
+joint-session transcript played at the impeachment trial, not Mike Lee; "Mr.
+SMITH of New Jersey" (2021-02-22) is an appointments notice, not Tina Smith. A
+tie-breaker would have kept all four in the wrong senator's name.
+
+**Unrecognized states (9 rows), treated as no state:** `Virgina` (5),
+`Tennesse`, `Massachusetts Mr` (the notebook's regex overran), `Dr`, `Japan`.
+All are non-members or procedural lines under 50 words, so a typo table would
+change nothing. They are listed in `state_unrecognized` in the stats; if a
+future file has more, add the spellings to `STATE_CODES` rather than loosening
+the rule.
+
+**Rejected:** trusting the file's own `party` — the notebook's lookup now uses
+the state but still ignores chamber, the bug D16 fixed; state as a tie-breaker
+only (keeps the 4 misattributions above); typo correction (nothing to gain on
+this file); keeping the old file as an input (it carries O8's fetch cap).
+
+**Consequence:** every downstream figure changed. The merged corpus is
+**580,007** rows (426,718 + 153,289); the crosswalk matches 100% of govinfo
+speeches (3,196 units) and 579,242 of 580,007 speeches (99.87%) enter the
+validation. D16's limitation paragraph, D19's row count and D21's table
+describe the old file; the figures here supersede them. D20's reassigned rows
+are now 478.
+
+---
+
 ## Engineering
 
 ### E1 — Pinned virtualenv and a lockfile
@@ -728,7 +797,8 @@ included; an approval covers one run; `--yes` is never passed to skip
 `pilot_run.py`'s prompt. Code that makes no calls needs no approval. The rule
 is in CLAUDE.md under DO NOT.
 
-**Why:** calls cost money (the full run is estimated at ~$4,100, P3), and they
+**Why:** calls cost money (the full run was estimated at ~$4,100, P3; there is
+no full run since S11), and they
 reach outside the machine — data API keys have daily limits (`DEMO_KEY`: about
 50 calls a day, O8). S5 already made `pilot_run.py` ask before spending, but
 that prompt is one `--yes` away from being skipped, and it does not cover other
@@ -820,7 +890,8 @@ for the 200-speech pilot.
 **Caveat recorded in the output:** the estimate is a floor. The tokenizer is
 OpenAI's and only approximates the other two providers, and `deepseek-reasoner`
 bills hidden reasoning tokens as output that the estimate cannot see. Extrapolate
-the full run from the *billed* usage in the closing summary, not from this.
+the full run *(since S11: any larger run)* from the *billed* usage in the
+closing summary, not from this.
 
 ---
 
@@ -831,7 +902,8 @@ the full run from the *billed* usage in the closing summary, not from this.
 extraction, validation and retry; `code/scripts/pilot_run.py` holds sampling,
 orchestration and reporting.
 
-**Why:** the full run needs the same clients. CLAUDE.md puts production logic in
+**Why:** the full run *(since S11: the S8 run)* needs the same clients.
+CLAUDE.md puts production logic in
 `src/` with scripts calling it, and `corpus.py`/`build_corpus.py` already follow
 that split.
 
@@ -934,7 +1006,7 @@ naive reading might expect. Not interpretable at this n.
 ---
 
 ### P2 — The three models agree at r ≈ 0.95, which cuts both ways
-**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+**Date:** 2026-09-23 · **Status:** finding, feeds [S12] (was O5)
 
 Mean pairwise Pearson r on ideology = **0.949** (DeepSeek–GPT-4o 0.935,
 DeepSeek–Sonnet 0.953, GPT-4o–Sonnet 0.961). Mean cross-model standard deviation
@@ -946,7 +1018,7 @@ evidence the construct is real and not a single model's artefact.
 
 **Bad news for [M3]'s rationale:** the ensemble exists to "reduce single-model
 bias". At r = 0.95 there is little independent error left to average away, so the
-ensemble buys less than the design assumed — while costing 3× to run. See [O5].
+ensemble buys less than the design assumed — while costing 3× to run. See [S12].
 
 **The 2 disagreements are substantive, not bugs.** Both are Democratic speeches
 attacking defence spending and corporate welfare on fiscal-restraint grounds.
@@ -957,7 +1029,8 @@ the construct, and exactly the kind of case worth quoting in the thesis.
 ---
 
 ### P3 — Full-corpus cost is ~$4,100, not a rounding error
-**Date:** 2026-09-23 · **Status:** finding, feeds [O5]
+**Date:** 2026-09-23 · **Status:** finding, fed O5 (closed by S12) · **moot since S11**
+(2026-10-03): there is no full run
 
 At $0.00955 per speech, all three models over 426,718 speeches extrapolates to
 **~$4,077**, or **~$2,038** with batch APIs at roughly half price.
@@ -967,7 +1040,8 @@ Per model, extrapolated: Sonnet 4.6 **$2,100**, GPT-4o **$1,265**, DeepSeek
 tokens per speech against 69 and 94 — its per-token price is far lower.
 
 This is the number to budget from, and it is large enough that the ensemble
-question in [O5] is a financial decision, not only a methodological one.
+question in O5 is a financial decision, not only a methodological one.
+*(O5 closed by S12 once S11 removed the full run.)*
 
 ---
 
@@ -991,7 +1065,8 @@ held roughly flat.
 
 **Why it cannot be cited yet:** n = 12–13 per party-congress cell. The design was
 built to prove the pipeline works, not to estimate a trend. Treat the direction
-as a hypothesis the full run must test, and resist the temptation to put this
+as a hypothesis the full run *(since S11: the S8 run)* must test, and resist
+the temptation to put this
 table in a slide before then.
 
 ---
@@ -1024,7 +1099,7 @@ Pearson r with 95% CI; Spearman agrees within 0.05 everywhere.
   correlation is what attenuation predicts; it does not show the member-level
   correlation is weak. This pilot cannot tell the two apart.
 - **Models:** GPT-4o is highest within Democrats (+0.32), DeepSeek lowest
-  (+0.17); every CI overlaps, so the pilot cannot rank them (see O5).
+  (+0.17); every CI overlaps, so the pilot cannot rank them (see S12).
 - Dropping procedural speeches raises the overall r (+0.64 → +0.71), because
   they sit at 0.0 regardless of party, but not the within-party r.
 
@@ -1039,6 +1114,11 @@ S8 sample would not provide that either: it stratifies by cell, not by member.
 
 32 cells (2 parties × 8 congresses × 2 chambers) at 100 each = **3,200 speeches**,
 seed 42. Estimated **$30.86**.
+
+*Update 2026-10-03:* over the merged corpus (D19, D25) the same rule gives 52
+cells (13 congresses) = **5,200 speeches**; `pilot_run.py --dry-run` estimates
+**$52.96**. The smallest cell is 119th / R / Senate with 2,627 speeches (1,128
+before the re-fetch). `config.py` already describes the 52-cell design.
 
 **Why chamber was added:** House and Senate floor rhetoric differ in length and
 formality, and the chamber mix drifts across congresses in the corpus (Senate
@@ -1124,7 +1204,76 @@ paid for. One speech still hits the raised cap; see [O6].
 **Follow-up:** the run manifest records `effective_temperature` per model but not
 `max_output_tokens`, so the cap that decides whether a model answers at all is
 not yet in the run record. Add it to the manifest in `pilot_run.py` before the
-full run.
+full run. *(Done 2026-10-03: `model_manifest()` in `pilot_run.py` writes each model's
+`max_output_tokens` into the manifest, tested in `test_scoring.py`. The
+2026-09-23 manifest predates it; that run used the caps in the table above.)*
+
+---
+
+### S11 — No full-corpus scoring run; the main results come from the S8 sample
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · corrects
+the full run that P3, P4, O5 (now S12), O6 and S10 took for granted
+
+The 580,007 speeches are **not** scored in full. They are the sampling frame.
+The main scoring run is the S8 stratified sample: party × Congress × chamber,
+52 cells × 100 = **5,200 speeches**, about **$53** for all three models
+(`pilot_run.py --dry-run`, 2026-10-03). If its results turn out too imprecise
+for RQ1/RQ2 or for the DW-NOMINATE validation (O9), a somewhat larger sample is
+reconsidered, as a new entry here. It is still a sample, not a full run.
+
+**Why:**
+1. **Cost.** All three models over the full corpus come to at least ~$5,540
+   (P3's per-speech cost × 580,007; govinfo speeches are longer, so it would be
+   more), against ~$53 for S8.
+2. **A sample is enough.** RQ1 and RQ2 ask about party positions per Congress.
+   A sample balanced across those cells estimates them directly, and scoring
+   every speech would add precision those comparisons do not need.
+
+**Rejected:**
+- *The full run.* Too expensive for the precision it adds (above).
+- *The middle path once raised for trimming the ensemble: one model over
+  the full corpus, all three on a subsample.* That is still a full run, ~$968 with DeepSeek alone, and it would
+  make the headline numbers single-model.
+
+**Consequences:**
+- **P3 is moot.** It stays as the record of why.
+- **The ensemble question (O5) loses its cost case.** Settled in S12:
+  keep all three.
+- **O6's truncation rate means ~26 speeches in S8,** not ~2,100.
+- **S10's follow-up is done** (2026-10-03): the manifest now records each
+  model's `max_output_tokens`.
+- **Equal quotas per cell mean a pooled figure is not a corpus average.** A
+  mean over both chambers, for example, weights the Senate as heavily as the
+  House. Report per chamber, as O8 requires anyway, or weight the cells by
+  their size in the corpus.
+- **The CLAUDE.md pilot rule (100–500 speeches first) remains the gate** before
+  the S8 run.
+
+---
+
+### S12 — The ensemble stays at three models (closes O5)
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · reaffirms
+[M3]
+
+O5 asked whether to trim the ensemble, because the three models agree at
+r ≈ 0.95 (P2), so averaging buys little error reduction. A full run would also
+have cost ~$4,077, against ~$712 for DeepSeek alone (P3). S11 removed the full
+run, and with it the cost case: on the 5,200-speech S8 sample all three models
+cost ~$53, DeepSeek alone ~$9.
+
+**Why three:**
+- M3's cross-provider design is the defence against one model's calibration
+  being taken as ground truth.
+- The agreement between three independent providers is itself a validity
+  result worth reporting (P2).
+- `validate_scores.py` checks each model against DW-NOMINATE separately, which
+  needs all three scored.
+
+**Rejected:**
+- *DeepSeek alone.* It saves ~$44 on S8 and loses all of the above.
+- *The cheapest two.* The same trade, for even less.
+- *One model over the full corpus, three on a subsample.* It is a full run
+  (S11).
 
 ---
 
@@ -1132,40 +1281,25 @@ full run.
 
 Move these up into a numbered entry once decided.
 
-### O5 — Keep all three models, or trim the ensemble?
-**Raised:** 2026-09-23 (from [P2] and [P3]) · **Blocks:** the full-run budget
-
-The models agree at r ≈ 0.95, so averaging three buys little error reduction,
-and the full run costs ~$4,077 against ~$712 for DeepSeek alone or ~$1,977 for
-the cheapest two.
-
-Against trimming: [M3]'s cross-provider design is a genuine methodological
-defence, and three-model agreement is itself a validity result worth reporting.
-For trimming: $3,365 saved, and the pilot already establishes the agreement —
-it may not need re-establishing on 426,718 speeches.
-
-A middle path: run one model on the full corpus and all three on a large random
-subsample, reporting the agreement from the subsample. Decide before the full
-run, and record the reasoning here.
-
 ### O6 — DeepSeek still truncates on long speeches
 **Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]
 
 Speech `1110041041` (732 words) hit even the raised 8,192-token cap set in [S10]
 and returned no answer, so its ensemble row has `n_models=2`. Raising the cap
 further is cheap (billing is on tokens used), but 0.5% at pilot scale is ~2,100
-speeches over the full corpus.
+speeches over the full corpus *(~26 in the S8 run; no full run since S11)*.
 
 The pilot gives the headroom to reason from: across the other 199 speeches the
 reasoner's output peaked at 3,792 tokens, well under 8,192, so this is a tail
 case rather than a cap set too low across the board. Note the failure does not
 scale with word count in any simple way — 732 words is unremarkable in a corpus
 filtered at 50 words — so it is the reasoning that runs long, not the input.
-Measure output tokens against the word-count distribution before the full run
+Measure output tokens against the word-count distribution before the S8 run
 rather than guessing again.
 
 ### O7 — Recover the ~23k ambiguous House speeches?
-**Raised:** 2026-09-27 (from D16) · **Blocks:** nothing yet; affects RQ2 balance
+**Raised:** 2026-09-27 (from D16) · **Settled:** 2026-10-03 by [D25] — option
+(a): Konsti's re-fetch keeps the state, and 23,606 rows are now resolved by it
 
 The govinfo parser dropped the state from `Mr. SMITH of Texas.`, leaving 23,075
 House speeches unattributable. They lean Republican (~60/40 by candidate
@@ -1177,8 +1311,32 @@ committing it.
 
 ### O8 — Why does the Senate lose 71% of its speeches at the break?
 **Raised:** 2026-09-29 (from D19) · **Cause found:** 2026-09-29, an upstream
-fetch cap; open until re-fetched · **Blocks:** any trend that pools the two
-chambers, and any govinfo-era Senate trend
+fetch cap · **Re-fetched:** 2026-10-02 (Konsti), verified 2026-10-03 — the cap
+is gone, a smaller drop remains · **Blocks:** pooling the chambers in a trend
+until the residual is understood
+
+**Update 2026-10-03, after the re-fetch** (2017–2025 averages per year against
+Stanford 2011–15, from the rebuilt `corpus.parquet`):
+
+| Step | House | Senate |
+|---|---|---|
+| Stanford, ≥ 50 words | 14,488 | 8,082 |
+| new raw file, ≥ 50 words, before our code | 13,535 (−7%) | 6,759 (−16%) |
+| written, old file (before re-fetch) | 9,830 (−32%) | 2,330 (−71%) |
+| **written, new file** | **11,533 (−20%)** | **5,050 (−38%)** |
+
+The Senate share of govinfo speeches is now 25–37% a year (was 11.5–27.5%),
+against 34–38% in Stanford's last years; 2016's 34.6% sits right beside
+Stanford's 33.7%. **The fetch cap is fixed.** What remains is no longer mostly
+in the raw file: of the Senate's 38%, 16 points are already there (real
+change, or the notebook's extraction — e.g. it only recognizes `Mr./Ms./Mrs.`,
+never `Miss`), and the rest is our own processing, where D17's cut leaves a
+speech under 50 words. That share is larger in the Senate, plausibly because
+its unanimous-consent exchanges with the chair are short once the chair's
+turn is cut. **Not yet checked:** whether Stanford's own speaker splitting
+treats those exchanges the same way, which would make the remaining gap a
+property of the sources rather than of the Senate. Until then, keep the
+chambers apart in trend plots, as below. The original analysis follows.
 
 Speeches per year from `merged_build_stats.json`, Stanford 2011–2015 average
 against govinfo 2017–2025 average:
@@ -1272,12 +1430,26 @@ thesis
    member's speeches. P5 suggests speech level is dominated by noise within
    party; member level needs a sample with several speeches per member, which
    neither the pilot nor the S8 design provides. How many speeches per member,
-   and how many members, is a cost question (P3, S9).
+   and how many members, is a cost question (P3, S9). *(Since S11: this is the
+   likeliest reason to extend the S8 sample.)*
 3. **Headline statistic:** overall r mostly re-measures the party gap (P5), so
    the within-party r — or a regression of DW-NOMINATE on party plus the LLM
    score — is the defensible one.
 4. **Procedural speeches:** keep or drop (P1 and P5 both show they change the
    overall figure, not the within-party one).
+
+### O10 — govinfo compound surnames the Record shortens
+**Raised:** 2026-10-03 (from D25's build) · **Blocks:** nothing; ~620 speeches
+
+The largest unresolved govinfo speakers after D25 are `RODGERS` (House, 508)
+and `PEREZ` (House, 112): Cathy McMorris Rodgers and Marie Gluesenkamp Perez,
+whom congress-legislators files under the whole compound surname while the
+Record writes only its last word. This is the reverse of JACKSON LEE, which
+D16 handles. Both are from Washington and almost always carry the state, so a
+fallback to the last word of a compound surname, *only when the state agrees*,
+would recover them. Do not add it without the state: a bare last-word match
+would put Sheila Jackson Lee among the candidates for every `LEE`. Not yet
+checked: the next names down the list (`FROST`, House, 27).
 
 ### O2 — Prompting or fine-tuning?
 **Raised:** project setup
@@ -1294,9 +1466,20 @@ Currently no. If it changes, it needs its own entry and a robustness check
 showing scores do not move much.
 
 ### O4 — How many speeches did the upstream build drop?
-**Raised:** 2026-09-15 · **Status:** unanswerable here
+**Raised:** 2026-09-15 · **Status:** answerable since 2026-10-02, not yet answered
 
 Speeches with no matched speaker were dropped when Konsti built the parquet.
 Those rows are not in the file, so no analysis of it recovers the count. Only the
 missing `code/scripts/build_stanford_dataset.py` can close this, and the
 methodology chapter needs the figure.
+
+**Update 2026-10-03:** the recipe is now committed as
+`code/notebooks/01_stanford_dataset.ipynb`. It keeps
+`merged["speakerid"].notna()` per session but prints counts only after that
+filter (823,341 in total), so the figure is still not recorded. It also reads
+all three per-session files with `on_bad_lines="skip"` and `quoting=3`,
+which drops malformed lines **without counting them** — a second upstream
+filter nobody had listed. Closing O4 needs one re-run of that step that counts
+rows before the `speakerid` filter and lines skipped by the parser. It needs
+the 2.6 GB `hein-daily.zip` from stacks.stanford.edu, an external download, so
+it waits for a human's go-ahead (E7).

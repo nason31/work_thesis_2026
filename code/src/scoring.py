@@ -1,8 +1,9 @@
 """Score congressional speeches through the three-model ensemble.
 
 Provider wiring, prompt rendering, response parsing and retry logic. The pilot
-(`code/scripts/pilot_run.py`) and the eventual full run both import this, so
-the clients exist in one place rather than being copied.
+(`code/scripts/pilot_run.py`) and any later sampled run import this, so the
+clients exist in one place rather than being copied. There is no full-corpus
+run (docs/decisions.md S11).
 
 Each call asks one model for a JSON object with an ideological position, a tone
 score and a short justification. What comes back is validated against the range

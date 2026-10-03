@@ -1,12 +1,12 @@
 {
   "output_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/member_crosswalk.parquet",
-  "built_at": "2026-09-29T19:42:18+00:00",
+  "built_at": "2026-10-03T09:13:17+00:00",
   "inputs": {
     "corpus": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
-      "bytes": 819570591,
-      "sha256": "c6a773de5d94f560b66a15192544144b35940e233f7ea0d9b25e374b66e5ebfc",
-      "rows": 538804
+      "bytes": 906160386,
+      "sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704",
+      "rows": 580007
     },
     "voteview": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/raw/dw_nominate/HSall_members.csv",
@@ -21,15 +21,15 @@
   },
   "summary": {
     "govinfo": {
-      "units": 2842,
-      "units_matched": 2842,
-      "units_in_validation": 2841,
-      "speeches": 112086,
-      "speeches_matched": 112086,
-      "speeches_in_validation": 112068,
+      "units": 3196,
+      "units_matched": 3196,
+      "units_in_validation": 3195,
+      "speeches": 153289,
+      "speeches_matched": 153289,
+      "speeches_in_validation": 153271,
       "unit_match_rate": 1.0,
       "speech_match_rate": 1.0,
-      "speech_validation_rate": 0.9998
+      "speech_validation_rate": 0.9999
     },
     "stanford": {
       "units": 4334,
@@ -47,98 +47,98 @@
     "govinfo": {
       "114": {
         "H": {
-          "units": 340,
-          "units_matched": 340,
-          "speeches": 2206,
-          "speeches_matched": 2206,
-          "speeches_in_validation": 2206
+          "units": 389,
+          "units_matched": 389,
+          "speeches": 2643,
+          "speeches_matched": 2643,
+          "speeches_in_validation": 2643
         },
         "S": {
-          "units": 79,
-          "units_matched": 79,
-          "speeches": 443,
-          "speeches_matched": 443,
-          "speeches_in_validation": 443
+          "units": 98,
+          "units_matched": 98,
+          "speeches": 1397,
+          "speeches_matched": 1397,
+          "speeches_in_validation": 1397
         }
       },
       "115": {
         "H": {
-          "units": 393,
-          "units_matched": 393,
-          "speeches": 23362,
-          "speeches_matched": 23362,
-          "speeches_in_validation": 23362
+          "units": 444,
+          "units_matched": 444,
+          "speeches": 26767,
+          "speeches_matched": 26767,
+          "speeches_in_validation": 26767
         },
         "S": {
-          "units": 104,
-          "units_matched": 104,
-          "speeches": 5195,
-          "speeches_matched": 5195,
-          "speeches_in_validation": 5195
+          "units": 105,
+          "units_matched": 105,
+          "speeches": 12017,
+          "speeches_matched": 12017,
+          "speeches_in_validation": 12017
         }
       },
       "116": {
         "H": {
-          "units": 385,
-          "units_matched": 385,
-          "speeches": 20566,
-          "speeches_matched": 20566,
-          "speeches_in_validation": 20548
+          "units": 439,
+          "units_matched": 439,
+          "speeches": 23909,
+          "speeches_matched": 23909,
+          "speeches_in_validation": 23891
         },
         "S": {
-          "units": 99,
-          "units_matched": 99,
-          "speeches": 4737,
-          "speeches_matched": 4737,
-          "speeches_in_validation": 4737
+          "units": 101,
+          "units_matched": 101,
+          "speeches": 9791,
+          "speeches_matched": 9791,
+          "speeches_in_validation": 9791
         }
       },
       "117": {
         "H": {
-          "units": 385,
-          "units_matched": 385,
-          "speeches": 17013,
-          "speeches_matched": 17013,
-          "speeches_in_validation": 17013
+          "units": 443,
+          "units_matched": 443,
+          "speeches": 20193,
+          "speeches_matched": 20193,
+          "speeches_in_validation": 20193
         },
         "S": {
-          "units": 100,
-          "units_matched": 100,
-          "speeches": 5430,
-          "speeches_matched": 5430,
-          "speeches_in_validation": 5430
+          "units": 102,
+          "units_matched": 102,
+          "speeches": 10031,
+          "speeches_matched": 10031,
+          "speeches_in_validation": 10031
         }
       },
       "118": {
         "H": {
-          "units": 388,
-          "units_matched": 388,
-          "speeches": 19057,
-          "speeches_matched": 19057,
-          "speeches_in_validation": 19057
+          "units": 442,
+          "units_matched": 442,
+          "speeches": 22658,
+          "speeches_matched": 22658,
+          "speeches_in_validation": 22658
         },
         "S": {
-          "units": 100,
-          "units_matched": 100,
-          "speeches": 2985,
-          "speeches_matched": 2985,
-          "speeches_in_validation": 2985
+          "units": 104,
+          "units_matched": 104,
+          "speeches": 7640,
+          "speeches_matched": 7640,
+          "speeches_in_validation": 7640
         }
       },
       "119": {
         "H": {
-          "units": 373,
-          "units_matched": 373,
-          "speeches": 8470,
-          "speeches_matched": 8470,
-          "speeches_in_validation": 8470
+          "units": 429,
+          "units_matched": 429,
+          "speeches": 10273,
+          "speeches_matched": 10273,
+          "speeches_in_validation": 10273
         },
         "S": {
-          "units": 96,
-          "units_matched": 96,
-          "speeches": 2622,
-          "speeches_matched": 2622,
-          "speeches_in_validation": 2622
+          "units": 100,
+          "units_matched": 100,
+          "speeches": 5970,
+          "speeches_matched": 5970,
+          "speeches_in_validation": 5970
         }
       }
     },
@@ -276,12 +276,12 @@
   "methods": {
     "govinfo": {
       "unique": {
-        "units": 2835,
-        "speeches": 111736
+        "units": 3189,
+        "speeches": 152907
       },
       "party": {
         "units": 7,
-        "speeches": 350
+        "speeches": 382
       }
     },
     "stanford": {
@@ -330,7 +330,7 @@
       "party_original": "R",
       "icpsr": 22336,
       "bioname": "KILEY, Kevin",
-      "n_speeches": 165
+      "n_speeches": 166
     },
     {
       "source": "govinfo",
@@ -340,7 +340,7 @@
       "party_original": "D",
       "icpsr": 40915,
       "bioname": "MANCHIN, Joe, III",
-      "n_speeches": 9
+      "n_speeches": 26
     },
     {
       "source": "govinfo",
@@ -350,7 +350,7 @@
       "party_original": "I",
       "icpsr": 90915,
       "bioname": "MANCHIN, Joe, III",
-      "n_speeches": 4
+      "n_speeches": 16
     },
     {
       "source": "govinfo",
@@ -360,7 +360,7 @@
       "party_original": "R",
       "icpsr": 21737,
       "bioname": "MITCHELL, Paul",
-      "n_speeches": 41
+      "n_speeches": 40
     },
     {
       "source": "govinfo",
@@ -370,7 +370,7 @@
       "party_original": "D",
       "icpsr": 21980,
       "bioname": "VAN DREW, Jefferson",
-      "n_speeches": 82
+      "n_speeches": 85
     },
     {
       "source": "govinfo",
@@ -466,7 +466,7 @@
       "corpus_icpsr": 40915,
       "icpsr": 90915,
       "bioname": "MANCHIN, Joe, III",
-      "n_speeches": 4
+      "n_speeches": 16
     },
     {
       "source": "govinfo",
@@ -477,7 +477,7 @@
       "corpus_icpsr": 21300,
       "icpsr": 91300,
       "bioname": "SINEMA, Kyrsten",
-      "n_speeches": 5
+      "n_speeches": 8
     },
     {
       "source": "govinfo",

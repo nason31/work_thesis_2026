@@ -1,7 +1,7 @@
 """Tests for the govinfo -> corpus build.
 
 Fixtures are synthetic and built in-process, so the suite runs without the
-572 MB JSONL. They reproduce the upstream defects found on 2026-09-27 (see
+763 MB JSONL. They reproduce the upstream defects found on 2026-09-27 (see
 docs/notes/2026-09-27_govinfo_data_reality.md): officer turns glued onto
 speeches, HTML and page-marker residue, and a surname shared across chambers.
 """
@@ -22,6 +22,7 @@ from src.govinfo import (
     clean_speech,
     congress_for,
     load_terms,
+    state_code,
 )
 
 WORDS = " ".join(["word"] * 60)
@@ -141,6 +142,7 @@ def _record(
         "speaker": speaker,
         "party": None,
         "icpsr": None,
+        "state": None,
         "chamber": chamber,
         "speech": speech if speech is not None else f"Mr. Speaker, {WORDS}",
         **extra,
@@ -310,6 +312,64 @@ def test_member_not_serving_on_the_date_is_not_matched(index: MemberIndex) -> No
     )
 
 
+def test_state_resolves_a_shared_surname(index: MemberIndex) -> None:
+    """Mr. SMITH of Missouri: the case O7 lost 23,075 House speeches to."""
+    resolution = index.resolve("SMITH", "HOUSE", DAY, state="MO")
+    assert resolution.status == "resolved"
+    assert resolution.term is not None and resolution.term.bioguide == "H3"
+    assert resolution.by_state
+
+
+def test_state_is_not_credited_when_the_surname_was_already_unique(
+    index: MemberIndex,
+) -> None:
+    resolution = index.resolve("LEE", "SENATE", DAY, state="UT")
+    assert resolution.term is not None and resolution.term.bioguide == "S1"
+    assert not resolution.by_state
+
+
+def test_state_contradicting_the_only_candidate_is_unresolved(
+    index: MemberIndex,
+) -> None:
+    """Ms. LEE of California, in the Senate section, is not Mike Lee (UT).
+
+    Seen 2021-02-12: the joint-session transcript played at the impeachment
+    trial. Surname and chamber alone attribute it to the senator.
+    """
+    resolution = index.resolve("LEE", "SENATE", DAY, state="CA")
+    assert resolution.status == "state_mismatch"
+    assert resolution.term is None
+
+
+def test_state_matching_no_namesake_is_unresolved(index: MemberIndex) -> None:
+    resolution = index.resolve("SMITH", "HOUSE", DAY, state="TX")
+    assert resolution.status == "state_mismatch"
+
+
+def test_namesakes_from_the_same_state_stay_ambiguous(index: MemberIndex) -> None:
+    """Carolyn and Sean Maloney both sat for New York."""
+    assert index.resolve("MALONEY", "HOUSE", DAY, state="NY").status == "ambiguous"
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [
+        ("Texas", "TX"),
+        ("TEXAS", "TX"),
+        ("New York", "NY"),
+        ("West Virginia", "WV"),
+        ("Northern Mariana Islands", "MP"),
+        (None, None),
+        # Observed in the 2026-10-02 file: misspelling, regex overrun, non-state.
+        ("Virgina", None),
+        ("Massachusetts Mr", None),
+        ("Japan", None),
+    ],
+)
+def test_state_code(raw: str | None, code: str | None) -> None:
+    assert state_code(raw) == code
+
+
 def test_mid_term_party_switch_is_honoured(index: MemberIndex) -> None:
     term = index.resolve("SWITCHER", "HOUSE", DAY).term
     assert term is not None
@@ -426,6 +486,39 @@ def test_unresolved_rows_are_counted_by_chamber_and_reason(tmp_path: Path) -> No
     assert stats.unresolved_by_chamber == {"HOUSE": 1, "SENATE": 1}
 
 
+def test_state_in_the_record_resolves_a_shared_surname(tmp_path: Path) -> None:
+    stats, table = _build(tmp_path, [_record("SMITH", state="Missouri")])
+    assert table is not None
+    assert table.column("member_id").to_pylist() == ["H3"]
+    assert stats.rows_resolved_by_state == 1
+    assert stats.rows_dropped_unresolved_ambiguous == 0
+
+
+def test_state_contradicting_the_only_candidate_drops_the_row(
+    tmp_path: Path,
+) -> None:
+    stats, table = _build(tmp_path, [_record("LEE", "SENATE", state="California")])
+    assert table is not None and table.num_rows == 0
+    assert stats.rows_dropped_unresolved_state_mismatch == 1
+    assert stats.unresolved_by_chamber == {"SENATE": 1}
+
+
+def test_unrecognized_state_is_ignored_and_counted(tmp_path: Path) -> None:
+    """A garbled state falls back to surname-only matching, never to a guess."""
+    stats, table = _build(tmp_path, [_record("LEE", "SENATE", state="Japan")])
+    assert table is not None
+    assert table.column("member_id").to_pylist() == ["S1"]
+    assert stats.state_unrecognized == {"Japan": 1}
+
+
+def test_record_without_a_state_key_is_rejected(tmp_path: Path) -> None:
+    """The pre-2026-10-02 file has no state and the Senate fetch cap (O8)."""
+    record = _record("LEE", "SENATE")
+    del record["state"]
+    with pytest.raises(ValueError, match="state"):
+        _build(tmp_path, [record])
+
+
 def test_stats_arithmetic_closes(tmp_path: Path) -> None:
     stats, _ = _build(
         tmp_path,
@@ -437,6 +530,7 @@ def test_stats_arithmetic_closes(tmp_path: Path) -> None:
             _record("AMASH", date="2018-06-05"),
             _record("LEE", "SENATE", speech="Mr. President, short."),
             _record("LEE", "SENATE", date="2030-01-01"),
+            _record("LEE", "SENATE", state="California"),
         ],
     )
     dropped = (
@@ -444,12 +538,13 @@ def test_stats_arithmetic_closes(tmp_path: Path) -> None:
         + stats.rows_dropped_after_end
         + stats.rows_dropped_unresolved_no_candidate
         + stats.rows_dropped_unresolved_ambiguous
+        + stats.rows_dropped_unresolved_state_mismatch
         + stats.rows_dropped_delegate
         + stats.rows_dropped_excluded_member
         + stats.rows_dropped_short
         + stats.rows_dropped_duplicate_id
     )
-    assert stats.rows_read == 7
+    assert stats.rows_read == 8
     assert stats.rows_written == 1
     assert dropped + stats.rows_written == stats.rows_read
 

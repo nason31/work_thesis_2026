@@ -1,6 +1,6 @@
 {
   "run": "20260923T103556Z",
-  "built_at": "2026-09-29T20:30:14+00:00",
+  "built_at": "2026-10-03T09:17:02+00:00",
   "inputs": {
     "scores": {
       "deepseek-reasoner": "364c18239d8446d732f43465d4b32afa231d857b5aec483a4c94038475a1cfa8",
@@ -9,11 +9,11 @@
     },
     "corpus": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
-      "sha256": "c6a773de5d94f560b66a15192544144b35940e233f7ea0d9b25e374b66e5ebfc"
+      "sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704"
     },
     "crosswalk": {
       "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/member_crosswalk.parquet",
-      "sha256": "7eba6f0371c48029c8400f76b9a225e4323b03fc41e6cdbd05950f3893062f17"
+      "sha256": "41f1c070f094549b286a54be7a1c0436d972240693d7f00deeac946a3709631f"
     }
   },
   "counts": {
