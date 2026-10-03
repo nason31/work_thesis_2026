@@ -513,11 +513,12 @@ work_thesis_2026/
   ~$21 with two models (S15; `pilot_run.py --dry-run`). Budget from the
   sample. Corpus counts:
   `results/metrics/merged_build_stats.json`
-- **S8 is one run in stages, never re-scored** (S13): stage 1
-  `pilot_run.py --label s8 --per-cell 4` (the pilot gate), then
-  `pilot_run.py --resume <timestamp> --per-cell 100`. A resume scores only what
-  has no score yet and refuses if the corpus, prompt, models, caps or seed
-  changed. Files: `results/scores/s8_*_<timestamp>.*`,
+- **S8 is one run in stages, never re-scored** (S13, S16): started with
+  `pilot_run.py --label s8 --per-cell 100 --carry-over-from 20261003T100851Z`
+  (stage 1 = the pilot's GPT-4o and DeepSeek answers to 208 speeches; stage 2
+  scores the other 4,992); continued or retried with
+  `pilot_run.py --resume <timestamp>`. A resume scores only what has no score
+  yet and refuses if the corpus, prompt, models, caps or seed changed. Files: `results/scores/s8_*_<timestamp>.*`,
   `results/metrics/s8_summary_<timestamp>.json`
 - Always run on a small sample (100–500 speeches) before any larger run
 - Log token counts and estimated cost before and after large API calls

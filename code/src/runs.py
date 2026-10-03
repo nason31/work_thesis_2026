@@ -43,6 +43,15 @@ SCORE_DEFINING_KEYS: tuple[str, ...] = (
     "stratify_by",
 )
 
+#: Score-defining settings other than the models, which a carry-over matches
+#: model by model instead (S16).
+RUN_SETTING_KEYS: tuple[str, ...] = tuple(
+    key for key in SCORE_DEFINING_KEYS if key != "models"
+)
+
+#: Model settings that must match even across a declared name equivalence.
+_MODEL_BEHAVIOUR_KEYS = ("provider", "effective_temperature", "max_output_tokens")
+
 _MANIFEST = "_manifest_"
 
 #: How many offending ids an error message lists.
@@ -186,7 +195,11 @@ def pending_models(
 # --- whether a run may be resumed -----------------------------------------
 
 
-def check_resumable(manifest: Mapping[str, Any], current: Mapping[str, Any]) -> None:
+def check_resumable(
+    manifest: Mapping[str, Any],
+    current: Mapping[str, Any],
+    keys: tuple[str, ...] = SCORE_DEFINING_KEYS,
+) -> None:
     """Raise unless every score-defining setting matches the run's manifest.
 
     A setting the manifest does not record counts as changed: a run from before
@@ -196,9 +209,7 @@ def check_resumable(manifest: Mapping[str, Any], current: Mapping[str, Any]) -> 
         ValueError: naming every setting that differs.
     """
     changed = [
-        key
-        for key in SCORE_DEFINING_KEYS
-        if key not in manifest or manifest[key] != current[key]
+        key for key in keys if key not in manifest or manifest[key] != current[key]
     ]
     if changed:
         raise ValueError(
@@ -225,3 +236,81 @@ def check_nested(scored_ids: Iterable[str], sample_ids: Iterable[str]) -> None:
             f"are not in the new sample, e.g. {orphaned[:_SHOW]}. Use a sample "
             "at least as large as the run's last stage."
         )
+
+
+# --- carrying answers from an earlier run into a new one (S16) ---------------
+
+
+def match_models(
+    old_models: Mapping[str, Mapping[str, Any]],
+    current_models: Mapping[str, Mapping[str, Any]],
+    equivalents: Mapping[str, str],
+) -> dict[str, str]:
+    """Map each current model to the earlier run's model whose answers it may take.
+
+    A model under the same name must have identical settings; a manifest from
+    before ``request_options`` existed counts as having sent none, which is what
+    the code then did. A declared equivalent (an earlier name for the same
+    model) must match on everything but its name and request options; whether
+    it really was the same model is checked row by row (`check_served`).
+
+    Raises:
+        ValueError: the earlier run lacks a model, or its settings differ.
+    """
+    mapping: dict[str, str] = {}
+    for name, current in current_models.items():
+        old_name = equivalents.get(name, name)
+        if old_name not in old_models:
+            raise ValueError(f"cannot carry over: the earlier run has no {old_name!r}")
+        old = {"request_options": {}, **old_models[old_name]}
+        if old_name == name:
+            same = old == dict(current)
+        else:
+            same = all(old.get(k) == current.get(k) for k in _MODEL_BEHAVIOUR_KEYS)
+        if not same:
+            raise ValueError(
+                f"cannot carry over {name}: its settings differ from the earlier "
+                f"run's {old_name} ({dict(old)} vs {dict(current)})"
+            )
+        mapping[name] = old_name
+    return mapping
+
+
+def check_served(rows: Iterable[Mapping[str, Any]], model: str) -> None:
+    """Raise unless every row says ``model`` is what answered it.
+
+    The evidence that an earlier model name was the same model.
+
+    Raises:
+        ValueError: naming the other served models found.
+    """
+    served = {row.get("served_model") for row in rows}
+    if served - {model}:
+        raise ValueError(
+            f"cannot carry over as {model}: earlier rows were served by "
+            f"{sorted(str(s) for s in served - {model})}"
+        )
+
+
+def carry_rows(
+    rows: Iterable[Mapping[str, Any]], run: str, sample_ids: Iterable[str]
+) -> list[dict[str, Any]]:
+    """Rows of the sampled speeches, as stage 1 of the new run.
+
+    Each keeps everything it recorded (including the model name it was
+    requested under) and says where it came from.
+    """
+    wanted = set(sample_ids)
+    carried = []
+    for row in rows:
+        if str(row["speech_id"]) not in wanted:
+            continue
+        copy = dict(row)
+        copy["carried_from"] = {
+            "run": run,
+            "stage": row.get("stage"),
+            "model": row.get("model"),
+        }
+        copy["stage"] = 1
+        carried.append(copy)
+    return carried

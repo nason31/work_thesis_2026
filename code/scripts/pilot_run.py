@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import (
     CALL_TIMEOUT_SECONDS,
+    CARRY_OVER_EQUIVALENTS,
     CORPUS_PATH,
     ENSEMBLE_DISAGREEMENT_THRESHOLD,
     ENSEMBLE_MODELS,
@@ -65,13 +66,17 @@ from src.config import (
 from src.corpus import _fingerprint
 from src.runs import (
     DEFAULT_LABEL,
+    RUN_SETTING_KEYS,
+    carry_rows,
     check_nested,
     check_resumable,
+    check_served,
     effective_rows,
     ensemble_path,
     find_label,
     is_ok,
     manifest_path,
+    match_models,
     model_path,
     pending_models,
     read_rows,
@@ -635,6 +640,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="extend or finish that run: score only what has no score yet",
     )
     parser.add_argument(
+        "--carry-over-from",
+        metavar="TIMESTAMP",
+        default=None,
+        help="start a new run with that run's answers for the current models, "
+        "scoring only what it lacks (S16)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="sample and estimate cost, then stop without calling any model",
@@ -709,6 +721,47 @@ def check_run(
     return rows_by_model
 
 
+def prepare_carry_over(
+    args: argparse.Namespace,
+    settings: dict[str, Any],
+    speeches: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, list[dict[str, Any]]]]:
+    """Check an earlier run's answers may enter this run; return them per model.
+
+    Returns (mapping current model -> earlier model, carried rows per model).
+
+    Raises:
+        FileNotFoundError: no manifest for the earlier run.
+        ValueError: a score-defining setting differs, a model's settings
+            differ, an equivalent name was served by another model, or the
+            earlier run scored speeches outside this sample.
+    """
+    old = args.carry_over_from
+    old_label = find_label(args.output_dir, old)
+    old_manifest = json.loads(
+        manifest_path(args.output_dir, old_label, old).read_text()
+    )
+    check_resumable(old_manifest, settings, keys=RUN_SETTING_KEYS)
+    mapping = match_models(
+        old_manifest.get("models", {}), settings["models"], CARRY_OVER_EQUIVALENTS
+    )
+    old_rows = {
+        model: read_rows(model_path(args.output_dir, old_label, old_model, old))
+        for model, old_model in mapping.items()
+    }
+    for model, old_model in mapping.items():
+        if model != old_model:
+            check_served(old_rows[model], model)
+    sample_ids = {speech["speech_id"] for speech in speeches}
+    check_nested(
+        {str(row["speech_id"]) for rows in old_rows.values() for row in rows},
+        sample_ids,
+    )
+    return mapping, {
+        model: carry_rows(rows, old, sample_ids) for model, rows in old_rows.items()
+    }
+
+
 def write_outputs(
     args: argparse.Namespace, label: str, run: str, speeches: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], Path, Path]:
@@ -732,6 +785,12 @@ def write_outputs(
 async def main(argv: list[str] | None = None) -> int:
     """Sample, price what is left, confirm the spend, score and report."""
     args = parse_args(argv)
+    if args.resume and args.carry_over_from:
+        print(
+            "pilot_run: --carry-over-from starts a new run; not with --resume",
+            file=sys.stderr,
+        )
+        return 2
 
     label, manifest = args.label or DEFAULT_LABEL, None
     if args.resume:
@@ -786,6 +845,22 @@ async def main(argv: list[str] | None = None) -> int:
     else:
         run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rows_by_model = {model: [] for model in ENSEMBLE_MODELS}
+
+    carry_mapping: dict[str, str] = {}
+    if args.carry_over_from:
+        try:
+            carry_mapping, rows_by_model = prepare_carry_over(args, settings, speeches)
+        except (FileNotFoundError, ValueError) as error:
+            print(f"pilot_run: {error}", file=sys.stderr)
+            return 2
+        print(
+            f"carry   {sum(len(r) for r in rows_by_model.values()):,} answers from "
+            f"run {args.carry_over_from}: "
+            + ", ".join(
+                f"{old} -> {new}" if old != new else new
+                for new, old in carry_mapping.items()
+            )
+        )
 
     pending = pending_models(
         [speech["speech_id"] for speech in speeches], rows_by_model, ENSEMBLE_MODELS
@@ -856,6 +931,23 @@ async def main(argv: list[str] | None = None) -> int:
             "prompt_path": str(SCORE_PROMPT_PATH),
             "stages": [],
         }
+        if carry_mapping:
+            carried_ids = {
+                str(row["speech_id"]) for rows in rows_by_model.values() for row in rows
+            }
+            manifest["carried_over_from"] = {
+                "run": args.carry_over_from,
+                "models": carry_mapping,
+                "rows": {model: len(rows) for model, rows in rows_by_model.items()},
+            }
+            manifest["stages"].append(
+                {
+                    "stage": 1,
+                    "carried_over_from": args.carry_over_from,
+                    "speeches": len(carried_ids),
+                    "rows": manifest["carried_over_from"]["rows"],
+                }
+            )
     stage = len(manifest["stages"]) + 1
     manifest["per_cell"] = per_cell
     manifest["sample_size"] = len(speeches)
@@ -882,6 +974,11 @@ async def main(argv: list[str] | None = None) -> int:
             handles[model] = model_path(args.output_dir, label, model, run).open(
                 "a", encoding="utf-8"
             )
+        if carry_mapping:
+            for model, rows in rows_by_model.items():
+                for row in rows:
+                    handles[model].write(json.dumps(row) + "\n")
+                handles[model].flush()
         await score_all(speeches, template, handles, specs, clients, pending, stage)
     finally:
         for handle in handles.values():
