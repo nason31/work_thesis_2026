@@ -1,8 +1,16 @@
 # govinfo data reality — what the file actually contains
 
 **Date:** 2026-09-27 · **File:** `data/raw/govinfo/congress_speeches_2016_present.jsonl`
-(572,540,799 bytes, 225,564 rows; sha256 in `results/metrics/govinfo_build_stats.json`)
-· **Built by:** Konsti's `02_govinfo_dataset.ipynb` (not in the repo)
+(572,540,799 bytes, 225,564 rows; sha256 `822d1c80…`)
+· **Built by:** Konsti's `02_govinfo_dataset.ipynb` (not in the repo at the time)
+
+> **Superseded file, 2026-10-03.** This note describes the original file. It
+> was replaced by Konsti's 2026-10-02 re-fetch (276,513 rows, sha256
+> `58bcc59b…`), which follows the API's pagination and adds a `state` column.
+> The missing-state problem below is settled by `docs/decisions.md` D25 and the
+> Senate fetch cap by the re-fetch (O8, updated). The text problems (D17) and
+> the chamber-blind party lookup (D16) are unchanged in the new file. The
+> notebook is now in the repo at `code/notebooks/02_govinfo_dataset.ipynb`.
 
 Measured against the file, not the README. The README on `main`
 (`data/raw/govinfo/README.md`) is accurate about coverage and columns, but its

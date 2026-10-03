@@ -15,10 +15,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from pilot_run import _mean_std, allocate, build_ensemble
+from pilot_run import _mean_std, allocate, build_ensemble, model_manifest
 
 from src.scoring import (
     MODEL_SPECS,
+    ModelSpec,
     ScoreParseError,
     ScoreResult,
     estimate_cost,
@@ -389,3 +390,38 @@ def test_ensemble_covers_every_sampled_speech() -> None:
 
     assert [r["speech_id"] for r in rows] == ["s1", "s2"]
     assert rows[1]["n_models"] == 0
+
+
+# --- run manifest ------------------------------------------------------
+
+
+def test_manifest_records_each_models_own_output_cap() -> None:
+    """The cap decides whether a reasoning model answers at all (S10).
+
+    A reasoner spends its reasoning from the same budget as its answer, so the
+    run record must say which cap each model ran with -- not a shared default.
+    """
+    specs = {
+        "reasoner": ModelSpec(
+            model="r-1",
+            provider="openai_compatible",
+            api_key_env="R_KEY",
+            max_output_tokens=8192,
+        ),
+        "plain": ModelSpec(
+            model="p-1",
+            provider="anthropic",
+            api_key_env="P_KEY",
+            max_output_tokens=512,
+        ),
+    }
+
+    models = model_manifest(specs)
+
+    assert models["reasoner"]["max_output_tokens"] == 8192
+    assert models["plain"] == {
+        "model": "p-1",
+        "provider": "anthropic",
+        "effective_temperature": "provider default",
+        "max_output_tokens": 512,
+    }

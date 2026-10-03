@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     unresolved = (
         stats.rows_dropped_unresolved_no_candidate
         + stats.rows_dropped_unresolved_ambiguous
+        + stats.rows_dropped_unresolved_state_mismatch
     )
     print(f"read     {stats.rows_read:>10,} raw rows")
     print(f"dropped  {stats.rows_dropped_before_start:>10,} before {stats.start_date}")
@@ -76,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"dropped  {unresolved:>10,} unresolved speaker "
         f"({stats.rows_dropped_unresolved_ambiguous:,} ambiguous, "
-        f"{stats.rows_dropped_unresolved_no_candidate:,} no member)"
+        f"{stats.rows_dropped_unresolved_no_candidate:,} no member, "
+        f"{stats.rows_dropped_unresolved_state_mismatch:,} state contradicts)"
     )
     print(f"dropped  {stats.rows_dropped_delegate:>10,} non-voting delegates")
     print(f"dropped  {stats.rows_dropped_excluded_member:>10,} excluded members")
@@ -87,6 +89,11 @@ def main(argv: list[str] | None = None) -> int:
     share = stats.words_removed_by_cleaning / max(stats.words_before_cleaning, 1)
     print(f"words removed    {stats.words_removed_by_cleaning:,} ({share:.1%})")
     print(f"unresolved       {stats.unresolved_by_chamber}")
+    print(
+        f"state            {stats.rows_with_state:,} rows name one; "
+        f"{stats.rows_resolved_by_state:,} namesakes settled by it; "
+        f"unrecognized {stats.state_unrecognized}"
+    )
     print(f"party            {stats.party_counts}")
     print(f"independents     {stats.independents_reassigned:,} reassigned to caucus")
     print(f"congresses       {stats.congress_counts}")
