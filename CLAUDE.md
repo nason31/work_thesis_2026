@@ -433,11 +433,17 @@ work_thesis_2026/
 │   │   ├── govinfo.py      ← govinfo side: re-resolve speakers, cut text, write
 │   │   ├── merge.py        ← both sides → corpus.parquet, with checks
 │   │   ├── crosswalk.py    ← corpus members → Voteview ICPSR (DW-NOMINATE join)
+│   │   ├── scoring.py      ← provider calls, parsing, retries, deadlines, cost
+│   │   ├── runs.py         ← a scoring run on disk: resume, carry-over, which rows count
+│   │   ├── validation.py   ← a run's scores vs DW-NOMINATE
+│   │   ├── analysis.py     ← a run → one row per speech; clustered means, gaps, trends
+│   │   ├── plots.py        ← analysis figures (chambers apart, source break marked)
 │   │   └── prompts/        ← prompt templates as files, logged with every run
 │   ├── scripts/            ← one-off analysis and pipeline scripts
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
 │   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
-│                              (Colab), which produce the raw files
+│                              (Colab), which produce the raw files, and
+│                              04_score_analysis (S8 findings for Meeting 2, A1)
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/

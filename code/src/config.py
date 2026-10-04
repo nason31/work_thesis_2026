@@ -107,6 +107,19 @@ SOURCE_BREAK_YEAR: int = SOURCE_BREAK_DATE.year
 SOURCE_BREAK_CONGRESS: int = 114
 YEAR_RANGE: tuple[int, int] = (2001, 2025)
 
+# Who held the presidency during each Congress, and their party: used to shade
+# presidential terms in plots and to mark the party in opposition (RQ3). A
+# Congress starts on 3 January and a president on 20 January, so the first ~17
+# days of the 107th, 111th, 115th, 117th and 119th fall under the predecessor;
+# each Congress is assigned the president who held office for nearly all of it.
+PRESIDENTS_BY_CONGRESS: dict[int, tuple[str, str]] = {
+    107: ("Bush", "R"), 108: ("Bush", "R"), 109: ("Bush", "R"), 110: ("Bush", "R"),
+    111: ("Obama", "D"), 112: ("Obama", "D"), 113: ("Obama", "D"), 114: ("Obama", "D"),
+    115: ("Trump", "R"), 116: ("Trump", "R"),
+    117: ("Biden", "D"), 118: ("Biden", "D"),
+    119: ("Trump", "R"),
+}  # fmt: skip
+
 # Stanford data covers the 107th-114th Congress. Primary aggregation is by
 # Congress, not calendar year (CLAUDE.md "Decided -- data decisions").
 CONGRESS_RANGE_STANFORD: tuple[int, int] = (107, 114)

@@ -1591,6 +1591,43 @@ manifest records `carried_over_from`.
 
 ---
 
+## Analysis
+
+### A1 — How the S8 run is analysed: chambers apart, intervals clustered by member
+**Date:** 2026-10-04 · **Status:** active · **Decided by:** Justus (design
+approved for the Meeting 2 notebook)
+
+`code/notebooks/04_score_analysis.ipynb` analyses run `20261003T110419Z`; its
+logic is in `code/src/analysis.py` and `code/src/plots.py` (tested). Figures go
+to `results/plots/s8_*.png`, the tables behind them to
+`results/metrics/s8_*_20261003T110419Z.csv`.
+
+- **House and Senate are never pooled** — O8's thinner govinfo Senate, and S8's
+  equal quotas per cell (S11).
+- **Intervals are clustered by member** (CR1, normal 95%). Many speeches come
+  from one member, and treating them as independent overstates the evidence.
+  A member is their career-long ICPSR from the crosswalk (5,196 of 5,200
+  speeches); the 4 unmatched fall back to the source-native id. Not
+  Stanford's `speakerid`, which changes every Congress.
+- **Trends are OLS slopes of the speech-level score on the Congress number**,
+  reported for 2001–2016 (Stanford only, no source change) and 2001–2025. A
+  straight line is a summary, not a claim that change was linear.
+- **The party gap's error** adds the two parties' errors in quadrature — their
+  speeches come from different members.
+- **Presidency per Congress** (`PRESIDENTS_BY_CONGRESS` in `config.py`): each
+  Congress goes to the president who held office for nearly all of it (a
+  Congress starts 3 January, a presidency 20 January).
+- **Member-level validation is exploratory** (members with ≥ 5 sampled speeches,
+  each member's mean against their Voteview score) until O9 is settled.
+- Procedural speeches stay in every figure; a robustness check without them is
+  still to do.
+
+**Rejected:** pooling chambers (O8); speech-level standard errors (overstate
+the evidence); clustering by `member_id` (Stanford's changes every Congress, so
+a career would count as several members).
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
