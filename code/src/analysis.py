@@ -24,8 +24,15 @@ import pandas as pd
 import pyarrow.parquet as pq
 import statsmodels.api as sm
 
-from src.config import CORPUS_PATH, CROSSWALK_PATH, PRESIDENTS_BY_CONGRESS, SCORES_DIR
+from src.config import (
+    CORPUS_PATH,
+    CROSSWALK_PATH,
+    LABELS_DIR,
+    PRESIDENTS_BY_CONGRESS,
+    SCORES_DIR,
+)
 from src.crosswalk import UNIT_KEY
+from src.labeling import LABEL_COLUMNS, load_labels
 from src.runs import (
     effective_rows,
     ensemble_path,
@@ -177,6 +184,25 @@ def add_presidency(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# --- speech labels -----------------------------------------------------------
+
+
+def attach_labels(
+    frame: pd.DataFrame, run: str, labels_dir: Path = LABELS_DIR
+) -> pd.DataFrame:
+    """Add ``speech_type``, ``topic`` and ``topic_block`` from label run ``run``.
+
+    A left join on speech_id: a speech the run did not label, or never labelled
+    validly, gets nulls rather than being dropped. ``topic`` and
+    ``topic_block`` are null for every type but policy debate (L2).
+
+    Raises:
+        ValueError: ``frame`` repeats a speech_id.
+    """
+    labels = load_labels(run, labels_dir)[["speech_id", *LABEL_COLUMNS]]
+    return frame.merge(labels, on="speech_id", how="left", validate="one_to_one")
+
+
 # --- clustered estimates ---------------------------------------------------
 
 
@@ -220,15 +246,15 @@ def cell_means(
     return pd.DataFrame(rows)
 
 
-def party_gap(cells: pd.DataFrame) -> pd.DataFrame:
-    """R - D per Congress and chamber, from `cell_means` output.
+def party_gap(
+    cells: pd.DataFrame, by: Sequence[str] = ("congress_number", "chamber")
+) -> pd.DataFrame:
+    """R - D per group of ``by`` (default: Congress and chamber), from `cell_means`.
 
     The parties' speeches come from different members, so their errors are
     independent and add in quadrature.
     """
-    wide = cells.pivot_table(
-        index=["congress_number", "chamber"], columns="party", values=["mean", "se"]
-    )
+    wide = cells.pivot_table(index=list(by), columns="party", values=["mean", "se"])
     gap = pd.DataFrame(
         {
             "gap": wide[("mean", "R")] - wide[("mean", "D")],

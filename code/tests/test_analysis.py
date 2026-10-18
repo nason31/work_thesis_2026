@@ -393,3 +393,22 @@ def test_speech_texts_returns_only_the_requested_speeches(tmp_path: Path) -> Non
     _, corpus, _ = _run_files(tmp_path)
 
     assert speech_texts(["s3"], corpus) == {"s3": "x"}
+
+
+def test_the_party_gap_can_be_taken_over_other_groups() -> None:
+    # Same arithmetic as per Congress: 0.5 - (-0.2) = 0.7, se sqrt(.03^2 + .04^2).
+    cells = pd.DataFrame(
+        {
+            "topic_block": ["economic", "economic"],
+            "chamber": ["H", "H"],
+            "party": ["R", "D"],
+            "mean": [0.5, -0.2],
+            "se": [0.03, 0.04],
+        }
+    )
+
+    row = party_gap(cells, by=("topic_block", "chamber")).iloc[0]
+
+    assert row["topic_block"] == "economic"
+    assert row["gap"] == pytest.approx(0.7)
+    assert row["se"] == pytest.approx(0.05)

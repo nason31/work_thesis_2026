@@ -1628,9 +1628,314 @@ a career would count as several members).
 
 ---
 
+## Labels
+
+A second pass that gives each speech a **speech type** and, for policy debate,
+a **topic**. Added 2026-10-17. Code: `code/src/labeling.py`,
+`code/src/label_eval.py`, `code/scripts/label_run.py`,
+`make_label_check_sheet.py`, `evaluate_labels.py`; prompt
+`code/src/prompts/label_speech.txt`.
+
+### L1 — Speech labels: zero-shot LLM classification with a closed codebook, separate from scoring
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+Each scored speech gets two labels from one model call, reading only the speech
+text (no party, name, date, chamber or Congress) and the whole speech ([M4]):
+
+- `speech_type`: procedural, ceremonial, bill_introduction, constituent_local,
+  policy_debate, other
+- `topic`: one of 11 codes, **only** for policy_debate; null otherwise
+
+**What they are for:** to separate non-substantive speeches (procedural,
+ceremonial, bill introductions, constituent items) from policy debate, and to
+test whether the polarization trend survives controlling for what Congress talks
+about. The topic mix shifts over time, and the govinfo Senate loses late-day
+statements, tributes and bill introductions at the 2016-09-10 break ([O8]), so
+the speech-type mix alone could fake a trend there.
+
+**Labels are covariates, strata and exclusion filters — never a scoring
+result.** The ideology and tone scores stay continuous ([M1]); a categorical
+label used to filter or stratify them does not make the result binary, so M1
+and the CLAUDE.md rule against binary final output are not touched.
+
+**A separate pass, not part of the scoring prompt.** `score_speech.txt` is
+unchanged, so the S8 scores stay comparable and the S8 run stays resumable
+([S13]: the prompt is score-defining).
+
+**Rejected:**
+- *Topic models (BERTopic, LDA)* — topics are unstable across runs and seeds,
+  have no fixed taxonomy to report or hand-check against, and need naming after
+  the fact.
+- *Keyword dictionaries* — brittle on floor speech, where procedural phrases
+  ("I yield", "Mr. Speaker") open substantive speeches too and topics are
+  named in many ways.
+- *Adding the labels to the scoring prompt* — would change the scoring
+  instrument and break comparability with every S8 score.
+- *Fine-tuning a classifier* — needs a labelled training set we do not have
+  ([O2]); the hand check ([L4]) is sized to validate, not to train.
+
+---
+
+### L2 — Codebook v1 and the topic blocks
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+The codebook is the prompt `code/src/prompts/label_speech.txt`, saved as given
+(the brief's quoting indent removed). `CODEBOOK_VERSION = "v1"`; the label
+strings are `SPEECH_TYPES` and `TOPICS` in `config.py`, and a test reads them
+back out of the prompt so the two cannot drift. **Any change to the codebook
+is a new version and a new entry here**, and a label run never resumes across
+versions.
+
+Topics roll up into five blocks (`TOPIC_BLOCKS` in `config.py`), applied after
+the fact, so the map can change without relabelling:
+
+| Block | Topics |
+|---|---|
+| economic | economy_tax_budget, welfare_labor, health, environment_energy |
+| social_cultural | social_cultural, immigration, education |
+| security_foreign | defense_foreign, law_crime |
+| governance | government_process |
+| other | other_policy |
+
+**Judgement calls — state them in the methodology:**
+- **Immigration under social_cultural**, although it is argued in economic
+  terms (labour markets, fiscal cost) as often as cultural ones.
+- **Health under economic**: insurance, Medicare/Medicaid and drug prices are
+  mostly argued as spending and markets.
+- **law_crime under security_foreign**, beside defence, rather than under
+  social_cultural.
+- **Guns under social_cultural** (in the prompt's topic list), although the
+  Comparative Agendas Project files them under law and crime.
+- **Voting rights split by framing:** voting rights as a civil-rights matter →
+  social_cultural; election administration, campaign finance and redistricting
+  → government_process. Expect coders and models to disagree most on this line.
+
+**Risk to watch in the pilot:** the prompt's JSON example writes the topic as
+`"<one of the eleven topics, or null>"`, with null inside the quotes. A model
+may return the string `"null"` for non-policy speeches; under [L3] that is a
+failure, not null. The pilot's failure count will show whether it happens.
+
+---
+
+### L3 — Labelling model: DeepSeek-V4.1-Flash, thinking disabled; GPT-4o only as the agreement check
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus (model,
+mode, temperature, cap); option and wiring checked by the agent
+
+- **Labelling model:** `deepseek-flash` with **thinking disabled**.
+  Labelling is preprocessing, and CLAUDE.md keeps reasoning models for the
+  scoring step. This does not contradict [M3b]: the same model scores with
+  thinking on and labels with it off. The option is DeepSeek's documented
+  toggle (`api-docs.deepseek.com/guides/thinking_mode`, read 2026-10-17):
+  `extra_body={"thinking": {"type": "disabled"}}`. `reasoning_effort` is **not
+  sent**: the docs do not say what it does with thinking off. Pricing is the
+  same in both modes ($0.30 / $1.20 per 1M at peak). Every row records
+  `reasoning_tokens`, the evidence that thinking was actually off.
+- **Separate spec:** `LABEL_MODEL_SPECS` in `labeling.py`, derived from the
+  scoring specs with only the cap and request options changed. `MODEL_SPECS`,
+  which scored S8, is untouched (a test checks it still has thinking on).
+- **Agreement-check model:** `gpt-4o-2024-11-20`, JSON mode, only on the
+  hand-check subsample ([L4]).
+- **No temperature.** As in [S2a], for consistency with scoring. **Caveat for
+  the methodology:** S2a's DeepSeek reason (the model ignores temperature) is
+  true of *thinking* mode only; non-thinking DeepSeek and GPT-4o both accept a
+  temperature. Leaving it unset is a choice here, not a constraint, and repeat
+  runs will be noisier than a temperature-0 design.
+- **Output cap 256** (`LABEL_MAX_OUTPUT_TOKENS`): two label strings and a reason
+  of at most 15 words. **Same 300-second deadline and retry** as scoring ([S14]),
+  reusing scoring.py's call, retry and JSON extraction.
+- **Labels outside the codebook are failures** (the [S3] rule): an unknown
+  type, wrong case, a topic on a non-policy speech, a policy speech without a
+  topic, or the string "null". The tokens are still recorded. Nothing is mapped
+  to a nearest code.
+- **Cost (dry run, 2026-10-17):** 200 speeches $0.084, all 5,200 S8 speeches
+  $2.24 (tiktoken input, 45 output tokens per speech assumed until the pilot
+  measures it). GPT-4o on 200 for reference: $0.70.
+
+**Snapshot note — record it in the methodology:** on 2026-10-17 DeepSeek
+upgraded `deepseek-flash` to **DeepSeek-V4.1-Flash-1017** under the same name
+(DeepSeek changelog, 2026-10-17). The S8 scores (2026-10-03) came from the
+earlier V4.1-Flash; labels made from today on come from the 1017 snapshot. The
+API returns `deepseek-flash` as the served model either way, so only
+`system_fingerprint` can show the change (all 5,202 S8 DeepSeek rows share one
+fingerprint, `aeb56401…`). Label rows record it, and the label summary flags
+more than one fingerprint.
+
+**Rejected:**
+- *Thinking on* — a reasoning model for a preprocessing step. On the scoring
+  prompt, thinking mode spent ~499 output tokens per speech ([S9]), against the
+  45 assumed here for a non-thinking answer.
+- *GPT-4o as the labelling model* — ~8× DeepSeek's cost for a step that does
+  not need it; it stays as the independent check.
+- *Temperature 0* — see above; decided against for consistency with scoring.
+
+---
+
+### L4 — How the labels are validated
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+1. **Pilot:** `label_run.py --from-run 20261003T110419Z --limit 200 --label s8`
+   — 200 S8 speeches, 50 per chamber × source, seed 42. Run only after a
+   human's go-ahead ([E7]).
+2. **Hand check:** `make_label_check_sheet.py` draws 200 speeches (stratified
+   by chamber, source and era, [L5]) into a blind CSV in
+   `data/processed/label_check/`. The model's labels are not in it. **The first
+   50 rows are double-coded.** Coders use the codebook's exact strings.
+3. **Agreement** (`evaluate_labels.py`): accuracy, macro-F1 and Cohen's kappa,
+   with confusion matrices, for speech type, topic and block —
+   - model vs coder 1 (all coded rows),
+   - coder 1 vs coder 2 (the 50; the CLAUDE.md manual-labelling rule asks for
+     two coders and kappa),
+   - DeepSeek vs GPT-4o on the same speeches (GPT-4o run on the sheet's ids,
+     its own approval),
+   - GPT-4o vs coder 1.
+4. **Free consistency checks against S8** (no API): speech_type == procedural
+   against the "both models scored ideology exactly 0.0" flag (1,599 of the
+   5,200), mean |ideology| and tone by speech type and chamber, and label
+   shares by source and by Congress with the 114th marked as mixed-source.
+   Shares are sample shares (S8's equal quotas, [S11]), chambers apart ([O8]).
+
+Each later step needs its own approval: labelling all 5,200, GPT-4o on the
+check subsample, labelling any larger scoring run.
+
+---
+
+### L5 — Label runs on disk, and the judgement calls in the pipeline
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** agent (to confirm
+by Justus)
+
+**Run mechanics** (mirroring [S13]): a label run is one timestamp and **one
+model**. `results/labels/label_<label>_<model>_<run>.jsonl` holds one row per
+attempt, and `label_manifest_<label>_<run>.json` holds the codebook version
+and labels, prompt path, hash and full text, corpus path and hash, per-model
+settings and pricing, seed, and per stage the selection, id count and id-list
+hash. `results/metrics/label_summary_<label>_<run>.json` holds counts, shares,
+failures, tokens, cost, served models and fingerprints. `results/labels/` is
+git-ignored like `results/scores/`. A resume labels only speeches without valid
+labels and **refuses** if the codebook version, the codebook labels, the
+prompt hash, the corpus hash or the model's settings changed, or if a new
+selection drops speeches already labelled. A bare `--resume` repeats the last
+selection and refuses if its ids changed (e.g. an edited ids file).
+`label_run.py` has **no `--yes`**: spending needs a typed "yes" ([E7]).
+
+**Judgement calls:**
+- **`--limit` strata: chamber × source**, equal quotas, seed 42 (the brief).
+  The pilot's 200 are 50 per cell; Congresses fall where they fall (8–23 each).
+- **"Era" for the check sheet = presidential term** (`term` from
+  `analysis.add_presidency`: Bush, Obama, Trump 2017–20, Biden, Trump 2025–26).
+  The brief named era without defining it; terms are already in `config.py`
+  and tie to RQ3.
+- **The 50 double-coded rows are a stratified sub-draw** of the 200, placed
+  first, with rows shuffled within each part so the order reveals no stratum.
+- **Failed speeches stay eligible for the sheet**; excluding them would tilt
+  the check toward speeches the model could label. They are listed separately
+  in the evaluation.
+- **Topic and block agreement are computed only where both raters said
+  policy_debate**, so a disagreement on type is not counted twice.
+- **Coders' codes are trimmed of whitespace; anything else that is not an exact
+  codebook string stops the evaluation** and lists the rows (no silent drop).
+- **Extra row fields:** `reasoning_tokens`, `system_fingerprint` and `stage`, in
+  addition to the brief's list.
+- **`--ids-file` takes a CSV's `speech_id` column**, so a check sheet can be fed
+  straight back for the GPT-4o run.
+- **Sheets are never overwritten**, and texts longer than Excel's
+  32,767-character cell limit (11 of the 5,200) are also written out in full.
+
+---
+
+### L6 — Label pilot (run `20261017T182223Z`): 200 of 200 labelled, no failures
+**Date:** 2026-10-17 · **Status:** finding, not a decision — shares
+**indicative only, do not cite** (n = 200, sample shares)
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+`label_run.py --from-run 20261003T110419Z --limit 200 --label s8`: 50 speeches
+per chamber × source, `deepseek-flash` with thinking off. Approved by Justus in
+the session ([E7]).
+
+- **Instrument:** 200 calls, **0 failures, 0 retries**. No string `"null"`
+  topics, so [L2]'s risk did not show. 246,100 input tokens (tiktoken counted
+  242,627, +1.4%) and 8,136 output tokens (40.7 per speech, against the 45
+  assumed), **$0.084** (estimate $0.084). About 1 s per call.
+- **Thinking was off:** 0 reasoning tokens on every call.
+- **The model changed since S8:** every row carries system fingerprint
+  `e72d3c7f…`; all S8 DeepSeek rows carry `aeb56401…`. This confirms the
+  2026-10-17 switch to V4.1-Flash-1017 ([L3]), and that only the fingerprint
+  shows it (`served_model` is `deepseek-flash` in both).
+- **Speech types:** policy_debate 136 (68%), procedural 34 (17%), ceremonial 23
+  (11.5%), bill_introduction 5, constituent_local 2, other 0. Procedural is
+  25% in the Senate against 9% in the House. All 5 bill introductions are
+  govinfo Senate speeches.
+- **Topics** (of 136 policy debates): economy_tax_budget 28, defense_foreign 21,
+  government_process 19, health 17, environment_energy 17, immigration 11,
+  other_policy 7, social_cultural 5, welfare_labor 4, law_crime 4, education 3.
+- **Not yet known:** whether the labels are right. That is the hand check
+  ([L4]); the blind sheet is
+  `data/processed/label_check/label_check_s8_20261017T182223Z.csv` (200 rows,
+  first 50 double-coded).
+
+---
+
+### L7 — All 5,200 S8 speeches labelled (run `20261017T182223Z`, stage 2): 7 failures
+**Date:** 2026-10-17 · **Status:** finding, not a decision — labels not yet
+hand-checked ([L4]); shares are S8 sample shares ([S11])
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+Run by Justus as stage 2 of the pilot's run
+(`label_run.py --resume 20261017T182223Z --from-run 20261003T110419Z`), so the
+pilot's 200 were not relabelled. 5,000 calls, 18:37–20:04 UTC (1 h 27 min),
+on a Saturday, so DeepSeek's off-peak rate applies.
+
+- **Cost:** the whole run (both stages) is $2.24 at peak list price (6,603,748
+  input, 212,070 output tokens; estimate $2.24); off-peak about half.
+  Thinking stayed off (0 reasoning tokens). **One fingerprint (`e72d3c7f…`)
+  across all 5,200 rows**: no model change mid-run.
+- **Failures: 7 of 5,200 (0.13%)**, all recorded as nulls, none mapped ([L3]):
+  four put a topic in the type field (`speech_type: "government_process"`),
+  one invented the topic `agriculture` (other_policy in the codebook), and two
+  returned broken JSON (curly quotes; an object cut off without a length
+  stop). *Retried 2026-10-18 (stage 3, bare `--resume`, approved by Justus,
+  $0.004):* 6 of 7 now have valid labels (all policy_debate: 4
+  government_process, 1 welfare_labor, 1 other_policy). `1130107165` failed
+  the same way again (`speech_type: "government_process"`) and stays
+  unlabelled: **5,199 of 5,200 labelled**, the whole run $2.24 at peak list
+  price.
+- **Speech types (5,193 labelled):** policy_debate 3,491 (67.2%), procedural
+  796 (15.3%), ceremonial 702 (13.5%), bill_introduction 187 (3.6%),
+  constituent_local 16 (0.3%), other 1. constituent_local and other are
+  close to unused.
+- **Topics (3,491 policy debates):** economy_tax_budget 801 (22.9%),
+  defense_foreign 568 (16.3%), health 424 (12.1%), government_process 376
+  (10.8%), environment_energy 348 (10.0%), other_policy 260 (7.4%),
+  social_cultural 187 (5.4%), immigration 162 (4.6%), welfare_labor 161
+  (4.6%), law_crime 127 (3.6%), education 77 (2.2%). Blocks: economic 49.7%,
+  security_foreign 19.9%, social_cultural 12.2%, governance 10.8%, other 7.4%.
+- **Across the source break, chambers apart** (share of labelled speeches,
+  Stanford → govinfo): the **Senate mix barely moves** (policy 58.7 → 59.4%,
+  procedural 21.6 → 21.6%, ceremonial 14.4 → 12.7%, bill introductions
+  4.9 → 6.1%). The **House shifts:** ceremonial 9.8 → 18.8%, policy
+  78.2 → 71.1%, procedural 10.1 → 7.5%. Source coincides with era here
+  (2001–16 vs 2016–25), so this cannot separate a real change from the
+  govinfo extraction (D17). It is not the Senate composition shift [O8]
+  feared, and it is a reason to control for speech type in the House trend.
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
+
+### O12 — Should `speech_type == procedural` replace the "all models scored 0.0" proxy?
+**Raised:** 2026-10-17 (from [L1]) · **To be decided by:** Justus, after the
+hand check ([L4])
+
+The analysis flags a speech as procedural when every model scored its ideology
+at exactly 0.0, as the scoring prompt asks for procedural speech (1,599 of the
+5,200 S8 speeches; [A1] keeps them in every figure, and their exclusion is a
+pending robustness check). Once the labels exist, the procedural label is a
+direct alternative, and ceremonial, bill_introduction and constituent_local
+are further candidates for exclusion. `evaluate_labels.py` cross-tabulates the
+label against the flag. Which one defines the exclusion, and which speech types
+it covers, is a methodological choice for Justus, not something the code
+decides.
 
 ### O6 — DeepSeek still truncates on long speeches
 **Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]

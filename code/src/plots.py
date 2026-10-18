@@ -27,6 +27,10 @@ PARTY_COLORS = {"D": "#2a78d6", "R": "#e34948"}
 PARTY_NAMES = {"D": "Democrats", "R": "Republicans"}
 #: Assigned to a run's models in order; never cycled.
 MODEL_PALETTE = ("#eb6834", "#4a3aa7")
+#: Speech types (SPEECH_TYPES order): categorical slots 2-7, skipping the party
+#: blue and red. Validated adjacent-pair safe for colour-blind readers in this
+#: order; three sit under 3:1 contrast, so every line is also labelled directly.
+SPEECH_TYPE_PALETTE = ("#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6")
 CHAMBERS = (("H", "House"), ("S", "Senate"))
 
 INK = "#0b0b0b"
@@ -275,6 +279,61 @@ def plot_member_validation(
     if subtitle:
         fig.text(0.02, 0.935, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY)
     ax.legend(frameon=False, fontsize=8, loc="upper left")
+    return fig
+
+
+def plot_label_shares(
+    shares: pd.DataFrame,
+    title: str,
+    subtitle: str | None = None,
+    order: tuple[str, ...] = (),
+) -> Figure:
+    """Each speech type's share per Congress; House | Senate, colour = type.
+
+    ``shares`` is `label_eval.label_shares` by Congress and chamber. Types are
+    coloured in ``order`` (the codebook's), so a type keeps its colour whichever
+    types a run happens to contain.
+    """
+    fig, axes = _panels(title, subtitle, "Share of labelled speeches")
+    congresses = sorted(shares["congress_number"].unique())
+    types = list(order) or sorted(shares["speech_type"].unique())
+    colors = dict(zip(types, SPEECH_TYPE_PALETTE))
+    for ax, (chamber, _) in zip(axes, CHAMBERS):
+        shade_presidencies(ax, congresses)
+        ends = []
+        for speech_type in types:
+            data = shares[
+                (shares["chamber"] == chamber) & (shares["speech_type"] == speech_type)
+            ]
+            if data.empty:
+                continue
+            # A Congress without this type has a share of 0, not a gap to bridge.
+            data = (
+                data.set_index("congress_number")["share"]
+                .reindex(congresses, fill_value=0.0)
+                .rename_axis("congress_number")
+                .reset_index()
+            )
+            ax.plot(
+                data["congress_number"], data["share"], color=colors[speech_type],
+                linewidth=LINE_WIDTH, marker="o", markersize=MARKER_SIZE,
+                markeredgecolor=SURFACE, markeredgewidth=0.8, label=speech_type,
+                zorder=3,
+            )  # fmt: skip
+            ends.append(_line_end(data, "congress_number", "share", speech_type))
+        mark_source_break(ax)
+        _congress_axis(ax, congresses)
+        ax.set_ylim(0, 1)
+        _direct_labels(ax, ends)
+    # From both panels: a type may appear in one chamber only.
+    handles: dict[str, object] = {}
+    for ax in axes:
+        for handle, text in zip(*ax.get_legend_handles_labels()):
+            handles.setdefault(text, handle)
+    axes[1].legend(
+        list(handles.values()), list(handles), frameon=False, fontsize=8,
+        loc="upper left", bbox_to_anchor=(1.18, 1.0),
+    )  # fmt: skip
     return fig
 
 
