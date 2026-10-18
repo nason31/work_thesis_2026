@@ -1620,11 +1620,45 @@ to `results/plots/s8_*.png`, the tables behind them to
 - **Member-level validation is exploratory** (members with ≥ 5 sampled speeches,
   each member's mean against their Voteview score) until O9 is settled.
 - Procedural speeches stay in every figure; a robustness check without them is
-  still to do.
+  still to do. *(Done 2026-10-18 on the speech-type labels, [A2].)*
 
 **Rejected:** pooling chambers (O8); speech-level standard errors (overstate
 the evidence); clustering by `member_id` (Stanford's changes every Congress, so
 a career would count as several members).
+
+---
+
+### A2 — Speech type and topic in the S8 analysis (notebook section 10)
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus (labels into
+notebook 04); the cuts below by the agent
+
+`04_score_analysis.ipynb` section 10 joins the labels of run `20261017T182223Z`
+([L7]) onto the S8 run with `analysis.attach_labels`. Tables:
+`results/metrics/s8_{label_type_shares,party_gap_policy_only,ideology_trends_policy_only,party_gap_by_topic_block}_20261003T110419Z.csv`;
+figures `s8_label_type_shares.png`, `s8_party_gap_policy_only.png`.
+
+- **Speech-type shares per Congress, chambers apart**, source break marked.
+- **The procedural label against the 0.0 proxy** ([O12]): 688 of the 796
+  speeches labelled procedural carry the proxy; the proxy's 1,599 also hold
+  468 ceremonial, 366 policy-debate and 67 bill-introduction speeches.
+- **The robustness check [A1] left open:** gap and trends on speeches labelled
+  policy_debate only. Same course and same 2001–2016 answer to RQ2
+  (Republicans right in both chambers, Democrats not clearly left), with a
+  larger gap throughout.
+- **Within topic:** gap per topic block in two periods, **107th–114th vs
+  115th–119th**. The split falls after the mixed-source 114th, so "period"
+  also means "source"; a finer split leaves governance and "other" cells
+  with too few speeches (they already hold 16–73 per party and period).
+  Both readings hold: the gap widens within blocks, and the agenda moves
+  toward the most divided ones (social-cultural, governance).
+
+**Not done:** a decomposition of the gap's change into within-topic and
+topic-mix parts, with intervals. **All of it rests on labels not yet
+hand-checked ([L4]).**
+
+**Rejected:** dropping non-policy speeches from the main figures — the
+exclusion rule is open ([O12]), so they stay in sections 2–9 and section 10
+shows the policy-only version beside them.
 
 ---
 
