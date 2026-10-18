@@ -438,8 +438,12 @@ work_thesis_2026/
 │   │   ├── validation.py   ← a run's scores vs DW-NOMINATE
 │   │   ├── analysis.py     ← a run → one row per speech; clustered means, gaps, trends
 │   │   ├── plots.py        ← analysis figures (chambers apart, source break marked)
+│   │   ├── labeling.py     ← speech type + topic labels: calls, codebook checks, runs (L1–L5)
+│   │   ├── label_eval.py   ← label hand check: sheet, kappa/F1, checks against S8
 │   │   └── prompts/        ← prompt templates as files, logged with every run
-│   ├── scripts/            ← one-off analysis and pipeline scripts
+│   │                          (score_speech.txt; label_speech.txt = codebook v1)
+│   ├── scripts/            ← one-off analysis and pipeline scripts; labels:
+│   │                          label_run.py, make_label_check_sheet.py, evaluate_labels.py
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
 │   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
 │                              (Colab), which produce the raw files, and
@@ -453,7 +457,8 @@ work_thesis_2026/
 ├── results/
 │   ├── plots/              ← all figures (named descriptively) — committed
 │   ├── metrics/            ← tables, evaluation summaries (CSV/JSON) — committed
-│   └── scores/             ← raw per-model LLM output — git-ignored (large)
+│   ├── scores/             ← raw per-model LLM output — git-ignored (large)
+│   └── labels/             ← raw per-call speech labels — git-ignored
 ├── docs/
 │   └── notes/              ← meeting notes, design decisions, ideas
 └── thesis/
@@ -530,6 +535,11 @@ work_thesis_2026/
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
 - Reasoning models cost more per call — use them only for the scoring step, not preprocessing
+- **Speech labels** (L1–L5) are a separate pass with `deepseek-flash`, thinking
+  off: `label_run.py --from-run <scoring run> [--limit 200] --dry-run` prices it
+  (S8's 5,200: ~$2.24), `--resume <timestamp>` finishes or extends a run. No
+  `--yes` flag exists: a run needs a typed "yes", and a human's go-ahead first.
+  Files: `results/labels/label_*`, `results/metrics/label_summary_*`
 
 ---
 

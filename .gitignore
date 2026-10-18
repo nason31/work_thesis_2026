@@ -233,6 +233,9 @@ data/processed/**
 # Raw per-model LLM outputs can reach GBs — keep locally / in shared storage.
 # Aggregated metrics and plots in results/ ARE committed on purpose.
 results/scores/**
+# Raw per-call speech labels, likewise (docs/decisions.md L5). The label
+# summaries in results/metrics/ are committed.
+results/labels/**
 !results/**/
 !results/**/.gitkeep
 

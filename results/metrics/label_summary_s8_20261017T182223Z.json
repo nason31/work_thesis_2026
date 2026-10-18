@@ -1,0 +1,131 @@
+{
+  "codebook_version": "v1",
+  "model": "deepseek-flash",
+  "speeches": 5200,
+  "speeches_labelled": 5199,
+  "failures": 1,
+  "calls": 5207,
+  "failed_attempts": 8,
+  "errors_by_type": {
+    "LabelParseError": 1
+  },
+  "failed_speeches": [
+    {
+      "speech_id": "1130107165",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    }
+  ],
+  "speech_type_counts": {
+    "procedural": 796,
+    "ceremonial": 702,
+    "bill_introduction": 187,
+    "constituent_local": 16,
+    "policy_debate": 3497,
+    "other": 1
+  },
+  "topic_counts": {
+    "economy_tax_budget": 801,
+    "health": 424,
+    "welfare_labor": 162,
+    "immigration": 162,
+    "social_cultural": 187,
+    "education": 77,
+    "environment_energy": 348,
+    "law_crime": 127,
+    "defense_foreign": 568,
+    "government_process": 380,
+    "other_policy": 261
+  },
+  "topic_block_counts": {
+    "economic": 1735,
+    "social_cultural": 426,
+    "security_foreign": 695,
+    "governance": 380,
+    "other": 261
+  },
+  "speech_type_shares_by_chamber": {
+    "H": {
+      "n": 2600,
+      "speech_type": {
+        "procedural": 0.09038461538461538,
+        "ceremonial": 0.13307692307692306,
+        "bill_introduction": 0.018461538461538463,
+        "constituent_local": 0.003076923076923077,
+        "policy_debate": 0.7546153846153846,
+        "other": 0.0003846153846153846
+      }
+    },
+    "S": {
+      "n": 2599,
+      "speech_type": {
+        "procedural": 0.21585225086571758,
+        "ceremonial": 0.13697575990765679,
+        "bill_introduction": 0.05348210850327049,
+        "constituent_local": 0.0030781069642170067,
+        "policy_debate": 0.5906117737591381,
+        "other": 0.0
+      }
+    }
+  },
+  "speech_type_shares_by_source": {
+    "govinfo": {
+      "n": 2038,
+      "speech_type": {
+        "procedural": 0.1452404317958783,
+        "ceremonial": 0.15701668302257116,
+        "bill_introduction": 0.040235525024533855,
+        "constituent_local": 0.003925417075564278,
+        "policy_debate": 0.6530912659470068,
+        "other": 0.0004906771344455348
+      }
+    },
+    "stanford": {
+      "n": 3161,
+      "speech_type": {
+        "procedural": 0.15817779183802594,
+        "ceremonial": 0.12084783296425182,
+        "bill_introduction": 0.03321733628598545,
+        "constituent_local": 0.002530844669408415,
+        "policy_debate": 0.6852261942423283,
+        "other": 0.0
+      }
+    }
+  },
+  "prompt_tokens": 6615374,
+  "completion_tokens": 212345,
+  "mean_completion_tokens_per_call": 40.78067985404263,
+  "reasoning_tokens": 0,
+  "calls_with_reasoning_tokens": 0,
+  "cost_usd": 2.2394262,
+  "served_models": [
+    "deepseek-flash"
+  ],
+  "system_fingerprints": [
+    "e72d3c7f663d3e1383b00b3884cb4501"
+  ],
+  "topic_blocks": {
+    "economic": [
+      "economy_tax_budget",
+      "welfare_labor",
+      "health",
+      "environment_energy"
+    ],
+    "social_cultural": [
+      "social_cultural",
+      "immigration",
+      "education"
+    ],
+    "security_foreign": [
+      "defense_foreign",
+      "law_crime"
+    ],
+    "governance": [
+      "government_process"
+    ],
+    "other": [
+      "other_policy"
+    ]
+  },
+  "run": "20261017T182223Z",
+  "label": "s8"
+}
