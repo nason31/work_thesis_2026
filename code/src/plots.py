@@ -13,7 +13,8 @@ series colours mark identity only.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import math
+from collections.abc import Mapping, Sequence
 from itertools import groupby
 from pathlib import Path
 
@@ -31,6 +32,9 @@ MODEL_PALETTE = ("#eb6834", "#4a3aa7")
 #: blue and red. Validated adjacent-pair safe for colour-blind readers in this
 #: order; three sit under 3:1 contrast, so every line is also labelled directly.
 SPEECH_TYPE_PALETTE = ("#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6")
+#: Topic blocks (TOPIC_BLOCKS order): the first five of the same slots, so the
+#: adjacent pairs stay the validated ones.
+TOPIC_BLOCK_PALETTE = SPEECH_TYPE_PALETTE[:5]
 CHAMBERS = (("H", "House"), ("S", "Senate"))
 
 INK = "#0b0b0b"
@@ -74,8 +78,11 @@ def _congress_axis(ax, congresses: list[int]) -> None:
     ax.set_xlabel("Congress (start year)", color=INK_SECONDARY, fontsize=8)
 
 
-def shade_presidencies(ax, congresses: list[int]) -> None:
-    """Alternate light bands per presidential term, named along the top."""
+def shade_presidencies(ax, congresses: list[int], names: bool = True) -> None:
+    """Alternate light bands per presidential term, named along the top.
+
+    ``names=False`` leaves out the names, for small panels.
+    """
     shown = [c for c in sorted(PRESIDENTS_BY_CONGRESS) if c in congresses]
     terms = [
         (name, [c for c, _ in group])
@@ -87,6 +94,8 @@ def shade_presidencies(ax, congresses: list[int]) -> None:
         low, high = min(members) - 0.5, max(members) + 0.5
         if index % 2 == 0:
             ax.axvspan(low, high, color=TERM_SHADE, zorder=0, linewidth=0)
+        if not names:
+            continue
         ax.text(
             (low + high) / 2,
             1.0,
@@ -99,8 +108,11 @@ def shade_presidencies(ax, congresses: list[int]) -> None:
         )
 
 
-def mark_source_break(ax) -> None:
-    """Dashed line at the 114th Congress, where Stanford hands over to govinfo."""
+def mark_source_break(ax, label: bool = True) -> None:
+    """Dashed line at the 114th Congress, where Stanford hands over to govinfo.
+
+    ``label=False`` leaves out the text, for small panels.
+    """
     ax.plot(
         [SOURCE_BREAK_CONGRESS, SOURCE_BREAK_CONGRESS],
         [0, 1],
@@ -110,6 +122,8 @@ def mark_source_break(ax) -> None:
         linewidth=1,
         zorder=1,
     )
+    if not label:
+        return
     ax.text(
         SOURCE_BREAK_CONGRESS + 0.12,
         0.02,
@@ -287,23 +301,27 @@ def plot_label_shares(
     title: str,
     subtitle: str | None = None,
     order: tuple[str, ...] = (),
+    column: str = "speech_type",
+    palette: Sequence[str] = SPEECH_TYPE_PALETTE,
+    ylabel: str = "Share of labelled speeches",
 ) -> Figure:
-    """Each speech type's share per Congress; House | Senate, colour = type.
+    """Each label's share per Congress; House | Senate, colour = label.
 
-    ``shares`` is `label_eval.label_shares` by Congress and chamber. Types are
-    coloured in ``order`` (the codebook's), so a type keeps its colour whichever
-    types a run happens to contain.
+    ``shares`` is `label_eval.label_shares` by Congress and chamber, for the
+    label ``column`` (speech type by default, or topic block). Labels are
+    coloured in ``order`` (the codebook's), so a label keeps its colour
+    whichever labels a run happens to contain.
     """
-    fig, axes = _panels(title, subtitle, "Share of labelled speeches")
+    fig, axes = _panels(title, subtitle, ylabel)
     congresses = sorted(shares["congress_number"].unique())
-    types = list(order) or sorted(shares["speech_type"].unique())
-    colors = dict(zip(types, SPEECH_TYPE_PALETTE))
+    types = list(order) or sorted(shares[column].unique())
+    colors = dict(zip(types, palette))
     for ax, (chamber, _) in zip(axes, CHAMBERS):
         shade_presidencies(ax, congresses)
         ends = []
         for speech_type in types:
             data = shares[
-                (shares["chamber"] == chamber) & (shares["speech_type"] == speech_type)
+                (shares["chamber"] == chamber) & (shares[column] == speech_type)
             ]
             if data.empty:
                 continue
@@ -334,6 +352,267 @@ def plot_label_shares(
         list(handles.values()), list(handles), frameon=False, fontsize=8,
         loc="upper left", bbox_to_anchor=(1.18, 1.0),
     )  # fmt: skip
+    return fig
+
+
+def plot_gap_by_group(
+    gaps: pd.DataFrame,
+    group: str,
+    title: str,
+    subtitle: str | None = None,
+    order: Sequence[str] = (),
+    palette: Sequence[str] = TOPIC_BLOCK_PALETTE,
+) -> Figure:
+    """The R - D gap per Congress, one line per value of ``group``; House | Senate.
+
+    ``gaps`` is `analysis.party_gap` by Congress, chamber and ``group``. Colours
+    follow ``order``, so a group keeps its colour across figures. Bands are 95%
+    intervals, kept faint so that crossing lines stay readable.
+    """
+    fig, axes = _panels(title, subtitle, "Party gap (R − D)")
+    congresses = sorted(gaps["congress_number"].unique())
+    groups = list(order) or sorted(gaps[group].unique())
+    colors = dict(zip(groups, palette))
+    for ax, (chamber, _) in zip(axes, CHAMBERS):
+        shade_presidencies(ax, congresses)
+        ends = []
+        for value in groups:
+            data = gaps[(gaps["chamber"] == chamber) & (gaps[group] == value)]
+            if data.empty:
+                continue
+            data = data.sort_values("congress_number")
+            ax.fill_between(
+                data["congress_number"], data["ci_low"], data["ci_high"],
+                color=colors[value], alpha=0.08, linewidth=0, zorder=2,
+            )  # fmt: skip
+            ax.plot(
+                data["congress_number"], data["gap"], color=colors[value],
+                linewidth=LINE_WIDTH, marker="o", markersize=MARKER_SIZE - 1,
+                markeredgecolor=SURFACE, markeredgewidth=0.8, label=value, zorder=3,
+            )  # fmt: skip
+            ends.append(_line_end(data, "congress_number", "gap", value))
+        mark_source_break(ax)
+        ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+        _congress_axis(ax, congresses)
+        _direct_labels(ax, ends)
+    handles: dict[str, object] = {}
+    for ax in axes:
+        for handle, text in zip(*ax.get_legend_handles_labels()):
+            handles.setdefault(text, handle)
+    axes[1].legend(
+        list(handles.values()), list(handles), frameon=False, fontsize=8,
+        loc="upper left", bbox_to_anchor=(1.18, 1.0),
+    )  # fmt: skip
+    return fig
+
+
+def plot_gap_trends(
+    trends: pd.DataFrame,
+    group: str,
+    title: str,
+    subtitle: str | None = None,
+    order: Sequence[str] = (),
+    colors: Mapping[str, str] | None = None,
+) -> Figure:
+    """How much the party gap changed over the window, per group; House | Senate.
+
+    ``trends`` is `analysis.gap_trend` by chamber and ``group``: the fitted
+    change from the first Congress to the last, with its 95% interval (the
+    slope's interval times the Congresses spanned). Groups run top to bottom
+    in ``order``; ``colors`` maps a group to its colour (e.g. by topic block).
+    """
+    groups = list(order) or sorted(trends[group].unique())
+    fig, axes = plt.subplots(
+        1, 2, figsize=(11, 0.42 * len(groups) + 1.6), sharey=True, sharex=True,
+        facecolor=SURFACE,
+    )  # fmt: skip
+    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.02)
+    if subtitle:
+        fig.text(0.01, 0.97, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY,
+                 va="top")  # fmt: skip
+    y = {value: len(groups) - 1 - i for i, value in enumerate(groups)}
+    for ax, (chamber, name) in zip(axes, CHAMBERS):
+        _style(ax)
+        ax.grid(axis="x", color=GRID, linewidth=0.6)
+        ax.grid(axis="y", visible=False)
+        ax.set_title(name, loc="left", fontsize=10, color=INK, pad=8)
+        ax.axvline(0, color=BASELINE, linewidth=0.8, zorder=1)
+        data = trends[(trends["chamber"] == chamber) & trends[group].isin(groups)]
+        for _, row in data.iterrows():
+            first, last = (int(c) for c in str(row["span"]).split("-"))
+            low, high = row["ci_low"] * (last - first), row["ci_high"] * (last - first)
+            color = (colors or {}).get(row[group], INK_SECONDARY)
+            ax.plot([low, high], [y[row[group]]] * 2, color=color, linewidth=2,
+                    alpha=0.45, solid_capstyle="round", zorder=2)  # fmt: skip
+            ax.plot(row["change_over_span"], y[row[group]], "o", color=color,
+                    markersize=MARKER_SIZE + 1, markeredgecolor=SURFACE,
+                    markeredgewidth=0.8, zorder=3)  # fmt: skip
+        ax.set_xlabel("Change in the party gap (R − D), first to last Congress",
+                      color=INK_SECONDARY, fontsize=8)  # fmt: skip
+    axes[0].set_yticks(list(y.values()))
+    axes[0].set_yticklabels(list(y), fontsize=8, color=INK_SECONDARY)
+    axes[0].set_ylim(-0.7, len(groups) - 0.3)
+    return fig
+
+
+def plot_member_trajectories(
+    trajectories: pd.DataFrame,
+    members: Mapping[int, str],
+    title: str,
+    subtitle: str | None = None,
+    ncols: int = 4,
+) -> Figure:
+    """One small panel per member: their mean per Congress beside their party's.
+
+    ``trajectories`` is `analysis.member_trajectories`; ``members`` maps ICPSR to
+    the panel title, in panel order. The member's line carries a 95% band; the
+    dashed line is their party's mean in their chamber that Congress. A
+    member recorded under two parties gets both, each in its colour. The
+    source break is marked; presidential terms are shaded, unnamed.
+    """
+    rows = math.ceil(len(members) / ncols)
+    fig, axes = plt.subplots(
+        rows, ncols, figsize=(3.3 * ncols, 2.5 * rows), sharex=True, sharey=True,
+        facecolor=SURFACE, squeeze=False,
+    )  # fmt: skip
+    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.0)
+    if subtitle:
+        fig.text(0.01, 0.975, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY,
+                 va="top")  # fmt: skip
+    congresses = sorted(trajectories["congress_number"].unique())
+    flat = axes.ravel()
+    for ax, (icpsr, name) in zip(flat, members.items()):
+        _style(ax)
+        shade_presidencies(ax, congresses, names=False)
+        mark_source_break(ax, label=False)
+        ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+        member = trajectories[trajectories["icpsr"] == icpsr]
+        for party, data in member.groupby("party"):
+            # A Congress without enough speeches is a gap, not a point to draw
+            # a line through.
+            first, last = data["congress_number"].min(), data["congress_number"].max()
+            data = (
+                data.set_index("congress_number")
+                .reindex(range(first, last + 1))
+                .rename_axis("congress_number")
+                .reset_index()
+            )
+            color = PARTY_COLORS.get(party, INK_SECONDARY)
+            ax.plot(data["congress_number"], data["party_mean"], color=color,
+                    linewidth=1, linestyle=(0, (3, 2)), alpha=0.7, zorder=2,
+                    label="party mean (chamber)")  # fmt: skip
+            ax.fill_between(data["congress_number"], data["ci_low"], data["ci_high"],
+                            color=color, alpha=BAND_ALPHA, linewidth=0,
+                            zorder=2)  # fmt: skip
+            ax.plot(data["congress_number"], data["mean"], color=color,
+                    linewidth=LINE_WIDTH, marker="o", markersize=MARKER_SIZE - 1,
+                    markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3,
+                    label="member")  # fmt: skip
+        ax.set_title(name, loc="left", fontsize=9, color=INK)
+    for ax in flat[len(members) :]:
+        ax.set_visible(False)
+    ticks = [c for c in congresses if (c - congresses[0]) % 2 == 0]
+    for ax in axes[-1]:
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{c}\n{congress_year(c)}" for c in ticks], fontsize=7,
+                           color=INK_SECONDARY)  # fmt: skip
+        ax.set_xlim(min(congresses) - 0.6, max(congresses) + 0.6)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Ideology", color=INK_SECONDARY, fontsize=8)
+    handles, labels = flat[0].get_legend_handles_labels()
+    keep = dict(zip(labels, handles))
+    fig.legend(list(keep.values()), list(keep), frameon=False, fontsize=8,
+               loc="upper right", bbox_to_anchor=(0.99, 1.0), ncols=2)  # fmt: skip
+    fig.tight_layout(rect=(0, 0, 1, 0.965))
+    return fig
+
+
+def plot_member_slopes(
+    trends: pd.DataFrame, title: str, subtitle: str | None = None, label_top: int = 4
+) -> Figure:
+    """Each member's speech trend against their voting trend, one dot per member.
+
+    x: slope of their per-Congress Nokken-Poole score; y: slope of their speech
+    score (both per Congress). One axis each, no shared scale implied. The
+    ``label_top`` members furthest from zero on the speech trend, per party,
+    are named.
+    """
+    fig, ax = plt.subplots(figsize=(6.8, 5.4), facecolor=SURFACE)
+    _style(ax)
+    ax.grid(axis="x", color=GRID, linewidth=0.6)
+    data = trends.dropna(subset=["slope", "slope_nokken_poole"])
+    for party in ("D", "R"):
+        d = data[data["party"] == party]
+        r = d["slope"].corr(d["slope_nokken_poole"])
+        ax.scatter(
+            d["slope_nokken_poole"], d["slope"], s=22, color=PARTY_COLORS[party],
+            edgecolor=SURFACE, linewidth=0.6, alpha=0.85,
+            label=f"{PARTY_NAMES[party]}: r = {r:+.2f} (n = {len(d)})",
+        )  # fmt: skip
+        for _, row in (
+            d.reindex(d["slope"].abs().sort_values().index[::-1])
+            .head(label_top)
+            .iterrows()
+        ):
+            ax.annotate(
+                row["bioname"].split(",")[0].title(), (row["slope_nokken_poole"], row["slope"]),
+                xytext=(4, 2), textcoords="offset points", fontsize=7, color=INK_SECONDARY,
+            )  # fmt: skip
+    ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+    ax.axvline(0, color=BASELINE, linewidth=0.8, zorder=1)
+    ax.set_xlabel("Change per Congress in DW-NOMINATE (Nokken-Poole)",
+                  color=INK_SECONDARY, fontsize=8.5)  # fmt: skip
+    ax.set_ylabel("Change per Congress in mean speech score", color=INK_SECONDARY,
+                  fontsize=8.5)  # fmt: skip
+    fig.suptitle(title, x=0.02, ha="left", fontsize=12, color=INK, y=1.0)
+    if subtitle:
+        fig.text(0.02, 0.935, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    return fig
+
+
+def plot_group_means(
+    table: pd.DataFrame,
+    group: str,
+    title: str,
+    ylabel: str,
+    subtitle: str | None = None,
+    order: Sequence[str] = (),
+) -> Figure:
+    """Means per group with 95% intervals, one series per party; House | Senate.
+
+    ``table`` is `analysis.cell_means` by chamber, party and ``group``; groups
+    run along x in ``order``. Not a time series, so no source break: each
+    point pools every Congress. The parties are set slightly apart so their
+    intervals do not overlap on the page.
+    """
+    groups = list(order) or sorted(table[group].unique())
+    x = {value: i for i, value in enumerate(groups)}
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True, facecolor=SURFACE)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.03)
+    if subtitle:
+        fig.text(0.01, 0.965, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY)
+    for ax, (chamber, name) in zip(axes, CHAMBERS):
+        _style(ax)
+        ax.set_title(name, loc="left", fontsize=10, color=INK, pad=8)
+        ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+        for offset, party in ((-0.08, "D"), (0.08, "R")):
+            data = table[(table["chamber"] == chamber) & (table["party"] == party)]
+            data = data[data[group].isin(groups)]
+            data = data.assign(x=data[group].map(x) + offset).sort_values("x")
+            ax.vlines(data["x"], data["ci_low"], data["ci_high"],
+                      color=PARTY_COLORS[party], linewidth=2, alpha=0.45,
+                      zorder=2)  # fmt: skip
+            ax.plot(data["x"], data["mean"], color=PARTY_COLORS[party],
+                    linewidth=1, marker="o", markersize=MARKER_SIZE + 1,
+                    markeredgecolor=SURFACE, markeredgewidth=0.8,
+                    label=PARTY_NAMES[party], zorder=3)  # fmt: skip
+        ax.set_xticks(list(x.values()))
+        ax.set_xticklabels(groups, fontsize=8, color=INK_SECONDARY)
+        ax.set_xlim(-0.5, len(groups) - 0.5)
+    axes[0].set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
+    axes[1].legend(frameon=False, fontsize=8, loc="upper left",
+                   bbox_to_anchor=(1.0, 1.0))  # fmt: skip
     return fig
 
 

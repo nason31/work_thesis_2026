@@ -1872,6 +1872,79 @@ shows the policy-only version beside them.
 
 ---
 
+### A3 — The overview leaves out procedural and ceremonial speeches by label; members and topics over time
+**Date:** 2026-10-19 · **Status:** active · **Decided by:** Justus (exclusion by
+label, procedural and ceremonial; members over time; topic polarization); the
+criteria below by the agent · settles [O12] for the overview analysis
+
+`code/notebooks/06_overview.ipynb`, on the `d100k` run ([S19], [P8]) and its
+labels ([L8]). Figures `results/plots/overview_*.png`, tables
+`results/metrics/overview_*_20261018T122536Z.csv`.
+
+- **Exclusion:** speeches labelled `procedural` or `ceremonial` are left out
+  (`EXCLUDED_SPEECH_TYPES` in `config.py`, `analysis.substantive`), and so
+  are the 29 unlabelled ones; 71,121 of 99,993 scored speeches remain. Bill
+  introductions, constituent items and "other" stay in. **Rejected:** the
+  "every model scored 0.0" proxy — with one model it also drops 19% of the
+  policy debates ([O12], [P8]); keeping all speeches — the left-out share
+  grows in the House after 2016 (L7), so an all-speech gap understates the
+  widening (the difference grows from 0.10 to 0.28 in the House).
+- **Trend of the gap:** `analysis.gap_trend`, OLS of the speech score on
+  party × Congress, clustered by member; the interaction is the change in
+  R − D per Congress. Reported for 2001–2016 and 2001–2025.
+- **Members over time:** a member is followed in a Congress where they have
+  **≥ 10 substantive speeches** (`member_trajectories`), and gets a trend if
+  followed in **≥ 5 Congresses** (`member_trends`: 170 members). Each
+  trajectory is shown beside the party's mean in the member's chamber; the
+  trend is also taken relative to that mean (`slope_relative`) and set against
+  the member's Nokken-Poole slope. Sixteen members are featured by ICPSR,
+  chosen for coverage and range (leaders, moderates, firebrands, chamber
+  switchers). **Rejected:** a lower threshold (single Congresses on 3–5
+  speeches are noise at this spread); per-member clustering (one member is
+  one cluster).
+- **Topic polarization:** the gap per **topic block** and Congress (≥ 275
+  speeches per party cell in the 05 period split; per Congress governance
+  and "other" are thinner), and one trend per **topic** over 2001–2025
+  (`gap_trend` by topic) — single topics hold as few as 6 speeches in a
+  party cell per Congress, too few for a line per Congress.
+
+---
+
+### A4 — Age, generation and tenure in the overview (notebook 06, section 5)
+**Date:** 2026-10-19 · **Status:** active · **Decided by:** Justus (asked whether
+younger members polarize more); measures and design by the agent
+
+**Data:** Voteview's `born` (birth year) and every Congress each ICPSR served,
+from the raw `HSall_members.csv` back to 1789 (`analysis.member_background`);
+99.91% of substantive `d100k` speeches have a birth year. Age = the speech's
+year − `born` (±1). Groups in `config.py`: age `under 45 / 45–54 / 55–64 /
+65–74 / 75+`; generations by birth year as Pew defines them; tenure
+`1st Congress / 2–3 / 4–6 / 7–10 / 11+` Congresses served.
+
+**Measures:** *extremity* = ideology toward the party's own side (D
+sign-flipped, `toward_party`), and *tone*; both taken relative to the mean of
+the speaker's party, chamber and Congress (`relative_to_cell`), so a group
+difference is not the 2001–2025 trend; group means clustered by member; then
+age and tenure together by OLS within those cells (`within_cell_ols`).
+
+**Findings (preliminary):** younger is *not* further out (age differences
+≤ ~0.05, mostly within intervals; House Democrats under 45 slightly less far
+out). **Newer is further out for Republicans:** House Republicans in their
+first three Congresses +0.05–0.06, with 11+ Congresses −0.09; −0.015 per
+Congress served with age held fixed (p < 10⁻¹²); Senate Republicans in their
+first Congress +0.09. Republican newcomers are also harsher in tone,
+Democratic newcomers milder. Consistent with replacement ([A3], section 3).
+
+**Not separable:** within a Congress, age and generation are the same thing;
+long tenure selects re-elected members and leadership roles.
+
+**Rejected:** raw group means without the cell adjustment (would mix the
+trend over time with age, since the Senate aged by 11 years); exact
+birthdays from congress-legislators (bioguide-keyed, would need a second join
+for the Stanford side, for a ±1-year gain).
+
+---
+
 ## Labels
 
 A second pass that gives each speech a **speech type** and, for policy debate,
@@ -2212,7 +2285,9 @@ Move these up into a numbered entry once decided.
 
 ### O12 — Should `speech_type == procedural` replace the "all models scored 0.0" proxy?
 **Raised:** 2026-10-17 (from [L1]) · **To be decided by:** Justus, after the
-hand check ([L4])
+hand check ([L4]) · **Settled 2026-10-19 for the overview analysis by [A3]**:
+by label, procedural and ceremonial left out. Whether the hand check confirms
+the labels is still open
 
 The analysis flags a speech as procedural when every model scored its ideology
 at exactly 0.0, as the scoring prompt asks for procedural speech (1,599 of the
@@ -2229,6 +2304,21 @@ where DeepSeek alone decides, a 0.0 ideology score flags 38,874 of 99,996
 speeches: 91% of those labelled procedural, but also 76% of the ceremonial
 ones and **19% of the policy debates** (12,907; 10% in S8, where both models
 had to score 0.0).
+
+### O13 — Arlen Specter's party is wrong in the Stanford data for 2005–2009
+**Raised:** 2026-10-19 (from [A3]) · **Status:** open · **Affects:** about
+1,100 corpus speeches, ~90 of them in `d100k` (after the exclusion)
+
+The Stanford parquet codes Specter (PA, Senate) as a Democrat from the 109th
+Congress (`speakerid` 109114511, 110114511; `party` and `party_original` both
+`D`), but he left the Republican party only in April 2009, in the 111th. His
+109th–110th speeches therefore sit in the Senate Democratic cells. [D23]
+already flags him as a party switcher for the DW-NOMINATE join, but not this
+misdating. **Options:** (a) a `PARTY_CORRECTIONS`-style override in the corpus
+build — but it changes the corpus SHA-256, so no existing scoring or label run
+could be resumed or extended ([S13], [L5]); (b) an override at analysis time,
+keyed on the two speakerids; (c) leave it and state it. The 111th is mixed
+(R until 2009-04-28) and would need the date. Not fixed; the notebooks state it.
 
 ### O6 — DeepSeek still truncates on long speeches
 **Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]

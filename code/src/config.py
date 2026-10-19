@@ -477,6 +477,26 @@ LABEL_EXPECTED_OUTPUT_TOKENS: int = 45
 # `label_run.py --limit N` draws N speeches evenly over these strata.
 LABEL_LIMIT_STRATA: tuple[str, ...] = ("chamber", "source")
 
+# Speech types left out of the substantive analysis (A3, settles O12 for the
+# overview): procedural business and ceremonial speech say little about a
+# member's position, and the 0.0 score the prompt asks for on them is not a
+# usable filter with one model (P8). Bill introductions, constituent items and
+# "other" stay in.
+EXCLUDED_SPEECH_TYPES: tuple[str, ...] = ("procedural", "ceremonial")
+
+# Member background for the age analysis (A4). Age is the speech's year minus
+# Voteview's birth year (`born`, a year only, so +-1). Bins are left-closed: 45
+# starts "45-54". Generations by birth year, as Pew defines them; tenure counts
+# the Congresses a member has served, this one included, back to 1789.
+AGE_BINS: tuple[int, ...] = (45, 55, 65, 75)
+GENERATIONS: dict[str, tuple[int | None, int | None]] = {
+    "Silent and older": (None, 1945),
+    "Boomers": (1946, 1964),
+    "Gen X": (1965, 1980),
+    "Millennials": (1981, None),
+}
+TENURE_BINS: tuple[int, ...] = (2, 4, 7, 11)
+
 # The hand check (L4): 200 speeches, stratified by chamber, source and
 # presidential term (the "era"; `term` from analysis.add_presidency). The
 # first 50 rows are coded by both coders.
