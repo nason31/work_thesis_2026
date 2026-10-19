@@ -1,0 +1,324 @@
+{
+  "run": "20261018T122536Z",
+  "built_at": "2026-10-19T17:40:29+00:00",
+  "inputs": {
+    "scores": {
+      "deepseek-flash": "05108e2c1310f84ca0124ac40074ecc4b132870b0c6d079c6224e9fbcd4540f6"
+    },
+    "corpus": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+      "sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704"
+    },
+    "crosswalk": {
+      "path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/member_crosswalk.parquet",
+      "sha256": "41f1c070f094549b286a54be7a1c0436d972240693d7f00deeac946a3709631f"
+    }
+  },
+  "counts": {
+    "speeches": 99996,
+    "distinct_members": 5071,
+    "in_validation": 99902,
+    "excluded_unmatched": 90,
+    "excluded_no_score": 4,
+    "procedural": 38874,
+    "party_switch_in_validation": 175,
+    "by_party_in_validation": {
+      "D": 49993,
+      "R": 49909
+    }
+  },
+  "results": {
+    "all_speeches": {
+      "nominate_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 99899,
+            "pearson_r": 0.6516,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6481,
+              0.6552
+            ],
+            "spearman_rho": 0.6388,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 49993,
+            "pearson_r": 0.2375,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2292,
+              0.2457
+            ],
+            "spearman_rho": 0.2346,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 49906,
+            "pearson_r": 0.2912,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2832,
+              0.2992
+            ],
+            "spearman_rho": 0.2819,
+            "spearman_p": 0.0
+          }
+        },
+        "deepseek-flash": {
+          "all": {
+            "n": 99899,
+            "pearson_r": 0.6516,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6481,
+              0.6552
+            ],
+            "spearman_rho": 0.6388,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 49993,
+            "pearson_r": 0.2375,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2292,
+              0.2457
+            ],
+            "spearman_rho": 0.2346,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 49906,
+            "pearson_r": 0.2912,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2832,
+              0.2992
+            ],
+            "spearman_rho": 0.2819,
+            "spearman_p": 0.0
+          }
+        }
+      },
+      "nokken_poole_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 99899,
+            "pearson_r": 0.6508,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6472,
+              0.6544
+            ],
+            "spearman_rho": 0.6374,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 49993,
+            "pearson_r": 0.2288,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2205,
+              0.2371
+            ],
+            "spearman_rho": 0.2205,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 49906,
+            "pearson_r": 0.2918,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2837,
+              0.2998
+            ],
+            "spearman_rho": 0.2874,
+            "spearman_p": 0.0
+          }
+        },
+        "deepseek-flash": {
+          "all": {
+            "n": 99899,
+            "pearson_r": 0.6508,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.6472,
+              0.6544
+            ],
+            "spearman_rho": 0.6374,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 49993,
+            "pearson_r": 0.2288,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2205,
+              0.2371
+            ],
+            "spearman_rho": 0.2205,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 49906,
+            "pearson_r": 0.2918,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2837,
+              0.2998
+            ],
+            "spearman_rho": 0.2874,
+            "spearman_p": 0.0
+          }
+        }
+      }
+    },
+    "non_procedural": {
+      "nominate_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 61075,
+            "pearson_r": 0.8044,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.8016,
+              0.8072
+            ],
+            "spearman_rho": 0.7497,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 31777,
+            "pearson_r": 0.2374,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2269,
+              0.2477
+            ],
+            "spearman_rho": 0.2214,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 29298,
+            "pearson_r": 0.3219,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.3116,
+              0.3321
+            ],
+            "spearman_rho": 0.3025,
+            "spearman_p": 0.0
+          }
+        },
+        "deepseek-flash": {
+          "all": {
+            "n": 61075,
+            "pearson_r": 0.8044,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.8016,
+              0.8072
+            ],
+            "spearman_rho": 0.7497,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 31777,
+            "pearson_r": 0.2374,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2269,
+              0.2477
+            ],
+            "spearman_rho": 0.2214,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 29298,
+            "pearson_r": 0.3219,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.3116,
+              0.3321
+            ],
+            "spearman_rho": 0.3025,
+            "spearman_p": 0.0
+          }
+        }
+      },
+      "nokken_poole_dim1": {
+        "ensemble": {
+          "all": {
+            "n": 61075,
+            "pearson_r": 0.8021,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.7993,
+              0.8049
+            ],
+            "spearman_rho": 0.7484,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 31777,
+            "pearson_r": 0.2273,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2168,
+              0.2377
+            ],
+            "spearman_rho": 0.2077,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 29298,
+            "pearson_r": 0.3224,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.3121,
+              0.3326
+            ],
+            "spearman_rho": 0.3082,
+            "spearman_p": 0.0
+          }
+        },
+        "deepseek-flash": {
+          "all": {
+            "n": 61075,
+            "pearson_r": 0.8021,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.7993,
+              0.8049
+            ],
+            "spearman_rho": 0.7484,
+            "spearman_p": 0.0
+          },
+          "D": {
+            "n": 31777,
+            "pearson_r": 0.2273,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.2168,
+              0.2377
+            ],
+            "spearman_rho": 0.2077,
+            "spearman_p": 0.0
+          },
+          "R": {
+            "n": 29298,
+            "pearson_r": 0.3224,
+            "pearson_p": 0.0,
+            "pearson_ci95": [
+              0.3121,
+              0.3326
+            ],
+            "spearman_rho": 0.3082,
+            "spearman_p": 0.0
+          }
+        }
+      }
+    }
+  }
+}

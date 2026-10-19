@@ -1,0 +1,58 @@
+{
+  "speeches_scored": 5200,
+  "speeches_sampled": 5200,
+  "per_model": {
+    "deepseek-flash": {
+      "calls": 5202,
+      "failed_attempts": 2,
+      "failures": 0,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "prompt_tokens": 5165362,
+      "completion_tokens": 2790825,
+      "cost_usd": 4.8985986
+    },
+    "gpt-4o-2024-11-20": {
+      "calls": 5200,
+      "failed_attempts": 0,
+      "failures": 0,
+      "served_models": [
+        "gpt-4o-2024-11-20"
+      ],
+      "prompt_tokens": 5035847,
+      "completion_tokens": 359694,
+      "cost_usd": 16.1865575
+    }
+  },
+  "per_stage": {
+    "1": {
+      "calls": 416,
+      "cost_usd": 0.8367717000000001
+    },
+    "2": {
+      "calls": 6874,
+      "cost_usd": 13.639003499999996
+    },
+    "3": {
+      "calls": 3112,
+      "cost_usd": 6.609380899999996
+    }
+  },
+  "total_cost_usd": 21.0851561,
+  "ideology_by_party": {
+    "D": {
+      "n": 2600,
+      "ideology_mean": -0.3464269230769231,
+      "ideology_std": 0.36098661143349625
+    },
+    "R": {
+      "n": 2600,
+      "ideology_mean": 0.3005115384615385,
+      "ideology_std": 0.3824971461535879
+    }
+  },
+  "disagreement_threshold": 0.3,
+  "high_disagreement_speeches": 222,
+  "partial_ensemble_rows": 0
+}

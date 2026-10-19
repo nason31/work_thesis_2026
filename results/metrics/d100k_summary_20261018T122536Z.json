@@ -1,0 +1,49 @@
+{
+  "models": [
+    "deepseek-flash"
+  ],
+  "speeches_scored": 99993,
+  "speeches_sampled": 99996,
+  "per_model": {
+    "deepseek-flash": {
+      "calls": 99996,
+      "failed_attempts": 3,
+      "failures": 3,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "system_fingerprints": [
+        "e72d3c7f663d3e1383b00b3884cb4501"
+      ],
+      "prompt_tokens": 99295777,
+      "completion_tokens": 35961563,
+      "cost_usd": 72.94260870000001
+    }
+  },
+  "per_stage": {
+    "1": {
+      "calls": 208,
+      "cost_usd": 0.1517570999999998
+    },
+    "2": {
+      "calls": 99788,
+      "cost_usd": 72.79085160000004
+    }
+  },
+  "total_cost_usd": 72.94260870000001,
+  "ideology_by_party": {
+    "D": {
+      "n": 49998,
+      "ideology_mean": -0.3047177887115485,
+      "ideology_std": 0.3633326134484133
+    },
+    "R": {
+      "n": 49995,
+      "ideology_mean": 0.27724712471247126,
+      "ideology_std": 0.37950380658458355
+    }
+  },
+  "disagreement_threshold": 0.3,
+  "high_disagreement_speeches": 0,
+  "partial_ensemble_rows": 0
+}

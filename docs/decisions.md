@@ -51,7 +51,7 @@ collapsed into one "extremeness" score.
 ---
 
 ### M3 — Ensemble of three models from different providers
-**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member · **Commit:** 112343d
+**Date:** 2026-09-16 · **Status:** SUPERSEDED by [M3a] on the Anthropic member, by [M3b] on the DeepSeek member, and by [S15] on the number of models in the S8 run · **Commit:** 112343d
 
 DeepSeek R1 (`deepseek-reasoner`), GPT-4o (`gpt-4o-2024-11-20`), Claude 3.5
 Sonnet (`claude-3-5-sonnet-20241022`). Averaged for continuous scores, with all
@@ -1148,6 +1148,10 @@ cost concentrated in Claude ($15.90) rather than the reasoner ($5.39).
 
 **Maintenance:** `PILOT_MEASURED_TOKENS` in `config.py` is pinned to the
 2026-09-23 pilot. Re-measure if the prompt, the models or the corpus change.
+*Re-measured 2026-10-03* on the 208-speech S8 stage ([P6]), after the corpus
+merge and with DeepSeek served by `deepseek-flash` ([M3b]): tiktoken 967.7
+per speech; input/output per speech DeepSeek 997.3/498.9, GPT-4o 972.8/69.3,
+Sonnet 1,241.9/95.6.
 
 ---
 ### S10 — The output cap is per model: 8,192 for the reasoner, 1,024 for the rest
@@ -1252,8 +1256,8 @@ reconsidered, as a new entry here. It is still a sample, not a full run.
 ---
 
 ### S12 — The ensemble stays at three models (closes O5)
-**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · reaffirms
-[M3]
+**Date:** 2026-10-03 · **Status:** **SUPERSEDED by [S15]** the same day (two
+models for the S8 run) · **Decided by:** Justus · reaffirms [M3]
 
 O5 asked whether to trim the ensemble, because the three models agree at
 r ≈ 0.95 (P2), so averaging buys little error reduction. A full run would also
@@ -1277,9 +1281,1044 @@ cost ~$53, DeepSeek alone ~$9.
 
 ---
 
+### S13 — The S8 run is one run, scored in stages; nothing is paid for twice
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · implements
+[S8]/[S11]; keeps the CLAUDE.md pilot rule as its first stage
+
+*Update 2026-10-03:* the first run under this plan, `20261003T100851Z`,
+completed stage 1 ([P6]) but cannot be resumed after the DeepSeek switch
+([M3b]); the S8 run restarts with the same plan under a new timestamp.
+
+Justus wants the S8 sample scored **once**, as the final run, and run again only
+if the analysis shows it is not enough. The S8 sample is therefore one run
+(label `s8`, one timestamp) extended in stages:
+
+1. **Stage 1, the gate:** `pilot_run.py --label s8 --per-cell 4` — 4 per cell,
+   208 speeches, 624 calls, **$2.13** estimated. It is the CLAUDE.md pilot over
+   the merged corpus: the 2026-09-23 pilot scored Stanford speeches only, and no
+   govinfo speech (115th–119th, D17-cut text) had been through the models.
+2. **Stage 2:** `pilot_run.py --resume <timestamp> --per-cell 100` — the
+   same run at the full 5,200. Only the 4,992 speeches not yet scored are
+   called, ~$50.83, so the whole run costs the same ~$53 as scoring S8 directly.
+3. **Later, only if needed:** extend the same run (e.g. `--per-cell 150`).
+   The first 100 per cell are reused; only new speeches are billed.
+
+**Why this works:** a sample drawn with the same seed and a larger per-cell
+quota *contains* the smaller one — pandas draws a seeded permutation per cell
+and takes its first n. Verified on the merged corpus (sha256 `f49c7bb2…`): all
+208 stage-1 speeches are in the 5,200 draw. The draw depends on the corpus
+file, so a rebuilt corpus breaks this, and the resume refuses (below).
+
+**What `--resume` does** (`code/src/runs.py`, `code/scripts/pilot_run.py`):
+
+- Scores only (speech, model) pairs with no successful score — so it also
+  finishes a crashed run and retries failed calls. A bare `--resume <ts>`
+  keeps the run's current size; only an explicit `--per-cell` extends it.
+- **Refuses** if anything that defines a score differs from the manifest:
+  corpus SHA-256, prompt text, models and their settings (incl. output caps),
+  seed, minimum words, strata. Also refuses if the new sample would leave out
+  speeches the run already scored. Scores under two instruments do not belong
+  in one run.
+- Appends to the per-model files; every attempt is kept (each was billed).
+  A failed attempt and its retry are two rows; the successful one counts
+  (`effective_rows`), in the ensemble and in `validate_scores.py` alike.
+- Rebuilds the ensemble and summary from the files after each stage. The
+  summary bills every attempt, splits cost by stage, and counts as failures
+  only speeches still unscored.
+- Each row records `stage`, `scored_at`, and the model the provider says
+  answered (`served_model`, plus `system_fingerprint` for OpenAI-compatible
+  APIs). `deepseek-reasoner` is an alias the provider can repoint; the summary
+  lists every served model and flags a change mid-run.
+
+**Fixed on the way:** a truncated call was logged with 0 tokens although the
+provider billed it (8,192 output tokens for the reasoner). It now records what
+was billed. The 2026-09-23 pilot under-reported by that one call, ~$0.02 of P1's
+$1.911.
+
+**Also decided (Justus):**
+- **Live calls, not batch APIs.** Batch would save ~$22 on GPT-4o and Sonnet
+  but is code that has never run; stage 1 would not test the path that scores
+  the other 96%.
+- **DeepSeek keeps the 8,192 cap** ([S10]); stage 1 tests it. See [O6].
+- **What would justify extending the run** is left to the analysis — [O11].
+
+**Rejected:**
+- *Scoring S8 straight through* — no gate on the govinfo side, and a crash or a
+  bad setting costs the whole ~$53 instead of ~$2.
+- *A separate pilot, then S8 from scratch* — pays for the 208 speeches twice.
+- *Batch APIs* — above.
+
+---
+
+### M3b — DeepSeek member: `deepseek-flash` (DeepSeek-V4.1-Flash, thinking mode) replaces `deepseek-reasoner`
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · amends
+[M3], as [M3a] did for Claude
+
+`ENSEMBLE_MODELS`' DeepSeek member is now `deepseek-flash`, called with thinking
+mode on and `reasoning_effort="high"`, both pinned explicitly
+(`request_options` on its `ModelSpec`, recorded in every run manifest).
+
+**Why:**
+- **"DeepSeek R1" was not what we were calling.** The first S8 stage recorded
+  the served model for the first time: all 208 `deepseek-reasoner` calls were
+  answered by `deepseek-flash` (one system fingerprint). The 2026-09-23 pilot
+  did not record it, so its DeepSeek scores cannot be attributed to a model.
+  V4.1-Flash was released 2026-09-10 (secondary sources), so the pilot ran on
+  V4-Flash or V4.1-Flash, not R1.
+- **The alias is on its way out.** DeepSeek's API docs (checked 2026-10-03)
+  list only `deepseek-flash` (DeepSeek-V4.1-Flash) and `deepseek-v4-pro`, and
+  no longer mention `deepseek-reasoner`; secondary sources report it was
+  announced for retirement on 2026-07-24. It still answered on 2026-10-03 but
+  could stop at any time: mid-run, or before a later extension ([O11]), which
+  could then not continue the run, because the model is score-defining ([S13]).
+- **Thinking mode at high effort** are `deepseek-flash`'s documented defaults
+  ("Thinking mode is enabled by default, with the default effort being
+  `high`"), and the alias was routed to thinking mode. Pinning both keeps the
+  instrument fixed if DeepSeek changes a default.
+
+M3's rationale still holds: a reasoning model from a third provider.
+**Open weights:** secondary sources report V4.1-Flash as MIT-licensed on
+Hugging Face — verify the release before the methodology says so.
+`deepseek-flash` is not a dated snapshot (DeepSeek repoints names: its docs say
+the retired `deepseek-v4-flash` is now served by V4.1-Flash), so every row
+records `served_model`, `system_fingerprint` and `reasoning_tokens`, and the
+run summary flags a change of served model mid-run.
+
+**Consequences:**
+- **A new S8 run.** The model is score-defining, so run `20261003T100851Z`
+  cannot be resumed under the new name; it stands as a pilot over the merged
+  corpus ([P6]). *Changed by [S16]: no second stage 1 — the new run carries
+  over the old run's GPT-4o and DeepSeek answers.* The new run starts at 4 per cell again (~$2): the same 208
+  speeches, so its DeepSeek scores against the old run's check that the alias
+  and the new name behave as one instrument. Then resume to 100 per cell.
+- **Prices:** `deepseek-flash` lists $0.30 / $1.20 per 1M tokens (peak, cache
+  miss; $0.15 / $0.60 off-peak). `config.py` carried R1's $0.55 / $2.19 until
+  now, so the DeepSeek cost in the 2026-09-23 and `20261003T100851Z` summaries
+  is overstated.
+- JSON mode stays off for DeepSeek: the answer is parsed from the content, as
+  in every run so far.
+- **Thesis:** name the model "DeepSeek-V4.1-Flash, thinking mode (API name
+  `deepseek-flash`)", not R1.
+
+**Rejected:**
+- *Keep `deepseek-reasoner`* — free, and today's run continues; but it is past
+  its announced retirement and undocumented, and if it stops the run can be
+  neither finished nor extended. ~$2 buys the stable name.
+- *`deepseek-v4-pro`* — a different, larger model: breaks comparability with
+  every DeepSeek score so far, at about twice the price.
+- *Leave thinking mode and effort at their defaults* — identical today, but a
+  changed default would change the instrument unseen.
+
+---
+
+### S14 — Every provider call has a hard 300-second deadline, then a retry
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus
+
+`score_one` wraps each call in `asyncio.wait_for` with `CALL_TIMEOUT_SECONDS`
+(300, `config.py`). A call past it raises `CallTimeoutError`, retried like a
+rate limit (3 attempts in all); after the third it is a failed row, which
+`--resume` retries ([S13]).
+
+**Why:** in the first S8 stage one call hung for 20 minutes, on speech 147 of
+208 (`gov-6853a24a8dbe839f`, 377 words, scored normally on resume), and the run
+sat still until stopped by hand. The SDK's own timeout never fired. Answered
+speeches took 3.75 s on average and at most 21 s, so 300 s is ~14× headroom.
+At one stall per ~150 speeches, the 5,200-speech run would otherwise stall ~30
+times.
+
+**Not score-defining:** it decides whether an answer arrives, not what it says,
+so a resume does not compare it; each stage records the value it ran with
+(`call_timeout_seconds` in the manifest).
+
+**Caveats:** tokens of an abandoned call are unknown and not recorded, though a
+provider may still bill them. Which model hung on 2026-10-03 is unknown — all
+three calls for the speech were in flight.
+
+**Rejected:**
+- *The SDK's timeout setting* — the SDK timeout is what did not fire.
+- *A short deadline (e.g. 60 s)* — the reasoner's longest answers need room,
+  and a tight deadline would turn long reasoning into failures, biasing which
+  speeches DeepSeek scores.
+- *Supervising by hand* — a ~5-hour run.
+
+---
+
+### P6 — First S8 stage (run `20261003T100851Z`): the gate passed; now a pilot
+**Date:** 2026-10-03 · **Status:** finding · per-Congress figures
+**indicative only — do not cite**
+**Data:** `results/metrics/s8_summary_20261003T100851Z.json`,
+`results/metrics/validation_20261003T100851Z.json`
+
+208 speeches (4 per Congress × party × chamber, 107th–119th), 624 calls,
+**0 failures, 0 truncations** (DeepSeek's longest answer 3,914 of 8,192
+tokens — [O6]'s cap held). $2.07 at the prices then configured (estimate
+$2.13; DeepSeek overstated, [M3b]). Run in two invocations: stopped by hand
+after the 20-minute stall ([S14]) and resumed — the resume worked as designed,
+re-scoring nothing.
+
+- **Party check:** ensemble R − D = **+0.683** (D −0.380, R +0.303; Welch
+  p ≈ 1e-28). It holds in both sources (Stanford +0.55, govinfo +0.90), both
+  chambers, and per model (DeepSeek +0.67, GPT-4o +0.71, Sonnet +0.67).
+- **Agreement:** pairwise r 0.952 (DeepSeek–GPT-4o), 0.952 (DeepSeek–Sonnet),
+  0.969 (GPT-4o–Sonnet); P2 had 0.949 on average.
+- **DW-NOMINATE** (ensemble vs `nominate_dim1`): overall +0.72; **within D
+  +0.26** [0.07, 0.43], **within R +0.39** [0.22, 0.54] — P5 had R +0.14, not
+  significant. `nokken_poole_dim1` within D: +0.16, CI includes 0.
+- **Procedural** (all three at 0.0): 41 of 208.
+- **govinfo text** (D17's cut) reads as the member's own words in all four
+  speeches spot-checked: opens at "Mr. Speaker"/"Mr. President", ends at the
+  member's own close.
+- **Per Congress** (n = 8 per party): the gap is ~0.45 in the 107th–110th,
+  0.69–0.80 in the 112th–113th, 0.79–1.05 in the govinfo Congresses, and in
+  this sample the rise is mostly Republican. **That contradicts [P4]**, where
+  Democrats moved and Republicans did not. Both samples hold 8–13 speeches per
+  party-Congress; neither can answer RQ2, which is what the S8 run is for.
+- **Source break:** govinfo separates the parties more than Stanford (+0.90
+  vs +0.55). The rise begins inside Stanford (112th), so it is not only the
+  source change, but a level shift at 2016-09-10 cannot be excluded. The
+  114th Congress holds both sources; the full run allows a within-Congress
+  comparison there.
+
+Superseded as the S8 run by [M3b]; it stays as the pilot over the merged
+corpus, and its 208 speeches are re-scored first in the new run.
+
+---
+
+### S15 — The S8 run scores with two models: DeepSeek and GPT-4o; Sonnet is dropped
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus ·
+**supersedes [S12]**, amends [M3]
+
+`ENSEMBLE_MODELS` is now `deepseek-flash` and `gpt-4o-2024-11-20`. Claude
+Sonnet 4.6 scores nothing in the S8 run. Its spec and price stay in the code,
+so the three-model runs remain readable and re-validatable
+(`validate_scores.py` now reads each run's models from its manifest).
+
+**Why:**
+1. **Sonnet adds the least.** It is the model GPT-4o predicts best: r = 0.969
+   on the 208 speeches of [P6] and 0.961 on the 200 of [P2] — the closest
+   pair both times (DeepSeek–GPT-4o 0.952 / 0.935, DeepSeek–Sonnet 0.952 /
+   0.953). Each model alone reproduces the party gap per Congress ([P6]), and
+   against DW-NOMINATE within party Sonnet and GPT-4o are indistinguishable (P6:
+   D +0.25 vs +0.26, R +0.42 vs +0.38; every CI overlaps).
+2. **Sonnet costs the most.** It was ~56% of stage 1's cost at current prices
+   ($1.07 of ~$1.91). Over the 5,200-speech run: ~$21 for two models against
+   ~$48 for three.
+3. **Why Sonnet and not GPT-4o:** the two are near-duplicates, so dropping
+   either keeps most of the information. GPT-4o is cheaper and is the baseline
+   prior work used ([M3]). DeepSeek stays as the only reasoning model and the
+   one least correlated with the others, so it carries the most independent
+   signal.
+
+**What is lost — state it in the methodology:**
+- Provider diversity falls from three training paradigms to two; the
+  Constitutional AI member ([M3a]) is gone from the main results.
+- With two members, the cross-model spread of a speech is one difference
+  (`ideology_score_std` = |a − b| / √2), and a speech the two disagree on has
+  no third opinion. The disagreement threshold (0.3) was set for three.
+- The per-model robustness check in the thesis has two lines, not three.
+
+**The thesis argument rests on evidence already scored:** three-model scores on
+408 speeches ([P2]: 200 Stanford speeches; [P6]: 208 over the merged corpus,
+all 13 Congresses). That is where the redundancy is shown; the S8 run is two
+models from its first call, because the model list is score-defining ([S13]).
+
+**Rejected:**
+- *Keep three ([S12])* — ~$27 more for a member whose scores GPT-4o predicts at
+  r ≈ 0.97.
+- *Drop GPT-4o instead* — keeps the more expensive of two near-duplicates.
+- *DeepSeek alone* — loses the cross-provider check entirely (S12's argument
+  still holds against one model).
+- *Sonnet on a subsample of the S8 run* — a run has one model list ([S13]); the
+  three-model evidence already exists in P2 and P6.
+
+**Consequences:** the new S8 run's first stage (4 per cell, the same 208
+speeches as [P6]) costs ~$0.85 instead of ~$2; the full run ~$21. *[S16]:
+that stage is carried over from [P6] instead — ~$20 for the remaining 4,992.* [M3b]'s
+"new S8 run" is this two-model run.
+
+---
+
+### S16 — The S8 run starts from stage 1's answers instead of re-scoring them
+**Date:** 2026-10-03 · **Status:** active · **Decided by:** Justus · changes
+the consequences of [M3b] and [S15]
+
+The S8 run is started with
+
+    pilot_run.py --label s8 --per-cell 100 --carry-over-from 20261003T100851Z
+
+Its stage 1 is the 416 GPT-4o and DeepSeek answers to [P6]'s 208 speeches,
+carried over; stage 2 scores only the other 4,992 speeches (~$20). Sonnet's
+208 answers stay in the old run as pilot evidence ([S15]).
+
+**Why:** those answers come from the models the run uses. GPT-4o: same snapshot,
+same settings. DeepSeek: requested as `deepseek-reasoner`, but every one of the
+208 rows records `deepseek-flash` as the model that answered (one system
+fingerprint); DeepSeek documents that name as Flash's thinking mode, and
+thinking at high effort is Flash's default — the settings [M3b] pins. A
+second stage 1 would have cost ~$0.84 and bought a test-retest comparison;
+Justus judged that not worth another run.
+
+**Assumption — state it in the methodology:** the old DeepSeek calls relied on
+the default effort instead of sending it, and did not record reasoning tokens,
+so "high effort" for those 208 answers is inferred from the documented
+default, not observed. **Check after stage 2:** DeepSeek's output tokens per
+speech on the carried speeches (mean 499) against the new ones; a clear shift
+would put the equivalence in doubt.
+
+**Guards** (`--carry-over-from`, `code/src/runs.py`):
+- corpus, prompt, seed, length filter and strata must be identical;
+- a model under the same name must have identical settings (a manifest from
+  before request options were recorded counts as having sent none, which is
+  what the code did);
+- a renamed model is allowed only as a declared pair
+  (`CARRY_OVER_EQUIVALENTS` in `config.py`, today only `deepseek-reasoner` →
+  `deepseek-flash`) and only if every carried row's served model is the new
+  name;
+- the old run's speeches must lie inside the new sample.
+
+Carried rows keep everything they recorded — including the model name they
+were requested under — plus `carried_from` (run, stage, model); the new
+manifest records `carried_over_from`.
+
+**Rejected:**
+- *A second stage 1 under the new name* ([M3b]'s plan) — ~$0.84 and 15 minutes
+  for answers already in hand.
+- *Resuming the old run with Sonnet dropped* — its manifest and file names
+  record three models and the alias; continuing it would make the run's own
+  record wrong.
+- *A general switch to ignore model changes on resume* — would let any change
+  of instrument through. The pair is declared, and checked row by row.
+
+---
+
+### S17 — Speeches are scored and labelled in parallel: `--concurrency N`
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus (N = 10 for
+the [S19] run); implemented by the agent
+
+`pilot_run.py` and `label_run.py` keep up to N speeches in flight at once: N
+workers take speeches from the sample in order, each writing and flushing its
+rows the moment they land. **The default stays 1**, the sequential loop of every
+run so far, so the S8 path and every earlier test behave as before.
+
+**Why:** at S8's ~3.8 s per speech, 100,000 speeches take ~105 hours in
+sequence and ~10.5 hours at N = 10. DeepSeek's rate-limit docs (read
+2026-10-18) allow **2,500 concurrent requests per account** for
+`deepseek-flash` and answer HTTP 429 beyond that; 429s are retried as before
+([S14]), and a speech still failing is retried by `--resume`.
+
+**Not score-defining**, like the deadline ([S14]): it decides when an answer
+arrives, not what it says, so a resume does not compare it; each stage
+records the value it ran with (`concurrency` in the manifest). Rows land in
+completion order rather than sample order; nothing reads them by order
+(`effective_rows` keys on `speech_id`, and the ensemble file is rebuilt in
+sample order). An interruption loses at most the N calls in flight, which the
+provider may still bill.
+
+**Rejected:** one task per speech gathered at once (100,000 open tasks for no
+gain over a fixed pool); threads (the SDKs are already async); making N > 1
+the default (it would change the behaviour of every existing command
+silently).
+
+---
+
+### S18 — A run stops when DeepSeek answers from another model build
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus ("address the
+open questions"); design by the agent
+
+On 2026-10-17 DeepSeek moved `deepseek-flash` to DeepSeek-V4.1-Flash-1017
+under the same name ([L3]). The API still reports `deepseek-flash` as the
+served model, so the served-model check of [S13]/[M3b] cannot see it; only
+`system_fingerprint` changed (`aeb56401…` on all 5,202 S8 answers,
+`e72d3c7f…` on every label since). A resume compares the *requested* settings,
+so extending S8 would have mixed two models without a word.
+
+**Now** (`runs.FingerprintGuard`, both scripts): for the models in
+`FINGERPRINT_PINNED_MODELS` (`config.py`: `deepseek-flash`), a run's build is
+the fingerprint of its earlier answers (carried-over rows included), or of its
+first new answer. An answer from another build is written as a failure
+(`FingerprintChangedError`, its scores or labels kept aside under
+`rejected_answer`, never counted), no further speech is started, and the
+script exits with code 3. Rejected rows never define the build, so the run
+stays stopped on every resume. The summaries list `system_fingerprints` per
+model.
+
+**Consequence: the S8 run can no longer be extended with DeepSeek** — its
+first new answer would come from the 1017 build and stop it. More DeepSeek
+scores mean a new run ([S19]).
+
+**Why not for GPT-4o:** OpenAI rotates fingerprints across the backend builds
+of one dated snapshot — three within the S8 run alone — so for a dated
+snapshot a changed fingerprint says nothing, and stopping on it would stop
+every long run.
+
+**Rejected:** a warning only (a 10-hour run would finish mixed, and the
+warning would be read afterwards); checking before the run (the build is only
+known from an answer); treating a missing fingerprint as a change (nothing to
+compare; it passes).
+
+---
+
+### S19 — A ~100,000-speech run with DeepSeek alone (label `d100k`)
+**Date:** 2026-10-18 · **Status:** active — not started; each stage needs a
+go-ahead ([E7]) · **Decided by:** Justus · amends [S11] (a larger sample) and
+[S15] (one model instead of two)
+
+A new run, label `d100k`: the S8 design (party × Congress × chamber, seed 42,
+≥ 50 words) at **1,923 speeches per cell = 99,996 speeches**, scored by
+**`deepseek-flash` alone** (thinking mode, high effort, the [M3b] settings) at
+`--concurrency 10` ([S17]):
+
+    pilot_run.py --label d100k --per-cell 4 --models deepseek-flash --concurrency 10      # stage 1
+    pilot_run.py --resume <timestamp> --per-cell 1923 --concurrency 10                    # stage 2
+
+**Why DeepSeek alone (Justus):** cost, and the two models' results are similar
+enough for the analysis. On the 5,200 S8 speeches DeepSeek and GPT-4o agree at
+r = 0.94 (0.88 within Democrats, 0.91 within Republicans), and each model on
+its own tells the same story per party and Congress (notebook 04, section 8).
+GPT-4o was ~77% of S8's cost ($16.19 of $21.08); over 99,996 speeches it would
+add roughly $300.
+
+**Why a larger sample — proposed by the agent, to confirm:** the within-topic
+gaps of [A2] rest on 16–73 speeches per party and period in some blocks; the
+member-level validation ([O9]) needs several speeches per member; per-cell
+intervals narrow by up to √19 ≈ 4.4× (less in practice: they are clustered
+by member, and frequent speakers recur). This answers [O11].
+
+**Why a new run, not an S8 extension:** the DeepSeek model changed on
+2026-10-17 ([S18]); S8's DeepSeek answers come from the earlier build.
+
+**Built-in snapshot check:** the 99,996 draw contains all 5,200 S8 speeches
+(checked 2026-10-18), and stage 1 (4 per cell) is exactly [P6]'s 208. So the
+1017 build's scores can be compared with the old build's on the same speeches
+at no extra cost — first on 208 after stage 1, then on all 5,200.
+
+**Cost and time (dry runs, 2026-10-18):** stage 1, 208 speeches, **$0.19**;
+the whole run **$89.36** at peak list price (99.3M input, 49.7M output tokens
+by S8's measured usage), about half off-peak. About 10.5 hours at
+concurrency 10, if DeepSeek's per-call time holds under load. After stage 1,
+re-measure `PILOT_MEASURED_TOKENS` for the new build ([S9]): DeepSeek reports
+shorter output for it, which would lower the cost. *Done 2026-10-18 ([P7]):
+output 358.7 tokens per speech (was 498.9); stage 2 now prices at **$72.46**
+at peak for 99,788 speeches, and stage 1 ran at ~0.27 s per speech at
+concurrency 10, so ~7.5 hours.*
+
+**What is lost — state it in the methodology:** the cross-provider check
+([M3], [S12], [S15]). The main results become single-model; the evidence
+that a second model would tell the same story is the S8 comparison above and
+the three-model pilots ([P2], [P6]). The ensemble mean is DeepSeek's score
+(`n_models` = 1), and there is no per-speech disagreement measure.
+`ENSEMBLE_MODELS` in `config.py` still names the S8 pair; this run chooses its
+model with `--models`, and its manifest records it.
+
+**Still to approve separately:** labelling the run ([L1]; ~$43 at peak by the
+label pilot's usage) and any GPT-4o subsample.
+
+**Rejected:**
+- *Extending S8 to 99,996* — mixes two DeepSeek builds; [S18] would stop it.
+- *Keeping GPT-4o* — ~$300 for a model that agrees at r = 0.94.
+- *GPT-4o on a subsample of this run* — a run has one model list ([S13]); the
+  S8 run already holds GPT-4o on 5,200 of these speeches.
+- *A full-corpus run* — still ruled out ([S11]).
+
+---
+
+### P7 — Stage 1 of `d100k` (run `20261018T122536Z`): the new DeepSeek build scores like the old one
+**Date:** 2026-10-18 · **Status:** finding, not a decision · run by Justus
+**Data:** `results/metrics/d100k_summary_20261018T122536Z.json`
+
+`pilot_run.py --label d100k --per-cell 4 --models deepseek-flash
+--concurrency 10`: [P6]'s 208 speeches, DeepSeek-V4.1-Flash-1017 alone.
+**208 of 208 scored, 0 failures, 0 truncations** (longest answer 6,352 of
+8,192 tokens), one build throughout (`e72d3c7f…`), **$0.152** (estimate
+$0.187), **56 seconds** at concurrency 10.
+
+**Against the old build (`aeb56401…`, the S8 answers) on the same 208:**
+
+| | new vs old DeepSeek | old DeepSeek vs GPT-4o | new DeepSeek vs GPT-4o |
+|---|---|---|---|
+| ideology r, all | **0.984** | 0.952 | 0.944 |
+| ideology r, within D / R | 0.973 / 0.972 | 0.884 / 0.947 | 0.871 / 0.924 |
+| tone r | 0.985 | 0.923 | 0.919 |
+
+- Mean ideology shift new − old **+0.002** (paired t, p = 0.74; D +0.009,
+  R −0.005); mean |difference| 0.053, 1% of speeches differ by more than 0.3.
+  Tone shifts −0.016.
+- R − D gap 0.652 (old 0.666; GPT-4o 0.711). Speeches at exactly 0.0: 72 (old
+  71, 67 in both).
+- Output per speech **358.7 tokens, against 498.9** (−28%): the new build
+  reasons less. `PILOT_MEASURED_TOKENS` updated ([S9]).
+
+**Reading:** the build change moves scores far less than the difference
+between providers does, and does not shift either party. Since no temperature
+is set ([S2a]), part of the remaining difference is run-to-run noise that a
+same-build retest would also show; the two cannot be separated here. The 208
+are not a test of the 1017 build on govinfo-era speech in particular; the
+comparison on all 5,200 S8 speeches comes free with stage 2.
+
+---
+
+### P8 — The `d100k` run analysed (notebook 05): both parties moved, Republicans about twice as far
+**Date:** 2026-10-19 · **Status:** finding, not a decision — preliminary; labels
+not yet hand-checked ([L4]) · analysed as in [A1]/[A2]
+**Data:** `code/notebooks/05_d100k_analysis.ipynb`;
+`results/metrics/d100k_*_20261018T122536Z.csv`,
+`validation_20261018T122536Z.json`; `results/plots/d100k_*.png`
+
+99,993 of 99,996 speeches scored (DeepSeek-V4.1-Flash-1017 alone, [S19]),
+99,967 labelled ([L8]); 1,923 per Congress × party × chamber; chambers apart,
+intervals clustered by member.
+
+- **The new build against the old, on all 5,200 S8 speeches:** r = 0.978
+  (0.959 within D, 0.970 within R; GPT-4o against either ≈ 0.94). A small
+  systematic shift: Democrats 0.003–0.023 and Republicans 0.003–0.007 closer
+  to the centre, so the gap is ~0.01–0.03 narrower. **Levels from `d100k`
+  and S8 are not interchangeable; trends within a run are.**
+- **RQ1:** the gap widened in both chambers, not linearly — House 0.42
+  (107th) → 0.78 (112th) → 0.57–0.63 (114th–116th) → 0.72–0.76
+  (117th–119th); Senate 0.31 → ~0.55 (111th–114th) → 0.71 (115th) → 0.75
+  (119th), the second Senate step at the source change.
+- **RQ2, 2001–2016 (one source):** Republicans +0.16 (House) and +0.19
+  (Senate), Democrats −0.09 and −0.06 — **both parties moved, Republicans
+  about twice as far.** S8 could not establish the Democratic move; this run
+  can (House p < 10⁻⁶, Senate p = 0.01). Policy debate alone: steeper (R +0.20
+  / +0.28, D −0.10 / −0.09). Positions swing with the presidency: each party
+  is most extreme in opposition, Senate Democrats most of all under Trump
+  (−0.46, −0.47).
+- **114th by source:** govinfo speeches sit closer to the centre than the same
+  Congress's Stanford speeches (House D −0.24 vs −0.33, R +0.20 vs +0.29) —
+  no sign that govinfo pushes scores outward, but source and moment (Sept–Dec
+  2016) are confounded.
+- **DW-NOMINATE:** speech level r = 0.65 across parties, 0.24 (D) / 0.29 (R)
+  within; **member level r = 0.61 (D) / 0.62 (R) on 1,347 members** with ≥ 5
+  speeches (S8: 0.51 / 0.55 on 298).
+- **Tone (RQ5):** higher in opposition in all four party-chamber cells;
+  highest for Democrats in 2025 (House 0.44, Senate 0.53).
+- **Within topic:** the gap widens inside topic blocks (clearly in economic,
+  governance and social-cultural in both chambers, security/foreign in the
+  Senate), and the agenda shifts toward the most divided blocks
+  (social-cultural 10.5% → 18.0% of House policy debate, governance up,
+  economic down). Not decomposed yet.
+
+---
+
+## Analysis
+
+### A1 — How the S8 run is analysed: chambers apart, intervals clustered by member
+**Date:** 2026-10-04 · **Status:** active · **Decided by:** Justus (design
+approved for the Meeting 2 notebook)
+
+`code/notebooks/04_score_analysis.ipynb` analyses run `20261003T110419Z`; its
+logic is in `code/src/analysis.py` and `code/src/plots.py` (tested). Figures go
+to `results/plots/s8_*.png`, the tables behind them to
+`results/metrics/s8_*_20261003T110419Z.csv`.
+
+- **House and Senate are never pooled** — O8's thinner govinfo Senate, and S8's
+  equal quotas per cell (S11).
+- **Intervals are clustered by member** (CR1, normal 95%). Many speeches come
+  from one member, and treating them as independent overstates the evidence.
+  A member is their career-long ICPSR from the crosswalk (5,196 of 5,200
+  speeches); the 4 unmatched fall back to the source-native id. Not
+  Stanford's `speakerid`, which changes every Congress.
+- **Trends are OLS slopes of the speech-level score on the Congress number**,
+  reported for 2001–2016 (Stanford only, no source change) and 2001–2025. A
+  straight line is a summary, not a claim that change was linear.
+- **The party gap's error** adds the two parties' errors in quadrature — their
+  speeches come from different members.
+- **Presidency per Congress** (`PRESIDENTS_BY_CONGRESS` in `config.py`): each
+  Congress goes to the president who held office for nearly all of it (a
+  Congress starts 3 January, a presidency 20 January).
+- **Member-level validation is exploratory** (members with ≥ 5 sampled speeches,
+  each member's mean against their Voteview score) until O9 is settled.
+- Procedural speeches stay in every figure; a robustness check without them is
+  still to do. *(Done 2026-10-18 on the speech-type labels, [A2].)*
+
+**Rejected:** pooling chambers (O8); speech-level standard errors (overstate
+the evidence); clustering by `member_id` (Stanford's changes every Congress, so
+a career would count as several members).
+
+---
+
+### A2 — Speech type and topic in the S8 analysis (notebook section 10)
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus (labels into
+notebook 04); the cuts below by the agent
+
+`04_score_analysis.ipynb` section 10 joins the labels of run `20261017T182223Z`
+([L7]) onto the S8 run with `analysis.attach_labels`. Tables:
+`results/metrics/s8_{label_type_shares,party_gap_policy_only,ideology_trends_policy_only,party_gap_by_topic_block}_20261003T110419Z.csv`;
+figures `s8_label_type_shares.png`, `s8_party_gap_policy_only.png`.
+
+- **Speech-type shares per Congress, chambers apart**, source break marked.
+- **The procedural label against the 0.0 proxy** ([O12]): 688 of the 796
+  speeches labelled procedural carry the proxy; the proxy's 1,599 also hold
+  468 ceremonial, 366 policy-debate and 67 bill-introduction speeches.
+- **The robustness check [A1] left open:** gap and trends on speeches labelled
+  policy_debate only. Same course and same 2001–2016 answer to RQ2
+  (Republicans right in both chambers, Democrats not clearly left), with a
+  larger gap throughout.
+- **Within topic:** gap per topic block in two periods, **107th–114th vs
+  115th–119th**. The split falls after the mixed-source 114th, so "period"
+  also means "source"; a finer split leaves governance and "other" cells
+  with too few speeches (they already hold 16–73 per party and period).
+  Both readings hold: the gap widens within blocks, and the agenda moves
+  toward the most divided ones (social-cultural, governance).
+
+**Not done:** a decomposition of the gap's change into within-topic and
+topic-mix parts, with intervals. **All of it rests on labels not yet
+hand-checked ([L4]).**
+
+**Rejected:** dropping non-policy speeches from the main figures — the
+exclusion rule is open ([O12]), so they stay in sections 2–9 and section 10
+shows the policy-only version beside them.
+
+---
+
+### A3 — The overview leaves out procedural and ceremonial speeches by label; members and topics over time
+**Date:** 2026-10-19 · **Status:** active · **Decided by:** Justus (exclusion by
+label, procedural and ceremonial; members over time; topic polarization); the
+criteria below by the agent · settles [O12] for the overview analysis
+
+`code/notebooks/06_overview.ipynb`, on the `d100k` run ([S19], [P8]) and its
+labels ([L8]). Figures `results/plots/overview_*.png`, tables
+`results/metrics/overview_*_20261018T122536Z.csv`.
+
+- **Exclusion:** speeches labelled `procedural` or `ceremonial` are left out
+  (`EXCLUDED_SPEECH_TYPES` in `config.py`, `analysis.substantive`), and so
+  are the 29 unlabelled ones; 71,121 of 99,993 scored speeches remain. Bill
+  introductions, constituent items and "other" stay in. **Rejected:** the
+  "every model scored 0.0" proxy — with one model it also drops 19% of the
+  policy debates ([O12], [P8]); keeping all speeches — the left-out share
+  grows in the House after 2016 (L7), so an all-speech gap understates the
+  widening (the difference grows from 0.10 to 0.28 in the House).
+- **Trend of the gap:** `analysis.gap_trend`, OLS of the speech score on
+  party × Congress, clustered by member; the interaction is the change in
+  R − D per Congress. Reported for 2001–2016 and 2001–2025.
+- **Members over time:** a member is followed in a Congress where they have
+  **≥ 10 substantive speeches** (`member_trajectories`), and gets a trend if
+  followed in **≥ 5 Congresses** (`member_trends`: 170 members). Each
+  trajectory is shown beside the party's mean in the member's chamber; the
+  trend is also taken relative to that mean (`slope_relative`) and set against
+  the member's Nokken-Poole slope. Sixteen members are featured by ICPSR,
+  chosen for coverage and range (leaders, moderates, firebrands, chamber
+  switchers). **Rejected:** a lower threshold (single Congresses on 3–5
+  speeches are noise at this spread); per-member clustering (one member is
+  one cluster).
+- **Topic polarization:** the gap per **topic block** and Congress (≥ 275
+  speeches per party cell in the 05 period split; per Congress governance
+  and "other" are thinner), and one trend per **topic** over 2001–2025
+  (`gap_trend` by topic) — single topics hold as few as 6 speeches in a
+  party cell per Congress, too few for a line per Congress.
+
+---
+
+### A4 — Age, generation and tenure in the overview (notebook 06, section 5)
+**Date:** 2026-10-19 · **Status:** active · **Decided by:** Justus (asked whether
+younger members polarize more); measures and design by the agent
+
+**Data:** Voteview's `born` (birth year) and every Congress each ICPSR served,
+from the raw `HSall_members.csv` back to 1789 (`analysis.member_background`);
+99.91% of substantive `d100k` speeches have a birth year. Age = the speech's
+year − `born` (±1). Groups in `config.py`: age `under 45 / 45–54 / 55–64 /
+65–74 / 75+`; generations by birth year as Pew defines them; tenure
+`1st Congress / 2–3 / 4–6 / 7–10 / 11+` Congresses served.
+
+**Measures:** *extremity* = ideology toward the party's own side (D
+sign-flipped, `toward_party`), and *tone*; both taken relative to the mean of
+the speaker's party, chamber and Congress (`relative_to_cell`), so a group
+difference is not the 2001–2025 trend; group means clustered by member; then
+age and tenure together by OLS within those cells (`within_cell_ols`).
+
+**Findings (preliminary):** younger is *not* further out (age differences
+≤ ~0.05, mostly within intervals; House Democrats under 45 slightly less far
+out). **Newer is further out for Republicans:** House Republicans in their
+first three Congresses +0.05–0.06, with 11+ Congresses −0.09; −0.015 per
+Congress served with age held fixed (p < 10⁻¹²); Senate Republicans in their
+first Congress +0.09. Republican newcomers are also harsher in tone,
+Democratic newcomers milder. Consistent with replacement ([A3], section 3).
+
+**Not separable:** within a Congress, age and generation are the same thing;
+long tenure selects re-elected members and leadership roles.
+
+**Rejected:** raw group means without the cell adjustment (would mix the
+trend over time with age, since the Senate aged by 11 years); exact
+birthdays from congress-legislators (bioguide-keyed, would need a second join
+for the Stanford side, for a ±1-year gain).
+
+---
+
+## Labels
+
+A second pass that gives each speech a **speech type** and, for policy debate,
+a **topic**. Added 2026-10-17. Code: `code/src/labeling.py`,
+`code/src/label_eval.py`, `code/scripts/label_run.py`,
+`make_label_check_sheet.py`, `evaluate_labels.py`; prompt
+`code/src/prompts/label_speech.txt`.
+
+### L1 — Speech labels: zero-shot LLM classification with a closed codebook, separate from scoring
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+Each scored speech gets two labels from one model call, reading only the speech
+text (no party, name, date, chamber or Congress) and the whole speech ([M4]):
+
+- `speech_type`: procedural, ceremonial, bill_introduction, constituent_local,
+  policy_debate, other
+- `topic`: one of 11 codes, **only** for policy_debate; null otherwise
+
+**What they are for:** to separate non-substantive speeches (procedural,
+ceremonial, bill introductions, constituent items) from policy debate, and to
+test whether the polarization trend survives controlling for what Congress talks
+about. The topic mix shifts over time, and the govinfo Senate loses late-day
+statements, tributes and bill introductions at the 2016-09-10 break ([O8]), so
+the speech-type mix alone could fake a trend there.
+
+**Labels are covariates, strata and exclusion filters — never a scoring
+result.** The ideology and tone scores stay continuous ([M1]); a categorical
+label used to filter or stratify them does not make the result binary, so M1
+and the CLAUDE.md rule against binary final output are not touched.
+
+**A separate pass, not part of the scoring prompt.** `score_speech.txt` is
+unchanged, so the S8 scores stay comparable and the S8 run stays resumable
+([S13]: the prompt is score-defining).
+
+**Rejected:**
+- *Topic models (BERTopic, LDA)* — topics are unstable across runs and seeds,
+  have no fixed taxonomy to report or hand-check against, and need naming after
+  the fact.
+- *Keyword dictionaries* — brittle on floor speech, where procedural phrases
+  ("I yield", "Mr. Speaker") open substantive speeches too and topics are
+  named in many ways.
+- *Adding the labels to the scoring prompt* — would change the scoring
+  instrument and break comparability with every S8 score.
+- *Fine-tuning a classifier* — needs a labelled training set we do not have
+  ([O2]); the hand check ([L4]) is sized to validate, not to train.
+
+---
+
+### L2 — Codebook v1 and the topic blocks
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+The codebook is the prompt `code/src/prompts/label_speech.txt`, saved as given
+(the brief's quoting indent removed). `CODEBOOK_VERSION = "v1"`; the label
+strings are `SPEECH_TYPES` and `TOPICS` in `config.py`, and a test reads them
+back out of the prompt so the two cannot drift. **Any change to the codebook
+is a new version and a new entry here**, and a label run never resumes across
+versions.
+
+Topics roll up into five blocks (`TOPIC_BLOCKS` in `config.py`), applied after
+the fact, so the map can change without relabelling:
+
+| Block | Topics |
+|---|---|
+| economic | economy_tax_budget, welfare_labor, health, environment_energy |
+| social_cultural | social_cultural, immigration, education |
+| security_foreign | defense_foreign, law_crime |
+| governance | government_process |
+| other | other_policy |
+
+**Judgement calls — state them in the methodology:**
+- **Immigration under social_cultural**, although it is argued in economic
+  terms (labour markets, fiscal cost) as often as cultural ones.
+- **Health under economic**: insurance, Medicare/Medicaid and drug prices are
+  mostly argued as spending and markets.
+- **law_crime under security_foreign**, beside defence, rather than under
+  social_cultural.
+- **Guns under social_cultural** (in the prompt's topic list), although the
+  Comparative Agendas Project files them under law and crime.
+- **Voting rights split by framing:** voting rights as a civil-rights matter →
+  social_cultural; election administration, campaign finance and redistricting
+  → government_process. Expect coders and models to disagree most on this line.
+
+**Risk to watch in the pilot:** the prompt's JSON example writes the topic as
+`"<one of the eleven topics, or null>"`, with null inside the quotes. A model
+may return the string `"null"` for non-policy speeches; under [L3] that is a
+failure, not null. The pilot's failure count will show whether it happens.
+
+---
+
+### L3 — Labelling model: DeepSeek-V4.1-Flash, thinking disabled; GPT-4o only as the agreement check
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus (model,
+mode, temperature, cap); option and wiring checked by the agent
+
+- **Labelling model:** `deepseek-flash` with **thinking disabled**.
+  Labelling is preprocessing, and CLAUDE.md keeps reasoning models for the
+  scoring step. This does not contradict [M3b]: the same model scores with
+  thinking on and labels with it off. The option is DeepSeek's documented
+  toggle (`api-docs.deepseek.com/guides/thinking_mode`, read 2026-10-17):
+  `extra_body={"thinking": {"type": "disabled"}}`. `reasoning_effort` is **not
+  sent**: the docs do not say what it does with thinking off. Pricing is the
+  same in both modes ($0.30 / $1.20 per 1M at peak). Every row records
+  `reasoning_tokens`, the evidence that thinking was actually off.
+- **Separate spec:** `LABEL_MODEL_SPECS` in `labeling.py`, derived from the
+  scoring specs with only the cap and request options changed. `MODEL_SPECS`,
+  which scored S8, is untouched (a test checks it still has thinking on).
+- **Agreement-check model:** `gpt-4o-2024-11-20`, JSON mode, only on the
+  hand-check subsample ([L4]).
+- **No temperature.** As in [S2a], for consistency with scoring. **Caveat for
+  the methodology:** S2a's DeepSeek reason (the model ignores temperature) is
+  true of *thinking* mode only; non-thinking DeepSeek and GPT-4o both accept a
+  temperature. Leaving it unset is a choice here, not a constraint, and repeat
+  runs will be noisier than a temperature-0 design.
+- **Output cap 256** (`LABEL_MAX_OUTPUT_TOKENS`): two label strings and a reason
+  of at most 15 words. **Same 300-second deadline and retry** as scoring ([S14]),
+  reusing scoring.py's call, retry and JSON extraction.
+- **Labels outside the codebook are failures** (the [S3] rule): an unknown
+  type, wrong case, a topic on a non-policy speech, a policy speech without a
+  topic, or the string "null". The tokens are still recorded. Nothing is mapped
+  to a nearest code.
+- **Cost (dry run, 2026-10-17):** 200 speeches $0.084, all 5,200 S8 speeches
+  $2.24 (tiktoken input, 45 output tokens per speech assumed until the pilot
+  measures it). GPT-4o on 200 for reference: $0.70.
+
+**Snapshot note — record it in the methodology:** on 2026-10-17 DeepSeek
+upgraded `deepseek-flash` to **DeepSeek-V4.1-Flash-1017** under the same name
+(DeepSeek changelog, 2026-10-17). The S8 scores (2026-10-03) came from the
+earlier V4.1-Flash; labels made from today on come from the 1017 snapshot. The
+API returns `deepseek-flash` as the served model either way, so only
+`system_fingerprint` can show the change (all 5,202 S8 DeepSeek rows share one
+fingerprint, `aeb56401…`). Label rows record it, and the label summary flags
+more than one fingerprint.
+
+**Rejected:**
+- *Thinking on* — a reasoning model for a preprocessing step. On the scoring
+  prompt, thinking mode spent ~499 output tokens per speech ([S9]), against the
+  45 assumed here for a non-thinking answer.
+- *GPT-4o as the labelling model* — ~8× DeepSeek's cost for a step that does
+  not need it; it stays as the independent check.
+- *Temperature 0* — see above; decided against for consistency with scoring.
+
+---
+
+### L4 — How the labels are validated
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** Justus
+
+1. **Pilot:** `label_run.py --from-run 20261003T110419Z --limit 200 --label s8`
+   — 200 S8 speeches, 50 per chamber × source, seed 42. Run only after a
+   human's go-ahead ([E7]).
+2. **Hand check:** `make_label_check_sheet.py` draws 200 speeches (stratified
+   by chamber, source and era, [L5]) into a blind CSV in
+   `data/processed/label_check/`. The model's labels are not in it. **The first
+   50 rows are double-coded.** Coders use the codebook's exact strings.
+3. **Agreement** (`evaluate_labels.py`): accuracy, macro-F1 and Cohen's kappa,
+   with confusion matrices, for speech type, topic and block —
+   - model vs coder 1 (all coded rows),
+   - coder 1 vs coder 2 (the 50; the CLAUDE.md manual-labelling rule asks for
+     two coders and kappa),
+   - DeepSeek vs GPT-4o on the same speeches (GPT-4o run on the sheet's ids,
+     its own approval),
+   - GPT-4o vs coder 1.
+4. **Free consistency checks against S8** (no API): speech_type == procedural
+   against the "both models scored ideology exactly 0.0" flag (1,599 of the
+   5,200), mean |ideology| and tone by speech type and chamber, and label
+   shares by source and by Congress with the 114th marked as mixed-source.
+   Shares are sample shares (S8's equal quotas, [S11]), chambers apart ([O8]).
+
+Each later step needs its own approval: labelling all 5,200, GPT-4o on the
+check subsample, labelling any larger scoring run.
+
+---
+
+### L5 — Label runs on disk, and the judgement calls in the pipeline
+**Date:** 2026-10-17 · **Status:** active · **Decided by:** agent (to confirm
+by Justus)
+
+**Run mechanics** (mirroring [S13]): a label run is one timestamp and **one
+model**. `results/labels/label_<label>_<model>_<run>.jsonl` holds one row per
+attempt, and `label_manifest_<label>_<run>.json` holds the codebook version
+and labels, prompt path, hash and full text, corpus path and hash, per-model
+settings and pricing, seed, and per stage the selection, id count and id-list
+hash. `results/metrics/label_summary_<label>_<run>.json` holds counts, shares,
+failures, tokens, cost, served models and fingerprints. `results/labels/` is
+git-ignored like `results/scores/`. A resume labels only speeches without valid
+labels and **refuses** if the codebook version, the codebook labels, the
+prompt hash, the corpus hash or the model's settings changed, or if a new
+selection drops speeches already labelled. A bare `--resume` repeats the last
+selection and refuses if its ids changed (e.g. an edited ids file).
+`label_run.py` has **no `--yes`**: spending needs a typed "yes" ([E7]).
+
+**Judgement calls:**
+- **`--limit` strata: chamber × source**, equal quotas, seed 42 (the brief).
+  The pilot's 200 are 50 per cell; Congresses fall where they fall (8–23 each).
+- **"Era" for the check sheet = presidential term** (`term` from
+  `analysis.add_presidency`: Bush, Obama, Trump 2017–20, Biden, Trump 2025–26).
+  The brief named era without defining it; terms are already in `config.py`
+  and tie to RQ3.
+- **The 50 double-coded rows are a stratified sub-draw** of the 200, placed
+  first, with rows shuffled within each part so the order reveals no stratum.
+- **Failed speeches stay eligible for the sheet**; excluding them would tilt
+  the check toward speeches the model could label. They are listed separately
+  in the evaluation.
+- **Topic and block agreement are computed only where both raters said
+  policy_debate**, so a disagreement on type is not counted twice.
+- **Coders' codes are trimmed of whitespace; anything else that is not an exact
+  codebook string stops the evaluation** and lists the rows (no silent drop).
+- **Extra row fields:** `reasoning_tokens`, `system_fingerprint` and `stage`, in
+  addition to the brief's list.
+- **`--ids-file` takes a CSV's `speech_id` column**, so a check sheet can be fed
+  straight back for the GPT-4o run.
+- **Sheets are never overwritten**, and texts longer than Excel's
+  32,767-character cell limit (11 of the 5,200) are also written out in full.
+
+---
+
+### L6 — Label pilot (run `20261017T182223Z`): 200 of 200 labelled, no failures
+**Date:** 2026-10-17 · **Status:** finding, not a decision — shares
+**indicative only, do not cite** (n = 200, sample shares)
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+`label_run.py --from-run 20261003T110419Z --limit 200 --label s8`: 50 speeches
+per chamber × source, `deepseek-flash` with thinking off. Approved by Justus in
+the session ([E7]).
+
+- **Instrument:** 200 calls, **0 failures, 0 retries**. No string `"null"`
+  topics, so [L2]'s risk did not show. 246,100 input tokens (tiktoken counted
+  242,627, +1.4%) and 8,136 output tokens (40.7 per speech, against the 45
+  assumed), **$0.084** (estimate $0.084). About 1 s per call.
+- **Thinking was off:** 0 reasoning tokens on every call.
+- **The model changed since S8:** every row carries system fingerprint
+  `e72d3c7f…`; all S8 DeepSeek rows carry `aeb56401…`. This confirms the
+  2026-10-17 switch to V4.1-Flash-1017 ([L3]), and that only the fingerprint
+  shows it (`served_model` is `deepseek-flash` in both).
+- **Speech types:** policy_debate 136 (68%), procedural 34 (17%), ceremonial 23
+  (11.5%), bill_introduction 5, constituent_local 2, other 0. Procedural is
+  25% in the Senate against 9% in the House. All 5 bill introductions are
+  govinfo Senate speeches.
+- **Topics** (of 136 policy debates): economy_tax_budget 28, defense_foreign 21,
+  government_process 19, health 17, environment_energy 17, immigration 11,
+  other_policy 7, social_cultural 5, welfare_labor 4, law_crime 4, education 3.
+- **Not yet known:** whether the labels are right. That is the hand check
+  ([L4]); the blind sheet is
+  `data/processed/label_check/label_check_s8_20261017T182223Z.csv` (200 rows,
+  first 50 double-coded).
+
+---
+
+### L7 — All 5,200 S8 speeches labelled (run `20261017T182223Z`, stage 2): 7 failures
+**Date:** 2026-10-17 · **Status:** finding, not a decision — labels not yet
+hand-checked ([L4]); shares are S8 sample shares ([S11])
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+Run by Justus as stage 2 of the pilot's run
+(`label_run.py --resume 20261017T182223Z --from-run 20261003T110419Z`), so the
+pilot's 200 were not relabelled. 5,000 calls, 18:37–20:04 UTC (1 h 27 min),
+on a Saturday, so DeepSeek's off-peak rate applies.
+
+- **Cost:** the whole run (both stages) is $2.24 at peak list price (6,603,748
+  input, 212,070 output tokens; estimate $2.24); off-peak about half.
+  Thinking stayed off (0 reasoning tokens). **One fingerprint (`e72d3c7f…`)
+  across all 5,200 rows**: no model change mid-run.
+- **Failures: 7 of 5,200 (0.13%)**, all recorded as nulls, none mapped ([L3]):
+  four put a topic in the type field (`speech_type: "government_process"`),
+  one invented the topic `agriculture` (other_policy in the codebook), and two
+  returned broken JSON (curly quotes; an object cut off without a length
+  stop). *Retried 2026-10-18 (stage 3, bare `--resume`, approved by Justus,
+  $0.004):* 6 of 7 now have valid labels (all policy_debate: 4
+  government_process, 1 welfare_labor, 1 other_policy). `1130107165` failed
+  the same way again (`speech_type: "government_process"`) and stays
+  unlabelled: **5,199 of 5,200 labelled**, the whole run $2.24 at peak list
+  price.
+- **Speech types (5,193 labelled):** policy_debate 3,491 (67.2%), procedural
+  796 (15.3%), ceremonial 702 (13.5%), bill_introduction 187 (3.6%),
+  constituent_local 16 (0.3%), other 1. constituent_local and other are
+  close to unused.
+- **Topics (3,491 policy debates):** economy_tax_budget 801 (22.9%),
+  defense_foreign 568 (16.3%), health 424 (12.1%), government_process 376
+  (10.8%), environment_energy 348 (10.0%), other_policy 260 (7.4%),
+  social_cultural 187 (5.4%), immigration 162 (4.6%), welfare_labor 161
+  (4.6%), law_crime 127 (3.6%), education 77 (2.2%). Blocks: economic 49.7%,
+  security_foreign 19.9%, social_cultural 12.2%, governance 10.8%, other 7.4%.
+- **Across the source break, chambers apart** (share of labelled speeches,
+  Stanford → govinfo): the **Senate mix barely moves** (policy 58.7 → 59.4%,
+  procedural 21.6 → 21.6%, ceremonial 14.4 → 12.7%, bill introductions
+  4.9 → 6.1%). The **House shifts:** ceremonial 9.8 → 18.8%, policy
+  78.2 → 71.1%, procedural 10.1 → 7.5%. Source coincides with era here
+  (2001–16 vs 2016–25), so this cannot separate a real change from the
+  govinfo extraction (D17). It is not the Senate composition shift [O8]
+  feared, and it is a reason to control for speech type in the House trend.
+
+---
+
+### L8 — The `d100k` speeches labelled (label run `20261017T182223Z`, stage 4): 188 failures
+**Date:** 2026-10-19 · **Status:** finding, not a decision — labels not yet
+hand-checked ([L4]); shares are sample shares ([S11]) · run by Justus
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+The label run was extended to the speeches of scoring run `d100k`
+(`20261018T122536Z`, [S19]) rather than started anew: its 5,200 S8 speeches lie
+inside the new draw and were labelled by the same DeepSeek build, so they were
+not paid for twice ([S13]'s rule). Hence the run's label stays `s8` though it
+now covers all 99,996 `d100k` speeches; each stage's selection is in the
+manifest.
+
+- **Stage 4:** 94,797 calls (94,796 new speeches plus the one S8 failure,
+  now labelled), 05:17–08:05 UTC on a weekday, so mostly at **peak** price;
+  2.8 h at concurrency 10 ([S17]). Whole run: **$42.99** at peak list price
+  (127.0M input, 4.1M output tokens; 40.7 output tokens per call, as in the
+  pilot), stage 4 about $40.75 (estimate $40.76). One build throughout
+  (`e72d3c7f…`), 0 reasoning tokens.
+- **99,808 of 99,996 labelled; 188 failures (0.19%),** all kept as nulls
+  ([L3]): 168 put a topic or an invented code in the type field
+  (`government_process` 144, `procedure` 11, `defense_foreign` 7,
+  `procedure_debate` 3, others 3), 8 invented a topic (`agriculture` 3,
+  `foreign_policy`, `energy`, `labor`, a free-text one), 2 gave a topic to a
+  non-policy type, 10 returned broken JSON. *Retried 2026-10-19 (stage 5, bare
+  `--resume`, approved by Justus, $0.086): 159 of 188 now labelled; **29 stay
+  unlabelled** (all a topic in the type field, mostly `government_process`):
+  **99,967 of 99,996 labelled**, whole run $43.08 at peak list price.* **For a codebook v2:** most
+  failures are a topic code written into the type field, a format slip a
+  stricter answer format would prevent.
+- **Speech types (99,808):** policy_debate 67,032 (67.2%), procedural 14,736
+  (14.8%), ceremonial 14,075 (14.1%), bill_introduction 3,648 (3.7%),
+  constituent_local 249 (0.25%), other 68. Senate procedural 20.3% vs House
+  9.3%; policy debate 60.3% vs 74.0%.
+- **Topics (67,032 policy debates):** economy_tax_budget 21.9%,
+  defense_foreign 16.8%, health 11.9%, government_process 11.3%,
+  environment_energy 9.8%, other_policy 7.4%, social_cultural 5.3%,
+  immigration 4.5%, welfare_labor 4.5%, law_crime 3.8%, education 2.7%.
+  Blocks: economic 48.1%, security_foreign 20.6%, social_cultural 12.5%,
+  governance 11.3%, other 7.4%. All within about a point of the 5,200-speech
+  S8 shares ([L7]).
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
+
+### O12 — Should `speech_type == procedural` replace the "all models scored 0.0" proxy?
+**Raised:** 2026-10-17 (from [L1]) · **To be decided by:** Justus, after the
+hand check ([L4]) · **Settled 2026-10-19 for the overview analysis by [A3]**:
+by label, procedural and ceremonial left out. Whether the hand check confirms
+the labels is still open
+
+The analysis flags a speech as procedural when every model scored its ideology
+at exactly 0.0, as the scoring prompt asks for procedural speech (1,599 of the
+5,200 S8 speeches; [A1] keeps them in every figure, and their exclusion is a
+pending robustness check). Once the labels exist, the procedural label is a
+direct alternative, and ceremonial, bill_introduction and constituent_local
+are further candidates for exclusion. `evaluate_labels.py` cross-tabulates the
+label against the flag. Which one defines the exclusion, and which speech types
+it covers, is a methodological choice for Justus, not something the code
+decides.
+
+*Update 2026-10-19 ([P8]):* with one model the proxy is worse. In `d100k`,
+where DeepSeek alone decides, a 0.0 ideology score flags 38,874 of 99,996
+speeches: 91% of those labelled procedural, but also 76% of the ceremonial
+ones and **19% of the policy debates** (12,907; 10% in S8, where both models
+had to score 0.0).
+
+### O13 — Arlen Specter's party is wrong in the Stanford data for 2005–2009
+**Raised:** 2026-10-19 (from [A3]) · **Status:** open · **Affects:** about
+1,100 corpus speeches, ~90 of them in `d100k` (after the exclusion)
+
+The Stanford parquet codes Specter (PA, Senate) as a Democrat from the 109th
+Congress (`speakerid` 109114511, 110114511; `party` and `party_original` both
+`D`), but he left the Republican party only in April 2009, in the 111th. His
+109th–110th speeches therefore sit in the Senate Democratic cells. [D23]
+already flags him as a party switcher for the DW-NOMINATE join, but not this
+misdating. **Options:** (a) a `PARTY_CORRECTIONS`-style override in the corpus
+build — but it changes the corpus SHA-256, so no existing scoring or label run
+could be resumed or extended ([S13], [L5]); (b) an override at analysis time,
+keyed on the two speakerids; (c) leave it and state it. The 111th is mixed
+(R until 2009-04-28) and would need the date. Not fixed; the notebooks state it.
 
 ### O6 — DeepSeek still truncates on long speeches
 **Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]
@@ -1296,6 +2335,17 @@ scale with word count in any simple way — 732 words is unremarkable in a corpu
 filtered at 50 words — so it is the reasoning that runs long, not the input.
 Measure output tokens against the word-count distribution before the S8 run
 rather than guessing again.
+
+**Measured 2026-10-03** (the 2026-09-23 pilot files): output length barely
+follows speech length — Spearman 0.37 between word count and the reasoner's
+output tokens. Of the 199 answers, 99% stay under 2,003 tokens, the maximum is
+3,792, and the median rises only from 299 (shortest quarter of speeches) to 562
+(longest). The one failure spent all 8,192 tokens on an unremarkable 732-word
+speech: a runaway, not a long input. A higher cap costs little (billing is on
+tokens used, ≤ ~$0.07 per runaway at 32,768), but whether it would rescue a
+runaway is unknown. **Decision (Justus, 2026-10-03): keep 8,192** and see what
+stage 1 of the S8 run ([S13]) shows; changing it later means a new run, because
+the cap is a score-defining setting.
 
 ### O7 — Recover the ~23k ambiguous House speeches?
 **Raised:** 2026-09-27 (from D16) · **Settled:** 2026-10-03 by [D25] — option
@@ -1437,6 +2487,28 @@ thesis
    score — is the defensible one.
 4. **Procedural speeches:** keep or drop (P1 and P5 both show they change the
    overall figure, not the within-party one).
+
+**Update 2026-10-03 — the S8 draw supports a member-level check after all**,
+at career level. P5 expected it not to, because S8 balances cells, not
+members; but frequent speakers recur. In the 5,200-speech draw, 5,196 speeches
+are `in_validation`, from 1,010 members (ICPSR): **297 members have ≥ 5
+speeches** (3,793 speeches) and 131 have ≥ 10. Per member × Congress — what
+`nokken_poole_dim1` needs — it is thin: 160 member-Congresses with ≥ 5, 502
+with ≥ 3. Caveat: members with many sampled speeches are the frequent
+speakers, not a random draw of members.
+
+### O11 — What would justify extending the S8 run?
+**Raised:** 2026-10-03 (from [S13]) · **To be decided:** during the analysis ·
+**Addressed 2026-10-18 by [S19]**: a new ~100,000-speech DeepSeek-only run
+rather than an extension of S8 (the model changed, [S18]); its rationale for
+the size is proposed there and awaits Justus's confirmation
+
+S13 makes extending cheap and waste-free, which is exactly why the trigger
+should be written down before the results are read: otherwise a second run is a
+reaction to numbers someone disliked. Candidates: party × Congress means too
+imprecise to tell whether each party moved (RQ2); too few members with several
+speeches for the member-level validation (O9); a chamber stratum too noisy for
+the separate-chamber trends O8 requires.
 
 ### O10 — govinfo compound surnames the Record shortens
 **Raised:** 2026-10-03 (from D25's build) · **Blocks:** nothing; ~620 speeches

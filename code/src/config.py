@@ -107,6 +107,19 @@ SOURCE_BREAK_YEAR: int = SOURCE_BREAK_DATE.year
 SOURCE_BREAK_CONGRESS: int = 114
 YEAR_RANGE: tuple[int, int] = (2001, 2025)
 
+# Who held the presidency during each Congress, and their party: used to shade
+# presidential terms in plots and to mark the party in opposition (RQ3). A
+# Congress starts on 3 January and a president on 20 January, so the first ~17
+# days of the 107th, 111th, 115th, 117th and 119th fall under the predecessor;
+# each Congress is assigned the president who held office for nearly all of it.
+PRESIDENTS_BY_CONGRESS: dict[int, tuple[str, str]] = {
+    107: ("Bush", "R"), 108: ("Bush", "R"), 109: ("Bush", "R"), 110: ("Bush", "R"),
+    111: ("Obama", "D"), 112: ("Obama", "D"), 113: ("Obama", "D"), 114: ("Obama", "D"),
+    115: ("Trump", "R"), 116: ("Trump", "R"),
+    117: ("Biden", "D"), 118: ("Biden", "D"),
+    119: ("Trump", "R"),
+}  # fmt: skip
+
 # Stanford data covers the 107th-114th Congress. Primary aggregation is by
 # Congress, not calendar year (CLAUDE.md "Decided -- data decisions").
 CONGRESS_RANGE_STANFORD: tuple[int, int] = (107, 114)
@@ -260,19 +273,24 @@ VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
 # estimated per Congress and so can show a member moving.
 VALIDATION_BENCHMARKS: tuple[str, ...] = ("nominate_dim1", "nokken_poole_dim1")
 
-# Ensemble composition decided — three models from distinct providers and
-# training paradigms. Pin specific snapshot versions for reproducibility;
+# Ensemble composition decided (M3, M3a, M3b, S15) — models from distinct
+# providers and training paradigms. Pin specific snapshot versions for reproducibility;
 # update these constants (and CLAUDE.md) if a version is changed mid-project.
-#   deepseek-reasoner  — DeepSeek R1, reasoning model, open-weight (RL-trained)
+#   deepseek-flash     — DeepSeek-V4.1-Flash, thinking mode (DeepSeek)
 #   gpt-4o-2024-11-20  — GPT-4o snapshot, industry-standard baseline (OpenAI)
 #   claude-sonnet-4-6  — Claude Sonnet 4.6, Constitutional AI paradigm (Anthropic)
 # Claude 3.5 Sonnet was the original choice but was RETIRED (404) before the
-# first run; Sonnet 4.6 replaces it at the same tier and price. See
-# docs/decisions.md M3a.
+# first run; Sonnet 4.6 replaces it at the same tier and price (M3a).
+# `deepseek-reasoner` (once "DeepSeek R1") was a legacy alias that DeepSeek
+# routed to its current Flash model and announced for retirement; replaced by
+# the current name on 2026-10-03 (M3b). `deepseek-flash` is not a dated
+# snapshot either: every row records the model the provider says answered.
+# Claude Sonnet 4.6 was dropped for the S8 run on 2026-10-03 (S15): it agreed
+# with GPT-4o at r = 0.97 and was the most expensive member. Its spec and price
+# stay in scoring.py/below, so the three-model pilots remain readable.
 ENSEMBLE_MODELS: tuple[str, ...] = (
-    "deepseek-reasoner",  # DeepSeek R1 — reasoning model, open-weight
+    "deepseek-flash",  # DeepSeek-V4.1-Flash — reasoning (thinking) mode
     "gpt-4o-2024-11-20",  # GPT-4o — industry-standard baseline
-    "claude-sonnet-4-6",  # Claude Sonnet 4.6 — Constitutional AI
 )
 
 # Prompt templates live as files next to this module so every run can log the
@@ -302,24 +320,58 @@ PILOT_SAMPLE_SIZE: int = 200
 STRATIFY_BY: tuple[str, ...] = ("congress_number", "party", "chamber")
 PILOT_PER_CELL: int = 100
 
-# Measured per-speech token usage from the 200-speech pilot
-# (results/metrics/pilot_summary_20260923T103556Z.json). Used to estimate cost
-# from observation rather than a flat guess: the providers differ by ~30% on
-# input tokens for identical text because their tokenizers differ, and
-# deepseek-reasoner emits ~7x the output of the other two because its reasoning
-# is billed as output.
-PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 903.5
+# Measured per-speech token usage, used to estimate cost from observation
+# rather than a flat guess: the providers differ by ~30% on input tokens for
+# identical text because their tokenizers differ, and the DeepSeek reasoner
+# emits ~7x the output of the other two because its reasoning is billed as
+# output. Re-measured 2026-10-03 on the first S8 stage (208 speeches over the
+# merged corpus, run 20261003T100851Z, DeepSeek served by deepseek-flash),
+# replacing the Stanford-only 200-speech pilot of 2026-09-23 (S9).
+# deepseek-flash re-measured 2026-10-18 on the same 208 speeches after DeepSeek
+# moved the name to V4.1-Flash-1017 (stage 1 of run d100k, S19): input
+# unchanged, output 358.7 against 498.9 before -- the new build reasons less.
+PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 967.7
 PILOT_MEASURED_TOKENS: dict[str, dict[str, float]] = {
-    "deepseek-reasoner": {"input": 926.8, "output": 529.0},
-    "gpt-4o-2024-11-20": {"input": 909.1, "output": 69.1},
-    "claude-sonnet-4-6": {"input": 1172.2, "output": 93.7},
+    "deepseek-flash": {"input": 997.3, "output": 358.7},
+    "gpt-4o-2024-11-20": {"input": 972.8, "output": 69.3},
+    "claude-sonnet-4-6": {"input": 1241.9, "output": 95.6},
 }
 
+# Earlier model names whose answers may be carried into a new run as this
+# model's (S16). Only `deepseek-reasoner` -> `deepseek-flash`: every one of its
+# 208 answers in run 20261003T100851Z records `deepseek-flash` as the model that
+# served it, in thinking mode -- the same model and mode the new name pins.
+# The carry-over still checks each row's served model before importing it.
+CARRY_OVER_EQUIVALENTS: dict[str, str] = {"deepseek-flash": "deepseek-reasoner"}
+
+# Hard deadline for one provider call, in seconds; a call past it is abandoned
+# and retried (S14). On 2026-10-03 one call hung for 20 minutes and the SDK's
+# own timeout never fired. The slowest answered speech in that run took 21 s,
+# so 300 s is ~14x headroom. Not score-defining: it decides whether an answer
+# arrives, not what it says.
+CALL_TIMEOUT_SECONDS: float = 300.0
+
+# Models whose `system_fingerprint` identifies the model build behind the API
+# name. A run stops when one answers from a build other than the run's earlier
+# answers (S18): `deepseek-flash` is repointed in place (V4.1-Flash-1017 on
+# 2026-10-17) and its served-model field does not change, while the fingerprint
+# did -- one value across all 5,202 S8 answers, another for every label since.
+# GPT-4o is not listed: OpenAI rotates fingerprints across the backend builds
+# of one dated snapshot (three within the S8 run), so a change says nothing.
+FINGERPRINT_PINNED_MODELS: tuple[str, ...] = ("deepseek-flash",)
+
+# Speeches scored or labelled at the same time (`--concurrency`, S17). 1 is the
+# sequential behaviour every run so far used. Not score-defining: it decides
+# when an answer arrives, not what it says. DeepSeek allows 2,500 concurrent
+# requests per account for deepseek-flash (its rate-limit docs, 2026-10-18).
+DEFAULT_CONCURRENCY: int = 1
+
 # NO TEMPERATURE IS SET. Not a preference -- the providers removed the control:
-# `deepseek-reasoner` ignores it, and the anthropic SDK dropped the parameter
+# DeepSeek ignores it (its docs: "will not trigger an error but will also have
+# no effect"), and the anthropic SDK dropped the parameter
 # entirely (current models return "`temperature` is deprecated for this model").
 # Rather than set it on one model of three and imply the ensemble is uniformly
-# configured, all three run at their provider default, and every run manifest
+# configured, every model runs at its provider default, and every run manifest
 # records that. See docs/decisions.md S2a.
 SCORING_TEMPERATURE = None
 
@@ -333,10 +385,121 @@ TONE_SCORE_RANGE: tuple[float, float] = (0.0, 1.0)
 # distribution of disagreement.
 ENSEMBLE_DISAGREEMENT_THRESHOLD: float = 0.3
 
-# USD per 1M tokens, list prices as of September 2026. Approximate and provider
-# pricing changes, so treat every cost figure as an estimate, not an invoice.
+# USD per 1M tokens, list prices as of September 2026 (DeepSeek: October 2026).
+# Approximate and provider pricing changes, so treat every cost figure as an
+# estimate, not an invoice. DeepSeek is priced at its peak-hour, cache-miss
+# rate; off-peak is half ($0.15 / $0.60), so its figure is an upper bound.
 MODEL_PRICING: dict[str, dict[str, float]] = {
-    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    "deepseek-flash": {"input": 0.30, "output": 1.20},
     "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }
+
+# --- speech labels: type and policy topic --------------------------------
+# A second pass, separate from scoring, that gives each speech a speech type
+# and, for policy debate, a topic (docs/decisions.md L1-L5). Labels are
+# covariates, strata and exclusion filters for the analysis, never a scoring
+# result. score_speech.txt is not touched, so the S8 scores stay comparable.
+
+# Codebook prompt, loaded and logged verbatim with every label run.
+LABEL_PROMPT_PATH: Path = PROMPTS_DIR / "label_speech.txt"
+
+# Raw per-call labels, one file per run and model -- git-ignored like SCORES_DIR.
+LABELS_DIR: Path = RESULTS_DIR / "labels"
+
+# Hand-coding sheets for the label check. Git-ignored (under data/processed/):
+# they carry full speech text and the coders' work in progress.
+LABEL_CHECK_DIR: Path = PROCESSED_DIR / "label_check"
+
+# Bump this, and add a decision entry, whenever the codebook changes. A label
+# run never resumes across versions.
+CODEBOOK_VERSION: str = "v1"
+
+# The label strings exactly as label_speech.txt lists them, in its order. A test
+# reads them back out of the prompt, so the two cannot drift apart.
+SPEECH_TYPES: tuple[str, ...] = (
+    "procedural",
+    "ceremonial",
+    "bill_introduction",
+    "constituent_local",
+    "policy_debate",
+    "other",
+)
+
+# The one speech type that carries a topic; every other type has topic null.
+POLICY_SPEECH_TYPE: str = "policy_debate"
+
+TOPICS: tuple[str, ...] = (
+    "economy_tax_budget",
+    "health",
+    "welfare_labor",
+    "immigration",
+    "social_cultural",
+    "education",
+    "environment_energy",
+    "law_crime",
+    "defense_foreign",
+    "government_process",
+    "other_policy",
+)
+
+# Topics rolled up into coarser blocks for the analysis. Applied after the
+# fact, so changing it never requires relabelling. Judgement calls, recorded in
+# docs/decisions.md L2: immigration under social_cultural, health under
+# economic, law_crime under security_foreign; guns sit under social_cultural
+# (in the prompt) although the Comparative Agendas Project files them under law
+# and crime.
+TOPIC_BLOCKS: dict[str, tuple[str, ...]] = {
+    "economic": ("economy_tax_budget", "welfare_labor", "health", "environment_energy"),
+    "social_cultural": ("social_cultural", "immigration", "education"),
+    "security_foreign": ("defense_foreign", "law_crime"),
+    "governance": ("government_process",),
+    "other": ("other_policy",),
+}
+
+# Labelling model: DeepSeek-V4.1-Flash with thinking DISABLED -- labelling is
+# preprocessing, and CLAUDE.md keeps reasoning models for the scoring step.
+# Same API name as the scoring member, different request options; the spec is
+# LABEL_MODEL_SPECS in labeling.py, kept apart from the scoring specs (L3).
+LABEL_MODEL: str = "deepseek-flash"
+
+# Second model for the agreement check, run on the hand-check subsample only.
+LABEL_CHECK_MODEL: str = "gpt-4o-2024-11-20"
+
+# Output cap for a label answer: two label strings and a short reason. With
+# thinking off nothing else is spent from this budget.
+LABEL_MAX_OUTPUT_TOKENS: int = 256
+
+# Assumed output tokens per speech, for the cost estimate only, until a pilot
+# measures it. Billed usage is in each run's summary.
+LABEL_EXPECTED_OUTPUT_TOKENS: int = 45
+
+# `label_run.py --limit N` draws N speeches evenly over these strata.
+LABEL_LIMIT_STRATA: tuple[str, ...] = ("chamber", "source")
+
+# Speech types left out of the substantive analysis (A3, settles O12 for the
+# overview): procedural business and ceremonial speech say little about a
+# member's position, and the 0.0 score the prompt asks for on them is not a
+# usable filter with one model (P8). Bill introductions, constituent items and
+# "other" stay in.
+EXCLUDED_SPEECH_TYPES: tuple[str, ...] = ("procedural", "ceremonial")
+
+# Member background for the age analysis (A4). Age is the speech's year minus
+# Voteview's birth year (`born`, a year only, so +-1). Bins are left-closed: 45
+# starts "45-54". Generations by birth year, as Pew defines them; tenure counts
+# the Congresses a member has served, this one included, back to 1789.
+AGE_BINS: tuple[int, ...] = (45, 55, 65, 75)
+GENERATIONS: dict[str, tuple[int | None, int | None]] = {
+    "Silent and older": (None, 1945),
+    "Boomers": (1946, 1964),
+    "Gen X": (1965, 1980),
+    "Millennials": (1981, None),
+}
+TENURE_BINS: tuple[int, ...] = (2, 4, 7, 11)
+
+# The hand check (L4): 200 speeches, stratified by chamber, source and
+# presidential term (the "era"; `term` from analysis.add_presidency). The
+# first 50 rows are coded by both coders.
+LABEL_CHECK_SAMPLE_SIZE: int = 200
+LABEL_CHECK_OVERLAP: int = 50
+LABEL_CHECK_STRATA: tuple[str, ...] = ("chamber", "source", "term")
