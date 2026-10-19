@@ -16,7 +16,7 @@ Meeting 2). Three rules hold throughout:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from itertools import groupby
+from itertools import groupby, pairwise
 from pathlib import Path
 
 import numpy as np
@@ -25,11 +25,16 @@ import pyarrow.parquet as pq
 import statsmodels.api as sm
 
 from src.config import (
+    AGE_BINS,
     CORPUS_PATH,
     CROSSWALK_PATH,
+    DW_NOMINATE_MEMBERS,
+    EXCLUDED_SPEECH_TYPES,
+    GENERATIONS,
     LABELS_DIR,
     PRESIDENTS_BY_CONGRESS,
     SCORES_DIR,
+    TENURE_BINS,
 )
 from src.crosswalk import UNIT_KEY
 from src.labeling import LABEL_COLUMNS, load_labels
@@ -203,6 +208,144 @@ def attach_labels(
     return frame.merge(labels, on="speech_id", how="left", validate="one_to_one")
 
 
+def substantive(
+    frame: pd.DataFrame, exclude: Sequence[str] = EXCLUDED_SPEECH_TYPES
+) -> pd.DataFrame:
+    """Speeches whose label is not in ``exclude`` (default procedural, ceremonial).
+
+    Unlabelled speeches are left out too: whether they are substantive is
+    unknown. Needs `attach_labels` first.
+    """
+    keep = frame["speech_type"].notna() & ~frame["speech_type"].isin(list(exclude))
+    return frame[keep]
+
+
+# --- member background: age, generation, tenure ----------------------------
+
+
+def _bin_labels(bins: Sequence[int]) -> list[str]:
+    """Labels for left-closed bins: (45, 55) -> 'under 45', '45–54', '55+'."""
+    labels = [f"under {bins[0]}"]
+    labels += [f"{low}–{high - 1}" for low, high in pairwise(bins)]
+    return labels + [f"{bins[-1]}+"]
+
+
+#: Group labels in display order.
+AGE_GROUPS: tuple[str, ...] = tuple(_bin_labels(AGE_BINS))
+GENERATION_ORDER: tuple[str, ...] = tuple(GENERATIONS)
+TENURE_GROUPS: tuple[str, ...] = (
+    "1st Congress",
+    *(f"{low}–{high - 1}" for low, high in pairwise(TENURE_BINS)),
+    f"{TENURE_BINS[-1]}+",
+)
+
+
+def _cut(values: pd.Series, bins: Sequence[float], labels: Sequence[str]) -> pd.Series:
+    """Left-closed binning into plain strings (missing stays missing)."""
+    edges = [-np.inf, *bins, np.inf]
+    return pd.cut(values, edges, right=False, labels=list(labels)).astype("string")
+
+
+def member_background(path: Path = DW_NOMINATE_MEMBERS) -> pd.DataFrame:
+    """Birth year, first Congress and tenure per member and Congress.
+
+    From the raw Voteview member file, over every Congress since 1789, so
+    service before 2001 counts. One row per ICPSR and Congress (House and
+    Senate); ``tenure`` counts the distinct Congresses served up to and
+    including this one, in either chamber. Voteview gives a party switcher a
+    new ICPSR, so their tenure restarts (D23).
+    """
+    voteview = pd.read_csv(path, usecols=["congress", "chamber", "icpsr", "born"])
+    voteview = voteview[voteview["chamber"].isin(["House", "Senate"])]
+    per = (
+        voteview.groupby(["icpsr", "congress"], as_index=False)["born"]
+        .first()
+        .sort_values(["icpsr", "congress"])
+    )
+    per["tenure"] = per.groupby("icpsr").cumcount() + 1
+    per["first_congress"] = per.groupby("icpsr")["congress"].transform("min")
+    per["icpsr"] = per["icpsr"].astype("Int64")
+    return per.rename(columns={"congress": "congress_number"})
+
+
+def add_background(frame: pd.DataFrame, background: pd.DataFrame) -> pd.DataFrame:
+    """Add each speaker's ``born``, ``age``, ``tenure`` and their groups.
+
+    ``age`` is the speech's year minus the birth year (a year only, so +-1);
+    ``age_group``, ``generation`` and ``tenure_group`` bin them as config.py
+    defines. Speakers the crosswalk did not match (no ICPSR) get nulls.
+    """
+    out = frame.assign(icpsr=frame["icpsr"].astype("Int64")).merge(
+        background, on=["icpsr", "congress_number"], how="left", validate="m:1"
+    )
+    out["age"] = pd.to_datetime(out["date"]).dt.year - out["born"]
+    out["age_group"] = _cut(out["age"], AGE_BINS, AGE_GROUPS)
+    edges = [high + 0.5 for _, high in list(GENERATIONS.values())[:-1]]
+    out["generation"] = _cut(out["born"], edges, GENERATION_ORDER)
+    out["tenure_group"] = _cut(out["tenure"], TENURE_BINS, TENURE_GROUPS)
+    return out
+
+
+def toward_party(frame: pd.DataFrame, value: str = "ideology") -> pd.Series:
+    """The score in the party's own direction: R as is, D sign-flipped.
+
+    Higher means further from the centre toward the party's side -- the
+    member's extremity, comparable across the two parties.
+    """
+    return frame[value] * np.where(frame["party"] == "R", 1.0, -1.0)
+
+
+def relative_to_cell(
+    frame: pd.DataFrame, value: str, cell: Sequence[str] = CELL
+) -> pd.Series:
+    """``value`` minus its mean in the speech's cell (default Congress, chamber,
+    party): how a speech compares with its own party, chamber and Congress."""
+    return frame[value] - frame.groupby(list(cell))[value].transform("mean")
+
+
+def within_cell_ols(
+    frame: pd.DataFrame,
+    value: str,
+    terms: Sequence[str],
+    cell: Sequence[str] = CELL,
+    by: Sequence[str] = ("chamber",),
+    cluster: str = "member_key",
+) -> pd.DataFrame:
+    """OLS of ``value`` on ``terms`` within cells, per group of ``by``.
+
+    Every variable is demeaned within its cell (Congress, chamber and party by
+    default), so each coefficient compares speeches of the same party, chamber
+    and Congress -- cell fixed effects. Standard errors are clustered by
+    member; they ignore the degrees of freedom the cell means use up, which is
+    negligible with thousands of speeches per group.
+    """
+    data = frame.dropna(subset=[value, *terms])
+    rows = []
+    for key, group in data.groupby(list(by)):
+        means = group.groupby(list(cell))[[value, *terms]].transform("mean")
+        y = group[value] - means[value]
+        x = group[list(terms)] - means[list(terms)]
+        fit = sm.OLS(y.astype(float), x.astype(float)).fit(
+            cov_type="cluster", cov_kwds={"groups": pd.factorize(group[cluster])[0]}
+        )
+        for term in terms:
+            coef, se = fit.params[term], fit.bse[term]
+            rows.append(
+                {
+                    **dict(zip(by, key if isinstance(key, tuple) else (key,))),
+                    "term": term,
+                    "coef": coef,
+                    "se": se,
+                    "ci_low": coef - Z95 * se,
+                    "ci_high": coef + Z95 * se,
+                    "p": fit.pvalues[term],
+                    "n": len(group),
+                    "n_members": group[cluster].nunique(),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 # --- clustered estimates ---------------------------------------------------
 
 
@@ -309,7 +452,174 @@ def trend(
     return pd.DataFrame(rows)
 
 
+def gap_trend(
+    frame: pd.DataFrame,
+    value: str = "ideology",
+    by: Sequence[str] = ("chamber",),
+    congress_range: tuple[int, int] | None = None,
+    cluster: str = "member_key",
+) -> pd.DataFrame:
+    """How fast the party gap changes per Congress, per group, clustered by member.
+
+    OLS of the speech-level score on party, Congress and their interaction:
+    ``value ~ R + congress + R x congress``. The interaction is the change in
+    the R - D gap per Congress; ``change_over_span`` is it times the
+    Congresses spanned. ``gap_first`` is the fitted gap in the first Congress.
+    A straight line is a summary, not a claim that change was linear.
+    """
+    data = frame.dropna(subset=[value])
+    if congress_range is not None:
+        low, high = congress_range
+        data = data[data["congress_number"].between(low, high)]
+    rows = []
+    for key, group in data.groupby(list(by)):
+        if group["party"].nunique() < 2:
+            continue
+        first, last = group["congress_number"].min(), group["congress_number"].max()
+        republican = (group["party"] == "R").astype(float)
+        congress = group["congress_number"].astype(float) - first
+        x = sm.add_constant(
+            pd.DataFrame(
+                {
+                    "R": republican,
+                    "congress": congress,
+                    "R_x_congress": republican * congress,
+                }
+            )
+        )
+        fit = sm.OLS(group[value].astype(float), x).fit(
+            cov_type="cluster", cov_kwds={"groups": pd.factorize(group[cluster])[0]}
+        )
+        slope, se = fit.params["R_x_congress"], fit.bse["R_x_congress"]
+        rows.append(
+            {
+                **dict(zip(by, key if isinstance(key, tuple) else (key,))),
+                "span": f"{first}-{last}",
+                "gap_first": fit.params["R"],
+                "gap_slope": slope,
+                "se": se,
+                "ci_low": slope - Z95 * se,
+                "ci_high": slope + Z95 * se,
+                "p": fit.pvalues["R_x_congress"],
+                "change_over_span": slope * (last - first),
+                "n": len(group),
+                "n_members": group[cluster].nunique(),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 # --- members and examples --------------------------------------------------
+
+#: One member's record in a Congress, beyond the score.
+_MEMBER_FIRST = ("bioname", "state", "chamber")
+
+
+def member_trajectories(
+    frame: pd.DataFrame, value: str = "ideology", min_speeches: int = 10
+) -> pd.DataFrame:
+    """Each member's mean per Congress, beside their party's mean that Congress.
+
+    One row per member (career-long ICPSR), party and Congress with at least
+    ``min_speeches`` speeches. ``se`` treats the member's speeches in that
+    Congress as independent. ``party_mean`` is the mean of all speeches by the
+    member's party in their chamber that Congress, and ``relative`` the
+    member's distance from it. ``nokken_poole_dim1`` is their per-Congress
+    DW-NOMINATE. Only members the crosswalk matched (``icpsr``) are included.
+    """
+    data = frame.dropna(subset=[value, "icpsr"])
+    party = (
+        data.groupby(["congress_number", "chamber", "party"])[value]
+        .mean()
+        .rename("party_mean")
+    )
+    grouped = data.groupby(["icpsr", "party", "congress_number"])
+    out = grouped.agg(
+        **{name: (name, "first") for name in _MEMBER_FIRST},
+        n=(value, "size"),
+        mean=(value, "mean"),
+        sd=(value, "std"),
+        nokken_poole_dim1=("nokken_poole_dim1", "mean"),
+    ).reset_index()
+    out = out[out["n"] >= min_speeches].copy()
+    out["se"] = out["sd"] / np.sqrt(out["n"])
+    out["ci_low"] = out["mean"] - Z95 * out["se"]
+    out["ci_high"] = out["mean"] + Z95 * out["se"]
+    out = out.join(party, on=["congress_number", "chamber", "party"])
+    out["relative"] = out["mean"] - out["party_mean"]
+    out["icpsr"] = out["icpsr"].astype("Int64")
+    return out.drop(columns="sd").reset_index(drop=True)
+
+
+def member_trends(
+    frame: pd.DataFrame,
+    value: str = "ideology",
+    min_speeches: int = 10,
+    min_congresses: int = 5,
+) -> pd.DataFrame:
+    """Which members moved: each member's linear trend over the Congresses.
+
+    Uses the member-Congresses `member_trajectories` keeps (at least
+    ``min_speeches`` speeches) and members with at least ``min_congresses``
+    of them. ``slope`` is the OLS slope of the member's speech-level score on
+    the Congress number (HC1 standard errors); ``slope_relative`` the same for
+    the distance from their party's mean, so a member who moved only as their
+    party did has ~0; ``slope_nokken_poole`` the slope of their per-Congress
+    DW-NOMINATE, the votes-based counterpart.
+    """
+    kept = member_trajectories(frame, value, min_speeches)
+    counts = kept.groupby(["icpsr", "party"])["congress_number"].nunique()
+    members = counts[counts >= min_congresses].index
+    data = frame.dropna(subset=[value, "icpsr"]).assign(
+        icpsr=lambda f: f["icpsr"].astype("Int64")
+    )
+    data = data.merge(
+        kept[["icpsr", "party", "congress_number", "party_mean"]],
+        on=["icpsr", "party", "congress_number"],
+    )
+    rows = []
+    for (icpsr, party), group in data.groupby(["icpsr", "party"]):
+        if (icpsr, party) not in members:
+            continue
+        x = sm.add_constant(group["congress_number"].astype(float))
+        fit = sm.OLS(group[value].astype(float), x).fit(cov_type="HC1")
+        relative = sm.OLS((group[value] - group["party_mean"]).astype(float), x).fit(
+            cov_type="HC1"
+        )
+        per_congress = kept[(kept["icpsr"] == icpsr) & (kept["party"] == party)]
+        np_scores = per_congress.dropna(subset=["nokken_poole_dim1"])
+        np_slope = (
+            np.polyfit(np_scores["congress_number"], np_scores["nokken_poole_dim1"], 1)[
+                0
+            ]
+            if len(np_scores) >= 2
+            else np.nan
+        )
+        slope, se = fit.params["congress_number"], fit.bse["congress_number"]
+        first, last = group["congress_number"].min(), group["congress_number"].max()
+        rows.append(
+            {
+                "icpsr": icpsr,
+                "party": party,
+                "bioname": group["bioname"].iloc[0],
+                "state": group["state"].iloc[0],
+                "chambers": "".join(sorted(group["chamber"].unique())),
+                "span": f"{first}-{last}",
+                "congresses": len(per_congress),
+                "n": len(group),
+                "mean": group[value].mean(),
+                "slope": slope,
+                "se": se,
+                "ci_low": slope - Z95 * se,
+                "ci_high": slope + Z95 * se,
+                "p": fit.pvalues["congress_number"],
+                "change_over_span": slope * (last - first),
+                "slope_relative": relative.params["congress_number"],
+                "p_relative": relative.pvalues["congress_number"],
+                "slope_nokken_poole": np_slope,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def member_means(
