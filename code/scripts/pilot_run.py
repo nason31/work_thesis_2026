@@ -13,6 +13,12 @@ Usage (from the repo root):
     python code/scripts/pilot_run.py --resume <timestamp> --per-cell 100 --dry-run
     python code/scripts/pilot_run.py --resume <timestamp> --per-cell 100
 
+`--models` scores with a subset of the models (default: ENSEMBLE_MODELS); a
+resumed run keeps its own. `--concurrency N` keeps N speeches in flight at once
+(S17); the default 1 is the sequential behaviour of every run so far. A run
+stops if a model whose fingerprint identifies its build answers from another
+build (S18).
+
 `--dry-run` samples and prices what is left, then stops without calling
 anything. `--resume` also picks up a run that crashed or had failed calls: run
 it again with the same `--per-cell`. It refuses if anything that defines a
@@ -36,6 +42,7 @@ import statistics
 import sys
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
@@ -51,8 +58,10 @@ from src.config import (
     CALL_TIMEOUT_SECONDS,
     CARRY_OVER_EQUIVALENTS,
     CORPUS_PATH,
+    DEFAULT_CONCURRENCY,
     ENSEMBLE_DISAGREEMENT_THRESHOLD,
     ENSEMBLE_MODELS,
+    FINGERPRINT_PINNED_MODELS,
     METRICS_DIR,
     MIN_WORD_COUNT,
     PILOT_MEASURED_TOKENS,
@@ -67,6 +76,7 @@ from src.corpus import _fingerprint
 from src.runs import (
     DEFAULT_LABEL,
     RUN_SETTING_KEYS,
+    FingerprintGuard,
     carry_rows,
     check_nested,
     check_resumable,
@@ -83,6 +93,7 @@ from src.runs import (
     summary_path,
 )
 from src.scoring import (
+    MODEL_SPECS,
     ModelSpec,
     ScoreResult,
     build_clients,
@@ -362,38 +373,80 @@ async def score_all(
     clients: dict[str, Any],
     pending: Mapping[str, list[str]],
     stage: int,
-) -> None:
+    concurrency: int = DEFAULT_CONCURRENCY,
+    guard: FingerprintGuard | None = None,
+) -> bool:
     """Score each pending speech with the models that still owe it a score.
 
-    Those models run concurrently for one speech; speeches run sequentially,
-    to stay inside provider rate limits. Rows are appended and flushed as they
-    land, so a crash keeps everything already paid for, and `--resume` carries
-    on from there.
+    The models owed for one speech run concurrently; up to ``concurrency``
+    speeches are in flight at once (S17), each taken in sample order by one of
+    that many workers. At 1 this is the sequential loop every run so far used.
+    Rows are appended and flushed as they land, so a crash keeps everything
+    already paid for, and `--resume` carries on from there.
+
+    An answer the ``guard`` rejects -- a pinned model answering from another
+    build (S18) -- is written as a failure, its scores kept aside under
+    ``rejected_answer``, and no further speech is started. Returns False if
+    that happened.
     """
-    todo = [speech for speech in speeches if speech["speech_id"] in pending]
-    for index, speech in enumerate(todo, start=1):
-        models = pending[speech["speech_id"]]
-        prompt = render_prompt(template, speech["text"])
-        results = await asyncio.gather(
-            *(score_one(specs[m], clients[m], prompt) for m in models)
-        )
-        scored_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        for result in results:
-            handle = handles[result.model]
-            handle.write(json.dumps(_row(speech, result, stage, scored_at)) + "\n")
-            handle.flush()
-            if result.error:
-                print(
-                    f"  [{index}/{len(todo)}] {speech['speech_id']} "
-                    f"{result.model}: {result.error}",
-                    file=sys.stderr,
+    todo = iter([speech for speech in speeches if speech["speech_id"] in pending])
+    total = sum(1 for speech in speeches if speech["speech_id"] in pending)
+    finished = 0
+    stopped: list[str] = []
+
+    async def worker() -> None:
+        nonlocal finished
+        # One shared iterator: next() is synchronous, so no two workers take
+        # the same speech.
+        for speech in todo:
+            if stopped:
+                return
+            models = pending[speech["speech_id"]]
+            prompt = render_prompt(template, speech["text"])
+            results = await asyncio.gather(
+                *(score_one(specs[m], clients[m], prompt) for m in models)
+            )
+            scored_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            finished += 1
+            for result in results:
+                rejected = None
+                message = (
+                    guard.check(result.model, result.system_fingerprint)
+                    if guard
+                    else None
                 )
-        done = sum(1 for r in results if r.ok)
-        print(
-            f"  [{index}/{len(todo)}] {speech['speech_id']} "
-            f"{done}/{len(models)} models ok",
-            flush=True,
-        )
+                if message:
+                    rejected = {
+                        "ideology_score": result.ideology_score,
+                        "tone_score": result.tone_score,
+                        "reasoning": result.reasoning,
+                    }
+                    result = replace(
+                        result, ideology_score=None, tone_score=None, reasoning=None,
+                        error=message,
+                    )  # fmt: skip
+                    stopped.append(message)
+                row = _row(speech, result, stage, scored_at)
+                if rejected is not None:
+                    row["rejected_answer"] = rejected
+                handle = handles[result.model]
+                handle.write(json.dumps(row) + "\n")
+                handle.flush()
+                if result.error:
+                    print(
+                        f"  [{finished}/{total}] {speech['speech_id']} "
+                        f"{result.model}: {result.error}",
+                        file=sys.stderr,
+                    )
+            done = sum(1 for r in results if r.ok)
+            print(
+                f"  [{finished}/{total}] {speech['speech_id']} "
+                f"{done}/{len(models)} models ok",
+                flush=True,
+            )
+
+    await asyncio.gather(*(worker() for _ in range(max(1, concurrency))))
+    return not stopped
 
 
 # --- ensemble ----------------------------------------------------------
@@ -470,19 +523,22 @@ def build_ensemble(
 def summarize(
     ensemble: list[dict[str, Any]],
     rows_by_model: Mapping[str, list[dict[str, Any]]],
+    models: tuple[str, ...] = ENSEMBLE_MODELS,
 ) -> dict[str, Any]:
     """Token totals, cost, the party sanity check and the disagreement count.
 
     Cost counts every attempt, because every attempt was billed. Failures count
     speeches still without a score, so a failure that a later stage retried
     successfully is not one. `served_models` lists what each provider says
-    answered -- more than one entry means the model changed during the run.
+    answered -- more than one entry means the model changed during the run --
+    and `system_fingerprints` the builds; for a pinned model (S18) more than
+    one means the same.
     """
     per_model: dict[str, dict[str, Any]] = {}
     per_stage: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"calls": 0, "cost_usd": 0.0}
     )
-    for model in ENSEMBLE_MODELS:
+    for model in models:
         rows = rows_by_model.get(model, [])
         prompt_tokens = sum(r.get("prompt_tokens") or 0 for r in rows)
         completion_tokens = sum(r.get("completion_tokens") or 0 for r in rows)
@@ -492,6 +548,9 @@ def summarize(
             "failures": sum(1 for r in effective_rows(rows).values() if not is_ok(r)),
             "served_models": sorted(
                 {r["served_model"] for r in rows if r.get("served_model")}
+            ),
+            "system_fingerprints": sorted(
+                {r["system_fingerprint"] for r in rows if r.get("system_fingerprint")}
             ),
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
@@ -521,6 +580,7 @@ def summarize(
         and row["ideology_score_std"] > ENSEMBLE_DISAGREEMENT_THRESHOLD
     ]
     return {
+        "models": list(models),
         "speeches_scored": sum(1 for row in ensemble if row["n_models"] > 0),
         "speeches_sampled": len(ensemble),
         "per_model": per_model,
@@ -530,7 +590,7 @@ def summarize(
         "disagreement_threshold": ENSEMBLE_DISAGREEMENT_THRESHOLD,
         "high_disagreement_speeches": len(disagreement),
         "partial_ensemble_rows": sum(
-            1 for row in ensemble if 0 < row["n_models"] < len(ENSEMBLE_MODELS)
+            1 for row in ensemble if 0 < row["n_models"] < len(models)
         ),
     }
 
@@ -541,10 +601,11 @@ def print_summary(summary: dict[str, Any]) -> None:
     print(
         f"scored {summary['speeches_scored']:,} of {summary['speeches_sampled']:,} speeches"
     )
+    n_models = len(summary.get("models", ENSEMBLE_MODELS))
     if summary["partial_ensemble_rows"]:
         print(
             f"  {summary['partial_ensemble_rows']} row(s) averaged fewer than "
-            f"{len(ENSEMBLE_MODELS)} models - see n_models"
+            f"{n_models} models - see n_models"
         )
 
     print("\nper model (all stages; cost counts every attempt)")
@@ -556,6 +617,9 @@ def print_summary(summary: dict[str, Any]) -> None:
         )
         if len(stats["served_models"]) > 1:
             print(f"    *** served by several models: {stats['served_models']} ***")
+        builds = stats.get("system_fingerprints", [])
+        if model in FINGERPRINT_PINNED_MODELS and len(builds) > 1:
+            print(f"    *** answered from several builds: {builds} ***")
     print(f"  {'TOTAL':<30} {'':>13} {'':>12}  ${summary['total_cost_usd']:7.3f}")
     for stage, stats in summary["per_stage"].items():
         print(f"  stage {stage}: {stats['calls']:,} calls, ${stats['cost_usd']:.3f}")
@@ -647,6 +711,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "scoring only what it lacks (S16)",
     )
     parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=sorted(MODEL_SPECS),
+        default=None,
+        help=f"score with these models only (default {' '.join(ENSEMBLE_MODELS)}); "
+        "a resumed run keeps its own",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
+        help=f"speeches in flight at once (default {DEFAULT_CONCURRENCY}, "
+        "sequential; S17)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="sample and estimate cost, then stop without calling any model",
@@ -701,6 +780,7 @@ def check_run(
     manifest: dict[str, Any],
     settings: dict[str, Any],
     speeches: list[dict[str, Any]],
+    models: tuple[str, ...] = ENSEMBLE_MODELS,
 ) -> dict[str, list[dict[str, Any]]]:
     """Check the resumed run may take this sample; return its rows per model.
 
@@ -712,7 +792,7 @@ def check_run(
     check_resumable(manifest, settings)
     rows_by_model = {
         model: read_rows(model_path(args.output_dir, label, model, run))
-        for model in ENSEMBLE_MODELS
+        for model in models
     }
     check_nested(
         {str(row["speech_id"]) for rows in rows_by_model.values() for row in rows},
@@ -763,12 +843,16 @@ def prepare_carry_over(
 
 
 def write_outputs(
-    args: argparse.Namespace, label: str, run: str, speeches: list[dict[str, Any]]
+    args: argparse.Namespace,
+    label: str,
+    run: str,
+    speeches: list[dict[str, Any]],
+    models: tuple[str, ...] = ENSEMBLE_MODELS,
 ) -> tuple[dict[str, Any], Path, Path]:
     """Rebuild the ensemble and summary from everything the run's files hold."""
     rows_by_model = {
         model: read_rows(model_path(args.output_dir, label, model, run))
-        for model in ENSEMBLE_MODELS
+        for model in models
     }
     ensemble = build_ensemble(speeches, results_by_speech(rows_by_model))
     ensemble_file = ensemble_path(args.output_dir, label, run)
@@ -776,7 +860,7 @@ def write_outputs(
         for row in ensemble:
             fh.write(json.dumps(row) + "\n")
 
-    summary = summarize(ensemble, rows_by_model)
+    summary = summarize(ensemble, rows_by_model, models)
     summary_file = summary_path(args.metrics_dir, label, run)
     summary_file.write_text(json.dumps(summary, indent=2) + "\n")
     return summary, ensemble_file, summary_file
@@ -791,18 +875,35 @@ async def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.concurrency < 1:
+        print("pilot_run: --concurrency must be at least 1", file=sys.stderr)
+        return 2
 
     label, manifest = args.label or DEFAULT_LABEL, None
+    models = tuple(dict.fromkeys(args.models)) if args.models else ENSEMBLE_MODELS
     if args.resume:
         try:
             label, manifest = load_manifest(args)
         except (FileNotFoundError, ValueError) as error:
             print(f"pilot_run: {error}", file=sys.stderr)
             return 2
+        recorded = tuple(manifest.get("models", {}))
+        if args.models and models != recorded:
+            print(
+                f"pilot_run: run {args.resume} scores with {', '.join(recorded)}; "
+                "a run keeps its models -- start a new run instead",
+                file=sys.stderr,
+            )
+            return 2
+        models = recorded
     per_cell, sample_size = sample_design(args, manifest)
 
     template = load_prompt_template(SCORE_PROMPT_PATH)
-    specs = specs_for(ENSEMBLE_MODELS)
+    try:
+        specs = specs_for(models)
+    except KeyError as error:
+        print(f"pilot_run: {error}", file=sys.stderr)
+        return 2
     speeches = load_sample(
         args.corpus,
         seed=args.seed,
@@ -838,13 +939,13 @@ async def main(argv: list[str] | None = None) -> int:
     if manifest is not None:
         run = args.resume
         try:
-            rows_by_model = check_run(args, label, manifest, settings, speeches)
+            rows_by_model = check_run(args, label, manifest, settings, speeches, models)
         except ValueError as error:
             print(f"pilot_run: {error}", file=sys.stderr)
             return 2
     else:
         run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        rows_by_model = {model: [] for model in ENSEMBLE_MODELS}
+        rows_by_model = {model: [] for model in models}
 
     carry_mapping: dict[str, str] = {}
     if args.carry_over_from:
@@ -863,7 +964,7 @@ async def main(argv: list[str] | None = None) -> int:
         )
 
     pending = pending_models(
-        [speech["speech_id"] for speech in speeches], rows_by_model, ENSEMBLE_MODELS
+        [speech["speech_id"] for speech in speeches], rows_by_model, models
     )
     attempted = {
         (str(row["speech_id"]), model)
@@ -879,13 +980,14 @@ async def main(argv: list[str] | None = None) -> int:
         f"run     {label} {run}"
         + (" (resumed)" if args.resume else " (new)")
         + f": {len(speeches) - len(pending):,} of {len(speeches):,} speeches fully "
-        f"scored; {retries:,} failed call(s) to retry"
+        f"scored; {retries:,} failed call(s) to retry; models {', '.join(models)}; "
+        f"concurrency {args.concurrency}"
     )
 
     if not pending:
         print("\nNothing left to score.")
         if args.resume and not args.dry_run:
-            summary, _, _ = write_outputs(args, label, run, speeches)
+            summary, _, _ = write_outputs(args, label, run, speeches, models)
             print_summary(summary)
         return 0
 
@@ -899,7 +1001,7 @@ async def main(argv: list[str] | None = None) -> int:
             ),
         )
     )
-    estimate = preflight(token_counts, pending, ENSEMBLE_MODELS)
+    estimate = preflight(token_counts, pending, models)
     print_preflight(estimate)
 
     if args.dry_run:
@@ -962,6 +1064,7 @@ async def main(argv: list[str] | None = None) -> int:
             "calls_planned": estimate["calls"],
             "retries_planned": retries,
             "call_timeout_seconds": CALL_TIMEOUT_SECONDS,
+            "concurrency": args.concurrency,
             "cost_estimate": estimate,
         }
     )
@@ -970,7 +1073,7 @@ async def main(argv: list[str] | None = None) -> int:
 
     handles: dict[str, TextIO] = {}
     try:
-        for model in ENSEMBLE_MODELS:
+        for model in models:
             handles[model] = model_path(args.output_dir, label, model, run).open(
                 "a", encoding="utf-8"
             )
@@ -979,13 +1082,27 @@ async def main(argv: list[str] | None = None) -> int:
                 for row in rows:
                     handles[model].write(json.dumps(row) + "\n")
                 handles[model].flush()
-        await score_all(speeches, template, handles, specs, clients, pending, stage)
+        guard = FingerprintGuard(FINGERPRINT_PINNED_MODELS, rows_by_model)
+        completed = await score_all(
+            speeches, template, handles, specs, clients, pending, stage,
+            args.concurrency, guard,
+        )  # fmt: skip
     finally:
         for handle in handles.values():
             handle.close()
 
-    summary, ensemble_file, summary_file = write_outputs(args, label, run, speeches)
+    summary, ensemble_file, summary_file = write_outputs(
+        args, label, run, speeches, models
+    )
     print_summary(summary)
+    if not completed:
+        print(
+            "\npilot_run: STOPPED -- a model answered from another build than this "
+            "run's earlier answers (S18). Those answers are recorded as failures "
+            "and not counted. A run is one instrument: start a new run.",
+            file=sys.stderr,
+        )
+        return 3
     print(f"\nrun         {label} {run} (stage {stage})")
     print(f"raw scores  {args.output_dir}")
     print(f"ensemble    {ensemble_file}")

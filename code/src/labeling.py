@@ -618,6 +618,7 @@ def stage_record(
     pending: Sequence[str],
     estimate: Mapping[str, Any],
     started_at: str,
+    concurrency: int = 1,
 ) -> dict[str, Any]:
     """What one invocation of a run set out to do."""
     return {
@@ -628,6 +629,7 @@ def stage_record(
         "ids_sha256": ids_sha256(speech_ids),
         "speeches_to_label": len(pending),
         "call_timeout_seconds": scoring.CALL_TIMEOUT_SECONDS,
+        "concurrency": concurrency,
         "cost_estimate": dict(estimate),
     }
 

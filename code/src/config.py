@@ -327,9 +327,12 @@ PILOT_PER_CELL: int = 100
 # output. Re-measured 2026-10-03 on the first S8 stage (208 speeches over the
 # merged corpus, run 20261003T100851Z, DeepSeek served by deepseek-flash),
 # replacing the Stanford-only 200-speech pilot of 2026-09-23 (S9).
+# deepseek-flash re-measured 2026-10-18 on the same 208 speeches after DeepSeek
+# moved the name to V4.1-Flash-1017 (stage 1 of run d100k, S19): input
+# unchanged, output 358.7 against 498.9 before -- the new build reasons less.
 PILOT_TIKTOKEN_INPUT_PER_SPEECH: float = 967.7
 PILOT_MEASURED_TOKENS: dict[str, dict[str, float]] = {
-    "deepseek-flash": {"input": 997.3, "output": 498.9},
+    "deepseek-flash": {"input": 997.3, "output": 358.7},
     "gpt-4o-2024-11-20": {"input": 972.8, "output": 69.3},
     "claude-sonnet-4-6": {"input": 1241.9, "output": 95.6},
 }
@@ -347,6 +350,21 @@ CARRY_OVER_EQUIVALENTS: dict[str, str] = {"deepseek-flash": "deepseek-reasoner"}
 # so 300 s is ~14x headroom. Not score-defining: it decides whether an answer
 # arrives, not what it says.
 CALL_TIMEOUT_SECONDS: float = 300.0
+
+# Models whose `system_fingerprint` identifies the model build behind the API
+# name. A run stops when one answers from a build other than the run's earlier
+# answers (S18): `deepseek-flash` is repointed in place (V4.1-Flash-1017 on
+# 2026-10-17) and its served-model field does not change, while the fingerprint
+# did -- one value across all 5,202 S8 answers, another for every label since.
+# GPT-4o is not listed: OpenAI rotates fingerprints across the backend builds
+# of one dated snapshot (three within the S8 run), so a change says nothing.
+FINGERPRINT_PINNED_MODELS: tuple[str, ...] = ("deepseek-flash",)
+
+# Speeches scored or labelled at the same time (`--concurrency`, S17). 1 is the
+# sequential behaviour every run so far used. Not score-defining: it decides
+# when an answer arrives, not what it says. DeepSeek allows 2,500 concurrent
+# requests per account for deepseek-flash (its rate-limit docs, 2026-10-18).
+DEFAULT_CONCURRENCY: int = 1
 
 # NO TEMPERATURE IS SET. Not a preference -- the providers removed the control:
 # DeepSeek ignores it (its docs: "will not trigger an error but will also have

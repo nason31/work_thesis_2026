@@ -1591,6 +1591,172 @@ manifest records `carried_over_from`.
 
 ---
 
+### S17 — Speeches are scored and labelled in parallel: `--concurrency N`
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus (N = 10 for
+the [S19] run); implemented by the agent
+
+`pilot_run.py` and `label_run.py` keep up to N speeches in flight at once: N
+workers take speeches from the sample in order, each writing and flushing its
+rows the moment they land. **The default stays 1**, the sequential loop of every
+run so far, so the S8 path and every earlier test behave as before.
+
+**Why:** at S8's ~3.8 s per speech, 100,000 speeches take ~105 hours in
+sequence and ~10.5 hours at N = 10. DeepSeek's rate-limit docs (read
+2026-10-18) allow **2,500 concurrent requests per account** for
+`deepseek-flash` and answer HTTP 429 beyond that; 429s are retried as before
+([S14]), and a speech still failing is retried by `--resume`.
+
+**Not score-defining**, like the deadline ([S14]): it decides when an answer
+arrives, not what it says, so a resume does not compare it; each stage
+records the value it ran with (`concurrency` in the manifest). Rows land in
+completion order rather than sample order; nothing reads them by order
+(`effective_rows` keys on `speech_id`, and the ensemble file is rebuilt in
+sample order). An interruption loses at most the N calls in flight, which the
+provider may still bill.
+
+**Rejected:** one task per speech gathered at once (100,000 open tasks for no
+gain over a fixed pool); threads (the SDKs are already async); making N > 1
+the default (it would change the behaviour of every existing command
+silently).
+
+---
+
+### S18 — A run stops when DeepSeek answers from another model build
+**Date:** 2026-10-18 · **Status:** active · **Decided by:** Justus ("address the
+open questions"); design by the agent
+
+On 2026-10-17 DeepSeek moved `deepseek-flash` to DeepSeek-V4.1-Flash-1017
+under the same name ([L3]). The API still reports `deepseek-flash` as the
+served model, so the served-model check of [S13]/[M3b] cannot see it; only
+`system_fingerprint` changed (`aeb56401…` on all 5,202 S8 answers,
+`e72d3c7f…` on every label since). A resume compares the *requested* settings,
+so extending S8 would have mixed two models without a word.
+
+**Now** (`runs.FingerprintGuard`, both scripts): for the models in
+`FINGERPRINT_PINNED_MODELS` (`config.py`: `deepseek-flash`), a run's build is
+the fingerprint of its earlier answers (carried-over rows included), or of its
+first new answer. An answer from another build is written as a failure
+(`FingerprintChangedError`, its scores or labels kept aside under
+`rejected_answer`, never counted), no further speech is started, and the
+script exits with code 3. Rejected rows never define the build, so the run
+stays stopped on every resume. The summaries list `system_fingerprints` per
+model.
+
+**Consequence: the S8 run can no longer be extended with DeepSeek** — its
+first new answer would come from the 1017 build and stop it. More DeepSeek
+scores mean a new run ([S19]).
+
+**Why not for GPT-4o:** OpenAI rotates fingerprints across the backend builds
+of one dated snapshot — three within the S8 run alone — so for a dated
+snapshot a changed fingerprint says nothing, and stopping on it would stop
+every long run.
+
+**Rejected:** a warning only (a 10-hour run would finish mixed, and the
+warning would be read afterwards); checking before the run (the build is only
+known from an answer); treating a missing fingerprint as a change (nothing to
+compare; it passes).
+
+---
+
+### S19 — A ~100,000-speech run with DeepSeek alone (label `d100k`)
+**Date:** 2026-10-18 · **Status:** active — not started; each stage needs a
+go-ahead ([E7]) · **Decided by:** Justus · amends [S11] (a larger sample) and
+[S15] (one model instead of two)
+
+A new run, label `d100k`: the S8 design (party × Congress × chamber, seed 42,
+≥ 50 words) at **1,923 speeches per cell = 99,996 speeches**, scored by
+**`deepseek-flash` alone** (thinking mode, high effort, the [M3b] settings) at
+`--concurrency 10` ([S17]):
+
+    pilot_run.py --label d100k --per-cell 4 --models deepseek-flash --concurrency 10      # stage 1
+    pilot_run.py --resume <timestamp> --per-cell 1923 --concurrency 10                    # stage 2
+
+**Why DeepSeek alone (Justus):** cost, and the two models' results are similar
+enough for the analysis. On the 5,200 S8 speeches DeepSeek and GPT-4o agree at
+r = 0.94 (0.88 within Democrats, 0.91 within Republicans), and each model on
+its own tells the same story per party and Congress (notebook 04, section 8).
+GPT-4o was ~77% of S8's cost ($16.19 of $21.08); over 99,996 speeches it would
+add roughly $300.
+
+**Why a larger sample — proposed by the agent, to confirm:** the within-topic
+gaps of [A2] rest on 16–73 speeches per party and period in some blocks; the
+member-level validation ([O9]) needs several speeches per member; per-cell
+intervals narrow by up to √19 ≈ 4.4× (less in practice: they are clustered
+by member, and frequent speakers recur). This answers [O11].
+
+**Why a new run, not an S8 extension:** the DeepSeek model changed on
+2026-10-17 ([S18]); S8's DeepSeek answers come from the earlier build.
+
+**Built-in snapshot check:** the 99,996 draw contains all 5,200 S8 speeches
+(checked 2026-10-18), and stage 1 (4 per cell) is exactly [P6]'s 208. So the
+1017 build's scores can be compared with the old build's on the same speeches
+at no extra cost — first on 208 after stage 1, then on all 5,200.
+
+**Cost and time (dry runs, 2026-10-18):** stage 1, 208 speeches, **$0.19**;
+the whole run **$89.36** at peak list price (99.3M input, 49.7M output tokens
+by S8's measured usage), about half off-peak. About 10.5 hours at
+concurrency 10, if DeepSeek's per-call time holds under load. After stage 1,
+re-measure `PILOT_MEASURED_TOKENS` for the new build ([S9]): DeepSeek reports
+shorter output for it, which would lower the cost. *Done 2026-10-18 ([P7]):
+output 358.7 tokens per speech (was 498.9); stage 2 now prices at **$72.46**
+at peak for 99,788 speeches, and stage 1 ran at ~0.27 s per speech at
+concurrency 10, so ~7.5 hours.*
+
+**What is lost — state it in the methodology:** the cross-provider check
+([M3], [S12], [S15]). The main results become single-model; the evidence
+that a second model would tell the same story is the S8 comparison above and
+the three-model pilots ([P2], [P6]). The ensemble mean is DeepSeek's score
+(`n_models` = 1), and there is no per-speech disagreement measure.
+`ENSEMBLE_MODELS` in `config.py` still names the S8 pair; this run chooses its
+model with `--models`, and its manifest records it.
+
+**Still to approve separately:** labelling the run ([L1]; ~$43 at peak by the
+label pilot's usage) and any GPT-4o subsample.
+
+**Rejected:**
+- *Extending S8 to 99,996* — mixes two DeepSeek builds; [S18] would stop it.
+- *Keeping GPT-4o* — ~$300 for a model that agrees at r = 0.94.
+- *GPT-4o on a subsample of this run* — a run has one model list ([S13]); the
+  S8 run already holds GPT-4o on 5,200 of these speeches.
+- *A full-corpus run* — still ruled out ([S11]).
+
+---
+
+### P7 — Stage 1 of `d100k` (run `20261018T122536Z`): the new DeepSeek build scores like the old one
+**Date:** 2026-10-18 · **Status:** finding, not a decision · run by Justus
+**Data:** `results/metrics/d100k_summary_20261018T122536Z.json`
+
+`pilot_run.py --label d100k --per-cell 4 --models deepseek-flash
+--concurrency 10`: [P6]'s 208 speeches, DeepSeek-V4.1-Flash-1017 alone.
+**208 of 208 scored, 0 failures, 0 truncations** (longest answer 6,352 of
+8,192 tokens), one build throughout (`e72d3c7f…`), **$0.152** (estimate
+$0.187), **56 seconds** at concurrency 10.
+
+**Against the old build (`aeb56401…`, the S8 answers) on the same 208:**
+
+| | new vs old DeepSeek | old DeepSeek vs GPT-4o | new DeepSeek vs GPT-4o |
+|---|---|---|---|
+| ideology r, all | **0.984** | 0.952 | 0.944 |
+| ideology r, within D / R | 0.973 / 0.972 | 0.884 / 0.947 | 0.871 / 0.924 |
+| tone r | 0.985 | 0.923 | 0.919 |
+
+- Mean ideology shift new − old **+0.002** (paired t, p = 0.74; D +0.009,
+  R −0.005); mean |difference| 0.053, 1% of speeches differ by more than 0.3.
+  Tone shifts −0.016.
+- R − D gap 0.652 (old 0.666; GPT-4o 0.711). Speeches at exactly 0.0: 72 (old
+  71, 67 in both).
+- Output per speech **358.7 tokens, against 498.9** (−28%): the new build
+  reasons less. `PILOT_MEASURED_TOKENS` updated ([S9]).
+
+**Reading:** the build change moves scores far less than the difference
+between providers does, and does not shift either party. Since no temperature
+is set ([S2a]), part of the remaining difference is run-to-run noise that a
+same-build retest would also show; the two cannot be separated here. The 208
+are not a test of the 1017 build on govinfo-era speech in particular; the
+comparison on all 5,200 S8 speeches comes free with stage 2.
+
+---
+
 ## Analysis
 
 ### A1 — How the S8 run is analysed: chambers apart, intervals clustered by member
@@ -1953,6 +2119,49 @@ on a Saturday, so DeepSeek's off-peak rate applies.
 
 ---
 
+### L8 — The `d100k` speeches labelled (label run `20261017T182223Z`, stage 4): 188 failures
+**Date:** 2026-10-19 · **Status:** finding, not a decision — labels not yet
+hand-checked ([L4]); shares are sample shares ([S11]) · run by Justus
+**Data:** `results/metrics/label_summary_s8_20261017T182223Z.json`
+
+The label run was extended to the speeches of scoring run `d100k`
+(`20261018T122536Z`, [S19]) rather than started anew: its 5,200 S8 speeches lie
+inside the new draw and were labelled by the same DeepSeek build, so they were
+not paid for twice ([S13]'s rule). Hence the run's label stays `s8` though it
+now covers all 99,996 `d100k` speeches; each stage's selection is in the
+manifest.
+
+- **Stage 4:** 94,797 calls (94,796 new speeches plus the one S8 failure,
+  now labelled), 05:17–08:05 UTC on a weekday, so mostly at **peak** price;
+  2.8 h at concurrency 10 ([S17]). Whole run: **$42.99** at peak list price
+  (127.0M input, 4.1M output tokens; 40.7 output tokens per call, as in the
+  pilot), stage 4 about $40.75 (estimate $40.76). One build throughout
+  (`e72d3c7f…`), 0 reasoning tokens.
+- **99,808 of 99,996 labelled; 188 failures (0.19%),** all kept as nulls
+  ([L3]): 168 put a topic or an invented code in the type field
+  (`government_process` 144, `procedure` 11, `defense_foreign` 7,
+  `procedure_debate` 3, others 3), 8 invented a topic (`agriculture` 3,
+  `foreign_policy`, `energy`, `labor`, a free-text one), 2 gave a topic to a
+  non-policy type, 10 returned broken JSON. *Retried 2026-10-19 (stage 5, bare
+  `--resume`, approved by Justus, $0.086): 159 of 188 now labelled; **29 stay
+  unlabelled** (all a topic in the type field, mostly `government_process`):
+  **99,967 of 99,996 labelled**, whole run $43.08 at peak list price.* **For a codebook v2:** most
+  failures are a topic code written into the type field, a format slip a
+  stricter answer format would prevent.
+- **Speech types (99,808):** policy_debate 67,032 (67.2%), procedural 14,736
+  (14.8%), ceremonial 14,075 (14.1%), bill_introduction 3,648 (3.7%),
+  constituent_local 249 (0.25%), other 68. Senate procedural 20.3% vs House
+  9.3%; policy debate 60.3% vs 74.0%.
+- **Topics (67,032 policy debates):** economy_tax_budget 21.9%,
+  defense_foreign 16.8%, health 11.9%, government_process 11.3%,
+  environment_energy 9.8%, other_policy 7.4%, social_cultural 5.3%,
+  immigration 4.5%, welfare_labor 4.5%, law_crime 3.8%, education 2.7%.
+  Blocks: economic 48.1%, security_foreign 20.6%, social_cultural 12.5%,
+  governance 11.3%, other 7.4%. All within about a point of the 5,200-speech
+  S8 shares ([L7]).
+
+---
+
 ## Open questions
 
 Move these up into a numbered entry once decided.
@@ -2149,7 +2358,10 @@ with ≥ 3. Caveat: members with many sampled speeches are the frequent
 speakers, not a random draw of members.
 
 ### O11 — What would justify extending the S8 run?
-**Raised:** 2026-10-03 (from [S13]) · **To be decided:** during the analysis
+**Raised:** 2026-10-03 (from [S13]) · **To be decided:** during the analysis ·
+**Addressed 2026-10-18 by [S19]**: a new ~100,000-speech DeepSeek-only run
+rather than an extension of S8 (the model changed, [S18]); its rationale for
+the size is proposed there and awaits Justus's confirmation
 
 S13 makes extending cheap and waste-free, which is exactly why the trigger
 should be written down before the results are read: otherwise a second run is a
