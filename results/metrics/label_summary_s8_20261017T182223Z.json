@@ -1,0 +1,243 @@
+{
+  "codebook_version": "v1",
+  "model": "deepseek-flash",
+  "speeches": 99996,
+  "speeches_labelled": 99967,
+  "failures": 29,
+  "calls": 100192,
+  "failed_attempts": 225,
+  "errors_by_type": {
+    "LabelParseError": 29
+  },
+  "failed_speeches": [
+    {
+      "speech_id": "1070119711",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1080012818",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1080067756",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1080067763",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1090034806",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1100024494",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1100147199",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1100210416",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1110047188",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1120018155",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1120026494",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1140008383",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1140075818",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "1140088443",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-04f986398cb228d2",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-19920a7324da0ef1",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-42d7a8358b7a364a",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-47fd16bce717de8a",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-48603b2bdef10707",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-58177033cbb2448d",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-7c07c175cbd4b9ad",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-7f421fb192dae62d",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-843af95eb91fa605",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-846b4214794e7224",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-9f52ad9bca7e6973",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-9f6e1b52f935a00b",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-d5e49b37e66f9404",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-f26096f22660182c",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    },
+    {
+      "speech_id": "gov-f7add38f3a462533",
+      "error": "LabelParseError: speech_type 'government_process' is not in the codebook"
+    }
+  ],
+  "speech_type_counts": {
+    "procedural": 14766,
+    "ceremonial": 14077,
+    "bill_introduction": 3654,
+    "constituent_local": 249,
+    "policy_debate": 67153,
+    "other": 68
+  },
+  "topic_counts": {
+    "economy_tax_budget": 14698,
+    "health": 7961,
+    "welfare_labor": 2988,
+    "immigration": 3047,
+    "social_cultural": 3564,
+    "education": 1793,
+    "environment_energy": 6576,
+    "law_crime": 2547,
+    "defense_foreign": 11296,
+    "government_process": 7689,
+    "other_policy": 4994
+  },
+  "topic_block_counts": {
+    "economic": 32223,
+    "social_cultural": 8404,
+    "security_foreign": 13843,
+    "governance": 7689,
+    "other": 4994
+  },
+  "speech_type_shares_by_chamber": {
+    "H": {
+      "n": 49994,
+      "speech_type": {
+        "procedural": 0.09299115893907269,
+        "ceremonial": 0.14203704444533344,
+        "bill_introduction": 0.020802496299555946,
+        "constituent_local": 0.0031803816457974957,
+        "policy_debate": 0.7400288034564148,
+        "other": 0.0009601152138256591
+      }
+    },
+    "S": {
+      "n": 49973,
+      "speech_type": {
+        "procedural": 0.20244932263422247,
+        "ceremonial": 0.13959538150601325,
+        "bill_introduction": 0.05230824645308466,
+        "constituent_local": 0.0018009725251635883,
+        "policy_debate": 0.603445860764813,
+        "other": 0.00040021611670301965
+      }
+    }
+  },
+  "speech_type_shares_by_source": {
+    "govinfo": {
+      "n": 39208,
+      "speech_type": {
+        "procedural": 0.14412874923485003,
+        "ceremonial": 0.15983982860640686,
+        "bill_introduction": 0.03688022852479086,
+        "constituent_local": 0.002576004896959804,
+        "policy_debate": 0.6559120587635177,
+        "other": 0.000663129973474801
+      }
+    },
+    "stanford": {
+      "n": 60759,
+      "speech_type": {
+        "procedural": 0.15001892723711713,
+        "ceremonial": 0.1285406277259336,
+        "bill_introduction": 0.03634029526489903,
+        "constituent_local": 0.002435853124639971,
+        "policy_debate": 0.6819730410309583,
+        "other": 0.0006912556164518837
+      }
+    }
+  },
+  "prompt_tokens": 127263894,
+  "completion_tokens": 4080441,
+  "mean_completion_tokens_per_call": 40.72621566592143,
+  "reasoning_tokens": 0,
+  "calls_with_reasoning_tokens": 0,
+  "cost_usd": 43.075697399999996,
+  "served_models": [
+    "deepseek-flash"
+  ],
+  "system_fingerprints": [
+    "e72d3c7f663d3e1383b00b3884cb4501"
+  ],
+  "topic_blocks": {
+    "economic": [
+      "economy_tax_budget",
+      "welfare_labor",
+      "health",
+      "environment_energy"
+    ],
+    "social_cultural": [
+      "social_cultural",
+      "immigration",
+      "education"
+    ],
+    "security_foreign": [
+      "defense_foreign",
+      "law_crime"
+    ],
+    "governance": [
+      "government_process"
+    ],
+    "other": [
+      "other_policy"
+    ]
+  },
+  "run": "20261017T182223Z",
+  "label": "s8"
+}

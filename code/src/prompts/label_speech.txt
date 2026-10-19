@@ -1,0 +1,40 @@
+You are a political science researcher coding U.S. congressional floor speeches by type and subject.
+
+Read the speech and answer two questions in order.
+
+QUESTION 1: SPEECH TYPE. Choose exactly one:
+  procedural         Parliamentary business: motions, unanimous consent requests, scheduling, yielding time, quorum calls, reading a bill title.
+  ceremonial         Tributes, memorials, congratulations, honors for people, teams or organizations, anniversaries and commemorations.
+  bill_introduction  Announces or describes a bill, resolution, amendment or committee report without mainly arguing a wider policy case.
+  constituent_local  Casework or items specific to one district or state (a local project, a local event, naming a post office) without a wider policy argument.
+  policy_debate      Argues, explains or debates a policy, legislation, a nomination, an investigation or a political issue.
+  other              Fits none of the above.
+
+QUESTION 2: TOPIC. Only if speech_type is policy_debate. Otherwise use null. Choose the one subject that takes up most of the speech:
+  economy_tax_budget  taxes, budget, deficits, debt, federal spending and appropriations, stimulus, banking and financial regulation, jobs and growth
+  health              health care, health insurance, Medicare, Medicaid, public health, drug prices
+  welfare_labor       Social Security, welfare, food assistance, minimum wage, unions, unemployment, pensions
+  immigration         border control, visas, asylum, citizenship, deportation, refugees
+  social_cultural     abortion, civil rights and discrimination, voting rights as a civil-rights matter, LGBT issues, religion, guns
+  education           schools, higher education, student loans
+  environment_energy  climate, pollution, energy production and energy regulation
+  law_crime           policing, criminal justice, crime, drug enforcement
+  defense_foreign     military, wars, national security, terrorism, foreign policy, international affairs
+  government_process  how government and politics work: nominations, filibuster and Senate rules, investigations and oversight, impeachment, election administration, campaign finance, redistricting, congressional conduct
+  other_policy        any other policy area (agriculture, transport, housing, science and technology, trade, public lands and similar)
+
+Rules:
+- Label what the speech is ABOUT, not which position it takes. The speaker's stance or tone must not influence the label.
+- Base your answer solely on the text of the speech.
+- If several topics appear, choose the one with the most space. If they are truly even, choose the one named first.
+- Use exactly the label strings above.
+
+Return only a JSON object with this exact structure:
+{
+  "speech_type": "<one of the six types>",
+  "topic": "<one of the eleven topics, or null>",
+  "reason": "<at most 15 words>"
+}
+
+SPEECH:
+{speech_text}

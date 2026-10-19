@@ -313,29 +313,50 @@ Each speech gets scored on two independent dimensions:
 - **Tone / hostility** — emotional charge of the language, independent of ideological content
 
 **3. Ensemble across multiple models — composition decided**
-Run three LLMs and combine their outputs (average for continuous scores). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
+Run several LLMs and combine their outputs (average for continuous scores). This reduces single-model bias on a subjective task like ideological scoring, where no single model's internal calibration should be treated as ground truth. Log all individual model scores before aggregation — never discard the raw outputs.
 
-The ensemble is fixed at three models from distinct providers and training paradigms:
-- **DeepSeek R1** (`deepseek-reasoner`) — reasoning model, open-weight; selected for explicit chain-of-thought reasoning prior to scoring, well-suited to the multi-step ideological inference required
+**The S8 run uses two models: DeepSeek and GPT-4o** (`docs/decisions.md` S15,
+2026-10-03, superseding S12). Claude Sonnet 4.6 was dropped: it agreed with
+GPT-4o at r ≈ 0.97 and was the most expensive member. The three-model evidence
+for that is the 408 speeches of the two pilots (P2, P6). The three models
+chosen originally, from distinct providers and training paradigms:
+- **DeepSeek-V4.1-Flash, thinking mode** (`deepseek-flash`) — reasoning model;
+  selected for explicit chain-of-thought reasoning prior to scoring, well-suited
+  to the multi-step ideological inference required. **Replaced the
+  `deepseek-reasoner` alias on 2026-10-03** (`docs/decisions.md` M3b): that
+  alias — once "DeepSeek R1" — was being served by `deepseek-flash` and is past
+  its announced retirement. Thinking mode and `reasoning_effort="high"` are
+  pinned in `MODEL_SPECS`. Open weights (MIT, Hugging Face) are reported by
+  secondary sources only — **[assumed]**, verify before the methodology claims it
 - **GPT-4o** (`gpt-4o-2024-11-20`) — industry-standard baseline (OpenAI); widely cited in NLP research, enables direct comparison with prior work
 - **Claude Sonnet 4.6** (`claude-sonnet-4-6`) — Constitutional AI paradigm (Anthropic);
-  provides architectural and training diversity. **Replaced Claude 3.5 Sonnet on
+  provides architectural and training diversity. **Pilots only since S15.** **Replaced Claude 3.5 Sonnet on
   2026-09-23**, which was retired by Anthropic and returns 404. Same tier and
   same price ($3/$15 per 1M), so the budget and the diversity rationale are
   unchanged — see `docs/decisions.md` M3a.
 
-This combination covers: one reasoning model + two instruction-following models; one open-weight model (reproducible checkpoint); three independent training approaches. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else.
+The S8 pair covers one reasoning model + one instruction-following model, from two providers.
+**The ~100,000-speech run `d100k` scores with DeepSeek alone** (S19, 2026-10-18:
+cost, and r = 0.94 with GPT-4o on S8); it selects the model with
+`pilot_run.py --models deepseek-flash`, while `ENSEMBLE_MODELS` still names the
+S8 pair. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else. `validate_scores.py` reads each run's models from its manifest, so older three-model runs stay readable.
 
 **No temperature is set on any model, and this is not a choice we made.** The
-providers removed the control: `deepseek-reasoner` ignores it, and the anthropic
+providers removed the control: DeepSeek ignores it, and the anthropic
 SDK dropped the parameter outright (current models answer "`temperature` is
-deprecated for this model"). All three run at their provider default, every run
+deprecated for this model"). Every model runs at its provider default, every run
 manifest records that per model, and the methodology chapter must say so rather
 than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
 
 **Models get retired mid-project.** Claude 3.5 Sonnet was fixed as the Anthropic
 member in September 2026 and was already a 404 by the time the first call was
-made. Verify every pinned model still answers before a run that costs money.
+made; DeepSeek's `deepseek-reasoner` was past its announced retirement when the
+first S8 stage called it (M3b). Verify every pinned model still answers before a
+run that costs money, and check the run summary's `served_models`. **Models
+also get repointed in place:** `deepseek-flash` became DeepSeek-V4.1-Flash-1017
+on 2026-10-17 under the same name, visible only in `system_fingerprint`. Runs now
+stop when a model in `FINGERPRINT_PINNED_MODELS` answers from another build
+(S18) — which is why S8 cannot be extended with DeepSeek.
 No tool in the repo does this: `make smoke` is the Stanford corpus build and
 never contacts a model. The practical check is `pilot_run.py --sample-size 6`,
 which is a real (cheap) API call, so it needs a human's go-ahead like any other
@@ -420,11 +441,23 @@ work_thesis_2026/
 │   │   ├── govinfo.py      ← govinfo side: re-resolve speakers, cut text, write
 │   │   ├── merge.py        ← both sides → corpus.parquet, with checks
 │   │   ├── crosswalk.py    ← corpus members → Voteview ICPSR (DW-NOMINATE join)
+│   │   ├── scoring.py      ← provider calls, parsing, retries, deadlines, cost
+│   │   ├── runs.py         ← a scoring run on disk: resume, carry-over, which rows count
+│   │   ├── validation.py   ← a run's scores vs DW-NOMINATE
+│   │   ├── analysis.py     ← a run → one row per speech; clustered means, gaps, trends
+│   │   ├── plots.py        ← analysis figures (chambers apart, source break marked)
+│   │   ├── labeling.py     ← speech type + topic labels: calls, codebook checks, runs (L1–L5)
+│   │   ├── label_eval.py   ← label hand check: sheet, kappa/F1, checks against S8
 │   │   └── prompts/        ← prompt templates as files, logged with every run
-│   ├── scripts/            ← one-off analysis and pipeline scripts
+│   │                          (score_speech.txt; label_speech.txt = codebook v1)
+│   ├── scripts/            ← one-off analysis and pipeline scripts; labels:
+│   │                          label_run.py, make_label_check_sheet.py, evaluate_labels.py
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
 │   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
-│                              (Colab), which produce the raw files
+│                              (Colab), which produce the raw files, and
+│                              04_score_analysis (S8 findings for Meeting 2, A1)
+│                              and 05_d100k_analysis (the 100k DeepSeek run, P8)
+│                              and 06_overview (substantive speech, members, topics, age; A3, A4)
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/
@@ -434,7 +467,8 @@ work_thesis_2026/
 ├── results/
 │   ├── plots/              ← all figures (named descriptively) — committed
 │   ├── metrics/            ← tables, evaluation summaries (CSV/JSON) — committed
-│   └── scores/             ← raw per-model LLM output — git-ignored (large)
+│   ├── scores/             ← raw per-model LLM output — git-ignored (large)
+│   └── labels/             ← raw per-call speech labels — git-ignored
 ├── docs/
 │   └── notes/              ← meeting notes, design decisions, ideas
 └── thesis/
@@ -497,12 +531,28 @@ work_thesis_2026/
   govinfo 276,513 raw → 153,289), not millions — and it is the sampling frame,
   not what gets scored. **There is no full-corpus run** (`docs/decisions.md`
   S11): the main results come from the S8 stratified sample, 5,200 speeches,
-  ~$53 (`pilot_run.py --dry-run`). Budget from the sample. Corpus counts:
+  ~$21 with two models (S15; `pilot_run.py --dry-run`). Budget from the
+  sample. Corpus counts:
   `results/metrics/merged_build_stats.json`
+- **S8 is one run in stages, never re-scored** (S13, S16): started with
+  `pilot_run.py --label s8 --per-cell 100 --carry-over-from 20261003T100851Z`
+  (stage 1 = the pilot's GPT-4o and DeepSeek answers to 208 speeches; stage 2
+  scores the other 4,992); continued or retried with
+  `pilot_run.py --resume <timestamp>`. A resume scores only what has no score
+  yet and refuses if the corpus, prompt, models, caps or seed changed. Files: `results/scores/s8_*_<timestamp>.*`,
+  `results/metrics/s8_summary_<timestamp>.json`
+- **Parallel calls:** `--concurrency N` on `pilot_run.py` and `label_run.py`
+  (S17; default 1). The `d100k` run (S19) uses 10: ~$89 at peak for 99,996
+  speeches, ~10.5 h; stage 1 (`--per-cell 4`, $0.19) is its pilot gate
 - Always run on a small sample (100–500 speeches) before any larger run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
 - Reasoning models cost more per call — use them only for the scoring step, not preprocessing
+- **Speech labels** (L1–L5) are a separate pass with `deepseek-flash`, thinking
+  off: `label_run.py --from-run <scoring run> [--limit 200] --dry-run` prices it
+  (S8's 5,200: ~$2.24), `--resume <timestamp>` finishes or extends a run. No
+  `--yes` flag exists: a run needs a typed "yes", and a human's go-ahead first.
+  Files: `results/labels/label_*`, `results/metrics/label_summary_*`
 
 ---
 

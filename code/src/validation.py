@@ -18,7 +18,6 @@ Three things this deliberately does *not* hide:
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 
@@ -26,8 +25,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 from scipy import stats
 
-from src.config import CORPUS_PATH, CROSSWALK_PATH, ENSEMBLE_MODELS
+from src.config import CORPUS_PATH, CROSSWALK_PATH
 from src.crosswalk import UNIT_KEY
+from src.runs import effective_rows, find_label, model_path, read_rows, run_models
 
 #: Crosswalk columns carried onto each speech.
 CROSSWALK_COLUMNS: tuple[str, ...] = (
@@ -59,14 +59,8 @@ ENSEMBLE_COLUMN = score_column("ensemble")
 # --- a run -------------------------------------------------------------
 
 
-def _read_jsonl(path: Path) -> list[dict[str, object]]:
-    """JSONL rows, with ``speech_id`` kept a string (it looks numeric)."""
-    with path.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
-
-
 def load_run_scores(
-    scores_dir: Path, run: str, models: tuple[str, ...] = ENSEMBLE_MODELS
+    scores_dir: Path, run: str, models: tuple[str, ...] | None = None
 ) -> pd.DataFrame:
     """One row per speech: each model's ideology score and their mean.
 
@@ -76,15 +70,25 @@ def load_run_scores(
     counts them. ``procedural`` marks speeches every scoring model put at
     exactly 0.0, which the prompt reserves for procedural speech.
 
+    A resumed run keeps a failed attempt next to its retry (S13); each speech
+    counts once per model, with its successful attempt where there is one.
+    ``models`` defaults to the ones the run's manifest lists, not the current
+    ensemble, so an older run is read as it was scored (S15).
+
     Raises:
-        FileNotFoundError: a model's file for ``run`` is missing.
+        FileNotFoundError: the run's manifest or a model's file is missing.
     """
+    label = find_label(scores_dir, run)
+    models = models or run_models(scores_dir, run)
     frame: pd.DataFrame | None = None
     for model in models:
-        path = Path(scores_dir) / f"pilot_{model.replace('/', '_')}_{run}.jsonl"
+        path = model_path(scores_dir, label, model, run)
         if not path.exists():
             raise FileNotFoundError(f"No scores for {model} in run {run}: {path}")
-        rows = pd.DataFrame(_read_jsonl(path), columns=["speech_id", "ideology_score"])
+        rows = pd.DataFrame(
+            list(effective_rows(read_rows(path)).values()),
+            columns=["speech_id", "ideology_score"],
+        )
         rows = rows.rename(columns={"ideology_score": score_column(model)})
         rows[score_column(model)] = pd.to_numeric(rows[score_column(model)])
         frame = (
