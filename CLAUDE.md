@@ -456,6 +456,7 @@ work_thesis_2026/
 │   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
 │                              (Colab), which produce the raw files, and
 │                              04_score_analysis (S8 findings for Meeting 2, A1)
+│                              and 05_d100k_analysis (the 100k DeepSeek run, P8)
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/

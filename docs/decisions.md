@@ -1757,6 +1757,50 @@ comparison on all 5,200 S8 speeches comes free with stage 2.
 
 ---
 
+### P8 — The `d100k` run analysed (notebook 05): both parties moved, Republicans about twice as far
+**Date:** 2026-10-19 · **Status:** finding, not a decision — preliminary; labels
+not yet hand-checked ([L4]) · analysed as in [A1]/[A2]
+**Data:** `code/notebooks/05_d100k_analysis.ipynb`;
+`results/metrics/d100k_*_20261018T122536Z.csv`,
+`validation_20261018T122536Z.json`; `results/plots/d100k_*.png`
+
+99,993 of 99,996 speeches scored (DeepSeek-V4.1-Flash-1017 alone, [S19]),
+99,967 labelled ([L8]); 1,923 per Congress × party × chamber; chambers apart,
+intervals clustered by member.
+
+- **The new build against the old, on all 5,200 S8 speeches:** r = 0.978
+  (0.959 within D, 0.970 within R; GPT-4o against either ≈ 0.94). A small
+  systematic shift: Democrats 0.003–0.023 and Republicans 0.003–0.007 closer
+  to the centre, so the gap is ~0.01–0.03 narrower. **Levels from `d100k`
+  and S8 are not interchangeable; trends within a run are.**
+- **RQ1:** the gap widened in both chambers, not linearly — House 0.42
+  (107th) → 0.78 (112th) → 0.57–0.63 (114th–116th) → 0.72–0.76
+  (117th–119th); Senate 0.31 → ~0.55 (111th–114th) → 0.71 (115th) → 0.75
+  (119th), the second Senate step at the source change.
+- **RQ2, 2001–2016 (one source):** Republicans +0.16 (House) and +0.19
+  (Senate), Democrats −0.09 and −0.06 — **both parties moved, Republicans
+  about twice as far.** S8 could not establish the Democratic move; this run
+  can (House p < 10⁻⁶, Senate p = 0.01). Policy debate alone: steeper (R +0.20
+  / +0.28, D −0.10 / −0.09). Positions swing with the presidency: each party
+  is most extreme in opposition, Senate Democrats most of all under Trump
+  (−0.46, −0.47).
+- **114th by source:** govinfo speeches sit closer to the centre than the same
+  Congress's Stanford speeches (House D −0.24 vs −0.33, R +0.20 vs +0.29) —
+  no sign that govinfo pushes scores outward, but source and moment (Sept–Dec
+  2016) are confounded.
+- **DW-NOMINATE:** speech level r = 0.65 across parties, 0.24 (D) / 0.29 (R)
+  within; **member level r = 0.61 (D) / 0.62 (R) on 1,347 members** with ≥ 5
+  speeches (S8: 0.51 / 0.55 on 298).
+- **Tone (RQ5):** higher in opposition in all four party-chamber cells;
+  highest for Democrats in 2025 (House 0.44, Senate 0.53).
+- **Within topic:** the gap widens inside topic blocks (clearly in economic,
+  governance and social-cultural in both chambers, security/foreign in the
+  Senate), and the agenda shifts toward the most divided blocks
+  (social-cultural 10.5% → 18.0% of House policy debate, governance up,
+  economic down). Not decomposed yet.
+
+---
+
 ## Analysis
 
 ### A1 — How the S8 run is analysed: chambers apart, intervals clustered by member
@@ -2179,6 +2223,12 @@ are further candidates for exclusion. `evaluate_labels.py` cross-tabulates the
 label against the flag. Which one defines the exclusion, and which speech types
 it covers, is a methodological choice for Justus, not something the code
 decides.
+
+*Update 2026-10-19 ([P8]):* with one model the proxy is worse. In `d100k`,
+where DeepSeek alone decides, a 0.0 ideology score flags 38,874 of 99,996
+speeches: 91% of those labelled procedural, but also 76% of the ceremonial
+ones and **19% of the policy debates** (12,907; 10% in S8, where both models
+had to score 0.0).
 
 ### O6 — DeepSeek still truncates on long speeches
 **Raised:** 2026-09-23 · **Status:** 1 speech in 200 · **From:** [S10]
