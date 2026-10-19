@@ -17,6 +17,10 @@ Usage (from the repo root):
     python code/scripts/label_run.py --resume <timestamp> \\
         --from-run 20261003T110419Z                        # extend to all 5,200
 
+`--concurrency N` keeps N speeches in flight at once (S17; default 1). The run
+stops if DeepSeek answers from another model build than the run's earlier
+answers (S18).
+
 `--dry-run` selects and prices what is left, then stops: no API key needed, no
 call, no file written. `--resume` alone finishes a run (retries its failures);
 with a new selection it extends the run, which must contain every speech
@@ -34,6 +38,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
@@ -43,6 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import (
     CORPUS_PATH,
+    DEFAULT_CONCURRENCY,
+    FINGERPRINT_PINNED_MODELS,
     LABEL_LIMIT_STRATA,
     LABEL_MODEL,
     LABEL_PROMPT_PATH,
@@ -75,7 +82,13 @@ from src.labeling import (
     stage_record,
     summarize_labels,
 )
-from src.runs import DEFAULT_LABEL, check_nested, check_resumable, read_rows
+from src.runs import (
+    DEFAULT_LABEL,
+    FingerprintGuard,
+    check_nested,
+    check_resumable,
+    read_rows,
+)
 from src.scoring import ModelSpec, build_clients, load_prompt_template, render_prompt
 
 #: What has to be typed to approve the spend.
@@ -123,6 +136,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         choices=sorted(LABEL_MODEL_SPECS),
         help=f"labelling model (default {LABEL_MODEL}; a resumed run keeps its own)",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
+        help=f"speeches in flight at once (default {DEFAULT_CONCURRENCY}; S17)",
     )
     parser.add_argument(
         "--dry-run",
@@ -279,34 +298,75 @@ async def label_all(
     client: Any,
     handle: TextIO,
     stage: int,
-) -> None:
-    """Label each pending speech, one at a time, appending each row as it lands.
+    concurrency: int = DEFAULT_CONCURRENCY,
+    guard: FingerprintGuard | None = None,
+) -> bool:
+    """Label each pending speech, appending each row as it lands.
 
-    Sequential, as in scoring, to stay inside provider rate limits. Rows are
-    flushed one by one, so a crash keeps everything already paid for and
-    ``--resume`` carries on from there.
+    Up to ``concurrency`` speeches are in flight at once (S17), taken in order
+    by that many workers; at 1 this is the sequential loop of the first runs.
+    Rows are flushed one by one, so a crash keeps everything already paid for
+    and ``--resume`` carries on from there.
+
+    An answer the ``guard`` rejects -- the model answering from another build
+    (S18) -- is written as a failure, its labels kept aside under
+    ``rejected_answer``, and no further speech is started. Returns False if
+    that happened.
     """
     owed = set(pending)
     todo = [speech for speech in speeches if speech["speech_id"] in owed]
-    for index, speech in enumerate(todo, start=1):
-        result = await label_one(spec, client, render_prompt(template, speech["text"]))
-        attempted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        handle.write(
-            json.dumps(label_row(speech["speech_id"], result, stage, attempted_at))
-            + "\n"
-        )
-        handle.flush()
-        if result.ok:
-            status = f"{result.speech_type}" + (
-                f" / {result.topic}" if result.topic else ""
+    queue = iter(todo)
+    finished = 0
+    stopped: list[str] = []
+
+    async def worker() -> None:
+        nonlocal finished
+        # One shared iterator: next() is synchronous, so no two workers take
+        # the same speech.
+        for speech in queue:
+            if stopped:
+                return
+            prompt = render_prompt(template, speech["text"])
+            result = await label_one(spec, client, prompt)
+            attempted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            finished += 1
+            rejected = None
+            message = (
+                guard.check(result.model, result.system_fingerprint) if guard else None
             )
-            print(f"  [{index}/{len(todo)}] {speech['speech_id']} {status}", flush=True)
-        else:
-            print(
-                f"  [{index}/{len(todo)}] {speech['speech_id']} FAILED {result.error}",
-                file=sys.stderr,
-                flush=True,
-            )
+            if message:
+                rejected = {
+                    "speech_type": result.speech_type,
+                    "topic": result.topic,
+                    "reason": result.reason,
+                }
+                result = replace(
+                    result, speech_type=None, topic=None, reason=None, error=message
+                )
+                stopped.append(message)
+            row = label_row(speech["speech_id"], result, stage, attempted_at)
+            if rejected is not None:
+                row["rejected_answer"] = rejected
+            handle.write(json.dumps(row) + "\n")
+            handle.flush()
+            if result.ok:
+                status = f"{result.speech_type}" + (
+                    f" / {result.topic}" if result.topic else ""
+                )
+                print(
+                    f"  [{finished}/{len(todo)}] {speech['speech_id']} {status}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  [{finished}/{len(todo)}] {speech['speech_id']} FAILED "
+                    f"{result.error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+    await asyncio.gather(*(worker() for _ in range(max(1, concurrency))))
+    return not stopped
 
 
 def write_summary(
@@ -337,6 +397,8 @@ def _fail(message: str) -> int:
 async def main(argv: list[str] | None = None) -> int:
     """Select, price what is left, confirm the spend, label and report."""
     args = parse_args(argv)
+    if args.concurrency < 1:
+        return _fail("--concurrency must be at least 1")
 
     label, manifest, run = args.label or DEFAULT_LABEL, None, None
     model = args.model or LABEL_MODEL
@@ -455,20 +517,31 @@ async def main(argv: list[str] | None = None) -> int:
             pending,
             estimate["per_model"][model],
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            args.concurrency,
         )
     )
     manifest_file = label_manifest_path(args.output_dir, label, run)
     manifest_file.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     rows_file = label_rows_path(args.output_dir, label, model, run)
+    guard = FingerprintGuard(FINGERPRINT_PINNED_MODELS, {model: rows})
     with rows_file.open("a", encoding="utf-8") as handle:
-        await label_all(
-            speeches, pending, template, spec, clients[model], handle, stage
-        )
+        completed = await label_all(
+            speeches, pending, template, spec, clients[model], handle, stage,
+            args.concurrency, guard,
+        )  # fmt: skip
 
     summary, rows, summary_file = write_summary(args, label, run, model, speeches)
     print_summary(summary)
     print_cases(summary, rows)
+    if not completed:
+        print(
+            f"\nlabel_run: STOPPED -- {model} answered from another build than this "
+            "run's earlier answers (S18). Those answers are recorded as failures and "
+            "not counted. A run is one instrument: start a new run.",
+            file=sys.stderr,
+        )
+        return 3
     print(f"\nrun       {label} {run} (stage {stage})")
     print(f"labels    {rows_file}")
     print(f"manifest  {manifest_file}")

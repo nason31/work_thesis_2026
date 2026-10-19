@@ -314,3 +314,58 @@ def carry_rows(
         copy["stage"] = 1
         carried.append(copy)
     return carried
+
+
+# --- the model build behind a name (S18) ---------------------------------------
+
+#: Error recorded on an answer from another model build; such a row never counts.
+FINGERPRINT_ERROR = "FingerprintChangedError"
+
+
+class FingerprintGuard:
+    """Stops a run when a pinned model answers from another build mid-run.
+
+    A provider can repoint a model name in place: ``deepseek-flash`` became
+    DeepSeek-V4.1-Flash-1017 on 2026-10-17 with the same served-model name, and
+    only ``system_fingerprint`` changed. A run is one instrument (S13), so an
+    answer from a build other than the run's earlier answers is recorded as a
+    failure and the run stops. The run's build is the fingerprint of its rows
+    so far (including carried-over rows), or else of its first new answer.
+    Rows this guard rejected never define the build, so a stopped run stays
+    stopped when it is resumed.
+    """
+
+    def __init__(
+        self,
+        pinned: Iterable[str],
+        rows_by_model: Mapping[str, Iterable[Mapping[str, Any]]],
+    ) -> None:
+        self.pinned = set(pinned)
+        self.builds: dict[str, set[str]] = {}
+        for model, rows in rows_by_model.items():
+            if model in self.pinned:
+                self.builds[model] = {
+                    row["system_fingerprint"]
+                    for row in rows
+                    if row.get("system_fingerprint")
+                    and not str(row.get("error") or "").startswith(FINGERPRINT_ERROR)
+                }
+
+    def check(self, model: str, fingerprint: str | None) -> str | None:
+        """None if the answer may count, else the error to record on it.
+
+        An answer without a fingerprint passes: there is nothing to compare.
+        """
+        if model not in self.pinned or not fingerprint:
+            return None
+        builds = self.builds.setdefault(model, set())
+        if not builds:
+            builds.add(fingerprint)
+            return None
+        if fingerprint in builds:
+            return None
+        return (
+            f"{FINGERPRINT_ERROR}: {model} answered from build {fingerprint}, but "
+            f"this run's answers came from {sorted(builds)} -- the provider changed "
+            "the model behind the name. Not counted; start a new run."
+        )

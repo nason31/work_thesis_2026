@@ -335,7 +335,11 @@ chosen originally, from distinct providers and training paradigms:
   same price ($3/$15 per 1M), so the budget and the diversity rationale are
   unchanged — see `docs/decisions.md` M3a.
 
-The S8 pair covers one reasoning model + one instruction-following model, from two providers. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else. `validate_scores.py` reads each run's models from its manifest, so older three-model runs stay readable.
+The S8 pair covers one reasoning model + one instruction-following model, from two providers.
+**The ~100,000-speech run `d100k` scores with DeepSeek alone** (S19, 2026-10-18:
+cost, and r = 0.94 with GPT-4o on S8); it selects the model with
+`pilot_run.py --models deepseek-flash`, while `ENSEMBLE_MODELS` still names the
+S8 pair. Model constants live in `code/src/config.py` as `ENSEMBLE_MODELS` — change them there, nowhere else. `validate_scores.py` reads each run's models from its manifest, so older three-model runs stay readable.
 
 **No temperature is set on any model, and this is not a choice we made.** The
 providers removed the control: DeepSeek ignores it, and the anthropic
@@ -348,7 +352,11 @@ than claim a uniformly tuned ensemble. See `docs/decisions.md` S2a.
 member in September 2026 and was already a 404 by the time the first call was
 made; DeepSeek's `deepseek-reasoner` was past its announced retirement when the
 first S8 stage called it (M3b). Verify every pinned model still answers before a
-run that costs money, and check the run summary's `served_models`.
+run that costs money, and check the run summary's `served_models`. **Models
+also get repointed in place:** `deepseek-flash` became DeepSeek-V4.1-Flash-1017
+on 2026-10-17 under the same name, visible only in `system_fingerprint`. Runs now
+stop when a model in `FINGERPRINT_PINNED_MODELS` answers from another build
+(S18) — which is why S8 cannot be extended with DeepSeek.
 No tool in the repo does this: `make smoke` is the Stanford corpus build and
 never contacts a model. The practical check is `pilot_run.py --sample-size 6`,
 which is a real (cheap) API call, so it needs a human's go-ahead like any other
@@ -531,6 +539,9 @@ work_thesis_2026/
   `pilot_run.py --resume <timestamp>`. A resume scores only what has no score
   yet and refuses if the corpus, prompt, models, caps or seed changed. Files: `results/scores/s8_*_<timestamp>.*`,
   `results/metrics/s8_summary_<timestamp>.json`
+- **Parallel calls:** `--concurrency N` on `pilot_run.py` and `label_run.py`
+  (S17; default 1). The `d100k` run (S19) uses 10: ~$89 at peak for 99,996
+  speeches, ~10.5 h; stage 1 (`--per-cell 4`, $0.19) is its pilot gate
 - Always run on a small sample (100–500 speeches) before any larger run
 - Log token counts and estimated cost before and after large API calls
 - Prefer batch APIs where available (OpenAI Batch API etc.) to reduce cost by ~50%
