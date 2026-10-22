@@ -268,10 +268,33 @@ VOTEVIEW_CONGRESS_RANGE: tuple[int, int] = (107, 119)
 VOTEVIEW_PARTY_CODES: dict[str, int] = {"D": 100, "R": 200, "I": 328}
 
 # Voteview scores the LLM ideology scores are validated against. Both are
-# reported until one is chosen -- NOT YET DECIDED (docs/decisions.md O9):
+# reported; A5 PROPOSES nokken_poole_dim1 as the headline (awaiting Justus,
+# docs/decisions.md O9):
 # nominate_dim1 is constant over a member's career, nokken_poole_dim1 is
 # estimated per Congress and so can show a member moving.
 VALIDATION_BENCHMARKS: tuple[str, ...] = ("nominate_dim1", "nokken_poole_dim1")
+
+# The validation design comparison (O9; PROPOSED in docs/decisions.md A5,
+# awaiting Justus). Member units need at least this many speeches; the grid
+# reports each. A3 follows members per Congress at 10.
+VALIDATION_MIN_SPEECHES: tuple[int, ...] = (3, 5, 10, 20)
+# Bootstrap draws (over members, stratified by party) behind every interval,
+# and random half-splits behind every split-half reliability.
+VALIDATION_BOOTSTRAP: int = 1000
+VALIDATION_SPLITS: int = 50
+# Below this many units in a party, a design reports n and no r (fixed in A5
+# before the S8 repeat was run).
+VALIDATION_MIN_UNITS_PER_PARTY: int = 30
+# The design A5 proposes as the headline: member x Congress means over the
+# speeches the trend analysis keeps (A3), at A3's threshold, against
+# Nokken-Poole, read within party x chamber x Congress cells.
+VALIDATION_HEADLINE: dict[str, object] = {
+    "unit": "member_congress",
+    "min_speeches": 10,
+    "procedural": "labels",
+    "benchmark": "nokken_poole_dim1",
+    "statistic": "within_cell_pearson",
+}
 
 # Ensemble composition decided (M3, M3a, M3b, S15) — models from distinct
 # providers and training paradigms. Pin specific snapshot versions for reproducibility;

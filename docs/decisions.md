@@ -1945,6 +1945,214 @@ for the Stanford side, for a ±1-year gain).
 
 ---
 
+### A5 — How the DW-NOMINATE validation is done: benchmark, unit, headline (addresses [O9])
+**Date:** 2026-10-22 · **Status:** proposed — awaiting Justus · **Proposed
+by:** agent, on Justus's brief · addresses [O9], amends how [M5] is reported
+
+**Selection criteria, written down before the comparison grid below was run**,
+in order of priority:
+
+1. **The unit matches what the thesis analyses elsewhere.** RQ1 and RQ2 are
+   about parties and members per Congress: party × chamber × Congress cells
+   ([A1]) and members followed Congress by Congress ([A3]). A validation of
+   another unit validates a number the thesis does not report.
+2. **The headline is not driven by the party gap or by party rhetoric that
+   varies over time.** Across parties r mostly re-measures the gap ([P5]:
+   party alone r = 0.947 in the pilot). Both parties are most extreme in
+   opposition ([P8]), so a within-party r pooled over Congresses can pick up a
+   party's shared swing in speeches and votes rather than the ordering of its
+   members.
+3. **Defensible to a reader who does not know our results.** Each choice has a
+   reason that does not refer to the correlation it produces.
+4. **Reproducible by one command** from the run files, labels, corpus and
+   crosswalk, with no API call.
+
+**Not a criterion: the size of r.** The design with the highest r is not
+chosen for being highest.
+
+**How the criteria map to a design, also fixed before the grid:** criterion 1
+points to member × Congress means over the speeches the trend analysis keeps
+([A3]'s label rule) and to [A3]'s member threshold of 10 speeches, and so to
+Nokken-Poole, the benchmark estimated per Congress, with `nominate_dim1`
+beside it; criterion 2 to a statistic computed within party × chamber ×
+Congress cells. The S8 repeat counts as possible only with at least 30 units
+per party; below that it reports n and no r. The grid
+(thresholds 3/5/10/20, both procedural definitions, speech and career units,
+both benchmarks) shows how sensitive the answer is; it does not pick it.
+Split-half reliability of the member score, which does not use DW-NOMINATE,
+is there to interpret the threshold, not to tune it.
+
+**Evidence** (run `20261018T122536Z`, d100k, DeepSeek alone; labels
+`20261017T182223Z`), from one command, no API calls, ~6 minutes:
+
+    python code/scripts/validation_grid.py --run 20261018T122536Z \
+        --label-run 20261017T182223Z --compare-run 20261003T110419Z
+
+It writes `results/metrics/validation_grid_20261018T122536Z.csv` (54 designs:
+3 procedural rules × 2 benchmarks × speech, member × Congress and career at
+3/5/10/20), `validation_selection_…csv`, `validation_selection_by_congress_…csv`
+and `validation_design_…json` (SHA-256 of every input, robustness, change
+diagnostic). Logic in
+`code/src/validation_design.py`, tests in `code/tests/test_validation_design.py`.
+Every interval below is a 95% percentile bootstrap over members (1,000 draws,
+stratified by party, a member's speeches and Congresses drawn together).
+
+Nokken-Poole, label rule ([A3]), 99,902 validation speeches:
+
+| Design | Units D / R | Within D | Within R | **Within cell** | House | Senate | Overall | Rel. | Corr. |
+|---|---|---|---|---|---|---|---|---|---|
+| speech | 36,716 / 34,338 | 0.22 | 0.32 | 0.25 [0.22, 0.29] | 0.26 | 0.25 | 0.73 | 0.18 | 0.59 |
+| member × Congress ≥ 3 | 2,655 / 2,628 | 0.45 | 0.52 | 0.48 [0.45, 0.52] | 0.46 | 0.56 | 0.88 | 0.63 | 0.61 |
+| member × Congress ≥ 5 | 2,075 / 1,990 | 0.45 | 0.54 | 0.50 [0.46, 0.53] | 0.48 | 0.56 | 0.90 | 0.70 | 0.59 |
+| **member × Congress ≥ 10** | **1,136 / 1,073** | 0.46 [0.39, 0.53] | 0.59 [0.51, 0.65] | **0.54 [0.48, 0.59]** | 0.52 [0.46, 0.57] | 0.57 [0.45, 0.67] | 0.92 | 0.81 | 0.60 |
+| member × Congress ≥ 20 | 478 / 430 | 0.40 | 0.61 | 0.53 [0.40, 0.64] | 0.40 | 0.58 | 0.92 | 0.88 | 0.57 |
+| career ≥ 5 | 586 / 677 | 0.60 | 0.64 | 0.60 [0.56, 0.63] | – | – | 0.92 | 0.80 | 0.67 |
+| career ≥ 10 | 500 / 542 | 0.59 | 0.66 | 0.62 [0.58, 0.65] | – | – | 0.93 | 0.85 | 0.67 |
+
+*Within cell*: both parties pooled after each unit is taken relative to its
+party × chamber × Congress cell (a career relative to its party, after each of
+its speeches is taken relative to its cell). *Rel.*: split-half reliability of
+the unit's mean (Spearman-Brown, 50 random splits), or a single speech's ICC
+within its member-Congress; it never uses DW-NOMINATE. *Corr.*: within-cell r
+divided by √Rel., corrected for the LLM side only. The headline design gives
+members 315 D / 342 R and 52,458 speeches.
+
+- **Speech and member level measure the same thing through different amounts
+  of noise.** A single speech's ICC is 0.18: four-fifths of its within-cell
+  variance is not its speaker's stable position. Corrected, speech level
+  (0.59) and member × Congress at every threshold (0.57–0.61) agree, so the gap
+  between 0.25 and 0.54 is reliability, not a different signal.
+- **Career is higher even after correction (0.67).** Consistent with split
+  halves inside one Congress sharing that Congress's agenda and the member's
+  role, which count as "reliable" but are not ideology, and which a career
+  averages away. Not tested further. It also reads another unit than the
+  thesis reports.
+- **Pooling over Congresses moves the parties apart.** Within D 0.46 → within
+  cell 0.50; within R 0.59 → 0.57. The shift is small here, but it is the
+  part that criterion 2 excludes.
+- **The threshold changes r little (0.48 → 0.54) and the sample a lot** (from
+  `validation_selection_…csv`). The sample gives every chamber the same
+  quota, so a senator has about four times a representative's speeches. At
+  ≥ 10 the units are **45% Senate (D) / 45% (R), against 19% / 18% of all
+  Voteview member-Congresses**. They have served longer (mean tenure 9.1 / 7.0
+  Congresses against 6.8 / 5.5, first-Congress share 8% / 9% against 13% /
+  16%) and hold 75% / 73% of the party's speeches. They are no narrower on
+  votes (Nokken-Poole SD 0.13 / 0.18 against 0.13 / 0.17), so range
+  restriction does not lower r. At ≥ 20 the Senate reaches 64% / 70%, and the
+  House r falls to 0.40.
+- **Per Congress, no Congress is emptied at ≥ 10**
+  (`validation_selection_by_congress_…csv`). Every Congress × chamber × party
+  cell keeps 30–57 units, House 33–57 and Senate 30–44. The two chambers are
+  validated on different footings. The units cover **15–30% of each party's
+  representatives** in a Congress, against **56–98% of its senators**. The
+  kept representatives lean further toward their party on votes than all
+  representatives, by 0.02–0.07 Nokken-Poole points (senators −0.02 to
+  +0.03). At ≥ 20 House cells fall to 3–20 units, which is where the House r
+  drops.
+- **The procedural rule hardly matters for the headline** (within cell 0.54
+  none, 0.55 zero-score, 0.54 labels) but does for the overall r (0.90 /
+  0.94 / 0.92). The two rules differ on 19,327 of 99,902 speeches. Both drop
+  24,171. Only the 0.0 rule drops 14,653, of which 12,890 are labelled policy
+  debate. Only the labels drop 4,674.
+- **The benchmark hardly matters at the member × Congress unit:**
+  `nominate_dim1` within cell 0.54 [0.47, 0.60], Nokken-Poole 0.54.
+- **Party does the work in the overall r:** party alone r = 0.944 with
+  Nokken-Poole, the overall r 0.92. Given party, the score explains 29%
+  [23%, 35%] of the remaining variance (partial R²); its coefficient is 0.41
+  [0.36, 0.45] Nokken-Poole units per score unit (member-clustered SE 0.025).
+- **Robustness.** Without the 175 `party_switch` speeches (2 D and 1 R units
+  drop): 0.54 [0.48, 0.60]. S8 (`20261003T110419Z`): the headline design keeps
+  4 D / 1 R units, under the 30 per party fixed above, so it reports n only.
+  As a supplementary check at career ≥ 5 (119 / 119 members) on the S8
+  speeches, the within-cell r is 0.50 [0.40, 0.59] for the two-model mean,
+  0.49 for DeepSeek's old build, 0.49 for GPT-4o and 0.49 for d100k's build
+  on the same speeches. The model does not change the validation.
+- **Movement (RQ2 diagnostic only).** Over 1,308 pairs of consecutive
+  Congresses (371 members, ≥ 10 speeches in both), the change in a member's
+  score relative to their cell tracks the change in their Nokken-Poole score at
+  r = 0.14 [0.08, 0.19]. Raw changes give 0.07 [0.00, 0.15] (D) and 0.13
+  [0.05, 0.21] (R); at ≥ 5, 0.13 over 2,538 pairs.
+
+**Added after the criteria were fixed.** These are listed so the record shows
+what was planned and what was not.
+
+- **A smoke run came first** (20 bootstrap draws, 3 splits), to check the
+  code. Its point estimates are the final ones; only the intervals and
+  reliabilities were refined.
+- **The per-chamber r** (`within_cell_H`, `within_cell_S`) was added after the
+  smoke run and before the final run. The smoke run's selection profile showed
+  the Senate share among kept units (45% against 19%). The trigger was who the
+  units are, not any r. The pooled headline is computed exactly as fixed.
+- **The per-Congress selection table** was added after the final run, to
+  answer the brief's request for a profile by Congress, which the era shares
+  only approximated. It is descriptive and uses no r. Rerunning the command
+  reproduced the grid file byte for byte.
+
+**Recommendation** (the mapping fixed before the grid stands; nothing in the
+grid argues against it):
+
+- **A. Benchmark: `nokken_poole_dim1`**, with `nominate_dim1` beside it. The
+  unit is a member in one Congress, and only Nokken-Poole is estimated per
+  Congress. *Rejected:* `nominate_dim1` as headline. It is constant over a
+  career, so it cannot correspond to a per-Congress unit. The grid shows the
+  two agree to 0.01 here, so the choice is conceptual, and Nokken-Poole's own
+  noise is not what limits r.
+- **B. Unit: member × Congress, the mean of the member's substantive speeches
+  ([A3]'s rule), at least 10 of them ([A3]'s threshold).** Reported by
+  chamber as well as pooled, since the threshold keeps senators first. Speech
+  level stays as the second view (as in 4.6), and career level as a third.
+  *Rejected:*
+  - speech level as headline: one speech is 18% signal, so r mostly measures
+    noise;
+  - career: not a unit the thesis reports, and it mixes the Congresses a
+    member served, the very thing RQ2 tracks;
+  - ≥ 3 or ≥ 5: reliability 0.63–0.70, and a threshold different from the
+    one the member analysis uses;
+  - ≥ 20: 908 units, 64–70% Senate, half the speeches, wide House intervals;
+  - the 0.0 rule: drops 12,890 policy debates and is not the trend analysis's
+    rule ([O12]);
+  - no exclusion: procedural and ceremonial speech says little about a
+    member's position, and the trend analysis leaves it out.
+- **C. Headline: Pearson r within party × chamber × Congress cells, both
+  parties pooled, with a member-bootstrap 95% interval:** 0.54 [0.48, 0.59].
+  Beside it: the same per party (D 0.50, R 0.57) and per chamber (House 0.52,
+  Senate 0.57), and Spearman as a check (0.53). *Rejected:*
+  - within-party r pooled over Congresses: it lets a party's shared swing
+    between Congresses into the number (criterion 2), and it is the pre-A5
+    plan in 4.6;
+  - overall r: party alone gives 0.944, so it is reported for completeness
+    only;
+  - partial R² and the regression coefficient: reported, but they depend on
+    the scales and say less to a reader than an r;
+  - the disattenuated r: it rests on a reliability estimate that counts
+    Congress-specific content as signal, so it is a supplement, not a
+    headline;
+  - speech-level Fisher intervals from `validate_scores.py`: they treat
+    speeches as independent ([A1]).
+
+**Caveats to state in the thesis:**
+
+1. **Cross-sectional only.** Within-cell r removes the party-by-Congress means
+   that RQ1 and RQ2 are about, by design. A member's change between Congresses
+   tracks their votes' change only weakly (0.14). The validation supports the
+   ordering of members within a Congress, not the movement of members or
+   parties over time.
+2. **Frequent speakers.** At ≥ 10 the validated units are senators and
+   long-serving members out of proportion. The House result rests on the most
+   frequent 15–30% of representatives in each Congress, who lean slightly
+   further toward their party on votes. The House and Senate r are reported
+   apart for that reason.
+3. **Others.** One model ([S19]); labels not yet hand-checked ([L4]), though
+   the 0.0 rule gives the same headline; Specter's 2005–09 party ([O13])
+   enters only through ~90 speeches.
+
+**If accepted:** `VALIDATION_HEADLINE` in `config.py` already holds this
+design; set this entry to *active*, settle O9, and drop "PROPOSED" from the
+config comment. The 4.6 sentences this contradicts are listed in
+`docs/notes/2026-10-22_section_4_6_comments.md`.
+
+---
+
 ## Labels
 
 A second pass that gives each speech a **speech type** and, for policy debate,
@@ -2468,7 +2676,10 @@ stratify (the S8 sampler already stratifies by chamber).
 
 ### O9 — How exactly is the DW-NOMINATE validation done?
 **Raised:** 2026-09-29 (from P5) · **Blocks:** the validation that goes in the
-thesis
+thesis · **Addressed 2026-10-22 by [A5]** (proposed, awaiting Justus):
+member × Congress means, ≥ 10 substantive speeches, Nokken-Poole, headline r
+within party × chamber × Congress cells; the evidence is A5's design grid. O9
+stays open until A5 is accepted
 
 `code/src/validation.py` reports every option side by side
 (`VALIDATION_BENCHMARKS` in `config.py`) until these are settled:

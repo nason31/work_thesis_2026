@@ -14,6 +14,10 @@ ensemble and each model; nominate_dim1 and nokken_poole_dim1; all speeches and
 non-procedural ones; both parties together and each alone. Read the
 within-party rows first -- across parties, r mostly re-measures the party gap.
 
+Speech level only, and its intervals treat speeches as independent, which
+overstates the evidence (A1). For member units and intervals from a bootstrap
+over members, use validation_grid.py (A5).
+
 All logic lives in code/src/validation.py; this is only the command line around it.
 """
 
