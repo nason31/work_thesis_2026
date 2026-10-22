@@ -106,6 +106,12 @@ on the most common spelling only; the build matches against Voteview directly
 and uses every spelling, which is why it does better. *(Rebuilt 2026-10-03 on
 the re-fetched govinfo file, D25: 579,242 of 580,007, 99.87%.)*
 
+**Update 2026-10-22 — how it is reported: [A5].** Member × Congress means, ≥ 10
+substantive speeches, against Nokken-Poole, read within party × chamber ×
+Congress cells: r = 0.54 [0.48, 0.59] on the d100k run. Positive and
+meaningful, as this entry requires. A5 also records that it validates the
+ordering of members within a Congress, not movement over time.
+
 ---
 
 ## Data
@@ -1829,6 +1835,9 @@ to `results/plots/s8_*.png`, the tables behind them to
   Congress starts 3 January, a presidency 20 January).
 - **Member-level validation is exploratory** (members with ≥ 5 sampled speeches,
   each member's mean against their Voteview score) until O9 is settled.
+  *(Settled 2026-10-22 by [A5]: the thesis reports member × Congress means
+  within party × chamber × Congress cells; the career-level view in the
+  notebooks stays exploratory.)*
 - Procedural speeches stay in every figure; a robustness check without them is
   still to do. *(Done 2026-10-18 on the speech-type labels, [A2].)*
 
@@ -1946,8 +1955,9 @@ for the Stanford side, for a ±1-year gain).
 ---
 
 ### A5 — How the DW-NOMINATE validation is done: benchmark, unit, headline (addresses [O9])
-**Date:** 2026-10-22 · **Status:** proposed — awaiting Justus · **Proposed
-by:** agent, on Justus's brief · addresses [O9], amends how [M5] is reported
+**Date:** 2026-10-22 · **Status:** active — accepted by Justus 2026-10-22 ·
+**Decided by:** Justus; criteria from Justus's brief, grid and proposal by
+the agent · settles [O9], amends how [M5] is reported
 
 **Selection criteria, written down before the comparison grid below was run**,
 in order of priority:
@@ -2088,8 +2098,9 @@ what was planned and what was not.
   only approximated. It is descriptive and uses no r. Rerunning the command
   reproduced the grid file byte for byte.
 
-**Recommendation** (the mapping fixed before the grid stands; nothing in the
-grid argues against it):
+**Decision** (proposed by the agent, accepted by Justus 2026-10-22; the
+mapping fixed before the grid stands, and nothing in the grid argues against
+it):
 
 - **A. Benchmark: `nokken_poole_dim1`**, with `nominate_dim1` beside it. The
   unit is a member in one Congress, and only Nokken-Poole is estimated per
@@ -2146,10 +2157,11 @@ grid argues against it):
    the 0.0 rule gives the same headline; Specter's 2005–09 party ([O13])
    enters only through ~90 speeches.
 
-**If accepted:** `VALIDATION_HEADLINE` in `config.py` already holds this
-design; set this entry to *active*, settle O9, and drop "PROPOSED" from the
-config comment. The 4.6 sentences this contradicts are listed in
-`docs/notes/2026-10-22_section_4_6_comments.md`.
+**In the code:** `VALIDATION_HEADLINE` in `config.py` holds this design, and
+`validation_grid.py` prints the headline and writes it to
+`validation_design_<run>.json`. `validate_scores.py` stays as the speech-level
+view; its Fisher intervals are not to be quoted. The 4.6 sentences this
+contradicts are listed in `docs/notes/2026-10-22_section_4_6_comments.md`.
 
 ---
 
@@ -2676,10 +2688,11 @@ stratify (the S8 sampler already stratifies by chamber).
 
 ### O9 — How exactly is the DW-NOMINATE validation done?
 **Raised:** 2026-09-29 (from P5) · **Blocks:** the validation that goes in the
-thesis · **Addressed 2026-10-22 by [A5]** (proposed, awaiting Justus):
-member × Congress means, ≥ 10 substantive speeches, Nokken-Poole, headline r
-within party × chamber × Congress cells; the evidence is A5's design grid. O9
-stays open until A5 is accepted
+thesis · **Settled 2026-10-22 by [A5]**: member × Congress means, ≥ 10
+substantive speeches, Nokken-Poole, headline r within party × chamber ×
+Congress cells; the evidence is A5's design grid. The four questions below are
+answered there: 1 Nokken-Poole, 2 member × Congress, 3 the within-cell r,
+4 procedural and ceremonial speeches dropped by label
 
 `code/src/validation.py` reports every option side by side
 (`VALIDATION_BENCHMARKS` in `config.py`) until these are settled:

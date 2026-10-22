@@ -2,7 +2,8 @@
 
 `validation.py` correlates each speech with its speaker's Voteview score. This
 module compares the designs O9 left open, on a run already on disk (no API
-calls):
+calls). A5 settled on member x Congress means, at least 10 substantive
+speeches, Nokken-Poole, and the within-cell r (`VALIDATION_HEADLINE`):
 
 - **Unit.** A speech; a member in one Congress (``member_congress``); or a
   member over their career (``career``). A member unit is the mean of its

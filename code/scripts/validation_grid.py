@@ -1,4 +1,4 @@
-"""Compare the DW-NOMINATE validation designs O9 left open (docs/decisions.md A5).
+"""Compare the DW-NOMINATE validation designs; report the headline (decisions A5).
 
 Usage (from the repo root):
 

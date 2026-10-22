@@ -276,18 +276,26 @@ Rules:
 - **Never drop an unmatched speech from the trend analysis.** `in_validation`
   is a filter for the DW-NOMINATE check only.
 - **Do not join on the corpus `icpsr` column** (see the govinfo section above).
-- **Which score validates the LLM scores is not decided** — `nominate_dim1`
-  (career-constant) vs `nokken_poole_dim1` (per Congress). RQ2 is about
-  movement over time, which only the latter can show. Record the choice in
-  `docs/decisions.md` when it is made.
-- **Validating a scoring run** needs no code of your own:
-  `python code/scripts/validate_scores.py --run <timestamp>` (no API calls)
-  joins a run's per-model scores through the crosswalk and writes every
-  combination — ensemble and each model, both benchmarks, all and
-  non-procedural speeches, overall and **within each party** — to
-  `results/metrics/validation_<timestamp>.json`. Read the within-party rows
-  first: across parties r mostly re-measures the party gap (P5). Logic in
-  `code/src/validation.py`.
+- **How the validation is done is decided** (`docs/decisions.md` A5,
+  2026-10-22, settles O9): **member × Congress** means over the speeches the
+  trend analysis keeps (A3's label rule), at least **10** of them, against
+  **`nokken_poole_dim1`**, headline = Pearson r **within party × chamber ×
+  Congress cells**, with a bootstrap over members. Report it per party and
+  per chamber too: the threshold keeps senators first (45% of units against
+  19% in Congress). On d100k: r = 0.54 [0.48, 0.59]. It validates how members
+  are ordered within a Congress, **not movement over time** (change between
+  Congresses r = 0.14). The design lives in `VALIDATION_HEADLINE`
+  (`config.py`); change it there only with a new decision.
+- **Validating a scoring run** needs no code of your own (no API calls):
+  - the headline and the full design grid:
+    `python code/scripts/validation_grid.py --run <timestamp> --label-run <label run>`
+    (~6 min) → `results/metrics/validation_grid_<run>.csv`,
+    `validation_selection[_by_congress]_<run>.csv`,
+    `validation_design_<run>.json`. Logic in `code/src/validation_design.py`.
+  - the speech-level view: `python code/scripts/validate_scores.py --run
+    <timestamp>` → `results/metrics/validation_<timestamp>.json`. Its
+    intervals treat speeches as independent — do not quote them. Logic in
+    `code/src/validation.py`.
 - **If the build fails**, it names the problem — two members on one ICPSR, a
   `speakerid` that no longer encodes its Congress, an unknown `source`. Each
   means an assumption broke (usually a replaced dataset); fix the cause, do not
@@ -369,7 +377,7 @@ Do not split speeches into short chunks unless a model's context window absolute
 Scoring ideological position requires chaining inferences: "what policy positions does this language imply, and where do those sit on the political spectrum?" Reasoning models (o3, DeepSeek R1) are specifically better at this kind of multi-step judgment than standard instruction-following models. Prioritize them for the scoring step; cheaper models are fine for preprocessing and filtering.
 
 **6. Structural validation via DW-NOMINATE**
-LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideological scores from VoteView.com). This is not optional — it is the primary methodological defense of our approach. Expect the correlation to be imperfect (floor speech rhetoric vs. actual votes are different signals), but it should be positive and meaningful. A weak or inverse correlation would be a red flag requiring investigation, not suppression.
+LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideological scores from VoteView.com). This is not optional — it is the primary methodological defense of our approach. Expect the correlation to be imperfect (floor speech rhetoric vs. actual votes are different signals), but it should be positive and meaningful. A weak or inverse correlation would be a red flag requiring investigation, not suppression. How it is done is decided in `docs/decisions.md` A5 (see External Validation).
 
 ### Decided — data decisions
 
@@ -443,7 +451,8 @@ work_thesis_2026/
 │   │   ├── crosswalk.py    ← corpus members → Voteview ICPSR (DW-NOMINATE join)
 │   │   ├── scoring.py      ← provider calls, parsing, retries, deadlines, cost
 │   │   ├── runs.py         ← a scoring run on disk: resume, carry-over, which rows count
-│   │   ├── validation.py   ← a run's scores vs DW-NOMINATE
+│   │   ├── validation.py   ← a run's scores vs DW-NOMINATE, speech level
+│   │   ├── validation_design.py ← the validation the thesis reports (A5): units, within-cell r, member bootstrap
 │   │   ├── analysis.py     ← a run → one row per speech; clustered means, gaps, trends
 │   │   ├── plots.py        ← analysis figures (chambers apart, source break marked)
 │   │   ├── labeling.py     ← speech type + topic labels: calls, codebook checks, runs (L1–L5)
@@ -451,7 +460,8 @@ work_thesis_2026/
 │   │   └── prompts/        ← prompt templates as files, logged with every run
 │   │                          (score_speech.txt; label_speech.txt = codebook v1)
 │   ├── scripts/            ← one-off analysis and pipeline scripts; labels:
-│   │                          label_run.py, make_label_check_sheet.py, evaluate_labels.py
+│   │                          label_run.py, make_label_check_sheet.py, evaluate_labels.py;
+│   │                          validation: validate_scores.py, validation_grid.py (A5)
 │   ├── tests/              ← pytest; run with `pytest` from the repo root
 │   └── notebooks/          ← exploration; plus Konsti's 01–03 dataset notebooks
 │                              (Colab), which produce the raw files, and
@@ -619,7 +629,9 @@ work_thesis_2026/
 
 ---
 
-*Last updated: October 3, 2026 — Konsti's re-fetched govinfo file (pagination
+*Last updated: October 22, 2026 — the DW-NOMINATE validation design is
+decided (A5, settles O9; `validation_grid.py`, see External Validation).
+Previously, October 3, 2026 — Konsti's re-fetched govinfo file (pagination
 fixed, `state` added) built and merged; the state now resolves same-surname
 speakers (D25). Corpus 580,007 rows. Previously, September 29, 2026 — member
 crosswalk to DW-NOMINATE built (`make crosswalk`, see External Validation); the

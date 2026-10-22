@@ -631,8 +631,8 @@ def member_means(
     ``min_speeches`` of them: one speech is a noisy reading of a member (P5).
     ``nominate_dim1`` is constant over a career; ``nokken_poole_dim1`` varies by
     Congress, so it is averaged over the member's speeches. A party switcher
-    appears once per party. Exploratory -- the unit of the validation is still
-    open (O9).
+    appears once per party. Exploratory, a career-level view: the validation
+    the thesis reports is member x Congress (A5, `validation_design`).
     """
     data = frame[frame["in_validation"]]
     members = (

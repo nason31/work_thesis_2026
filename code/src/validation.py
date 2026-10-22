@@ -12,8 +12,10 @@ Three things this deliberately does *not* hide:
   a party the way their votes do is the stronger test.
 - **Only ``in_validation`` speeches are correlated** -- matched and scored
   members. The rest stay in the frame, flagged, so they can be counted.
-- **Nothing is chosen that is still open** (O9): both benchmarks, and the
-  procedural speeches, are reported as they are; the caller filters.
+- **Speech level only.** Both benchmarks, and the procedural speeches, are
+  reported as they are; the caller filters. The design the thesis reports
+  (A5: member x Congress, within cells, intervals over members) is
+  `validation_design.py`.
 """
 
 from __future__ import annotations
