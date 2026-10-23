@@ -468,6 +468,7 @@ work_thesis_2026/
 │                              04_score_analysis (S8 findings for Meeting 2, A1)
 │                              and 05_d100k_analysis (the 100k DeepSeek run, P8)
 │                              and 06_overview (substantive speech, members, topics, age; A3, A4)
+│                              and 07_team_findings (findings for the team: gap, movers, validation, terms, newcomers, topics, tone; A6)
 ├── data/                   ← git-ignored (shared via team drive)
 │   ├── raw/                ← original, never modified
 │   │   ├── stanford/

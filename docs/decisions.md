@@ -2165,6 +2165,59 @@ contradicts are listed in `docs/notes/2026-10-22_section_4_6_comments.md`.
 
 ---
 
+### A6 — The team findings notebook (notebook 07): structure and the new cuts
+**Date:** 2026-10-23 · **Status:** active · **Decided by:** Justus (structure,
+sections and plots); the cuts below by the agent
+
+`code/notebooks/07_team_findings.ipynb`, on the `d100k` run ([S19]) and its
+labels ([L8]), for showing the team the findings before the analysis chapter.
+Figures `results/plots/findings_*.png`, tables
+`results/metrics/findings_*_20261018T122536Z.csv`. Four parts, in Justus's order:
+bird's-eye view (gap, which party moved, validation), polarization in depth
+(presidential terms, newer and younger members), topics (the most polarized
+blocks, each topic), hostility (tone). Most of it repeats [A3], [A4] and [A5]
+on the same speeches; these choices are new:
+
+- **Every section uses substantive speech** ([A3]'s label rule), tone
+  included. Notebook 05 drew tone on all speeches. **Rejected:** tone on all
+  speeches — procedural and ceremonial speech is near-neutral by nature and its
+  share shifts after 2016 (L7), so it would bend the tone trend for reasons
+  that are not about hostility.
+- **The validation is shown on both speech sets** (all speeches and
+  substantive) with [A5]'s design unchanged; the substantive one stays the one
+  reported. The within-cell r is 0.54 on both. Figure from
+  `plots.plot_validation`, which prints the design's own r and interval.
+- **Presidential terms are four-year terms** (`presidential_term`, added to
+  `analysis.add_presidency`: two Congresses each, Trump's second holding 2025
+  only). **Rejected:** the existing `term`, which joins consecutive Congresses
+  under one president (Bush 2001–2008) and so hides the step at each
+  re-election. The term plot runs in time order, so it marks the source break.
+- **The opposition effect is estimated net of the trend:** per chamber and
+  party, OLS of a speech's extremity (`toward_party`) on the Congress number and
+  an out-of-the-White-House dummy, member-clustered (`within_cell_ols` with the
+  cell set to chamber × party, i.e. a group intercept). The same for tone.
+  **Rejected:** raw means in and out of opposition (notebook 05) — they mix the
+  cycle with the long-run trend. With four changes of the White House the model
+  assumes one opposition effect for all of them; a summary, not a test.
+- **Topics: all first, then a deep dive** (Justus, 2026-10-23). Section 6 shows
+  each of the 11 topics' change in the gap over 2001–2025, and the five blocks'
+  trends; that table picks the deep-dive blocks — social-cultural, economic,
+  governance, the three that widened most. Section 7 follows them per Congress:
+  the gap, each party's position (`plots.plot_party_positions_by_group`, one row
+  per block, one shared scale) and the block's share of policy debate.
+  **Rejected:** single topics per Congress (as few as 6 speeches in a party
+  cell); the block-level party cells hold 42–263.
+
+**Findings (preliminary):** net of the trend a party sits about 0.1 further out
+in opposition (House R +0.11, Senate R +0.13, Senate D +0.09; House D +0.00),
+and the outward trend remains in every party and chamber (+0.013 to +0.025 per
+Congress). In tone the opposition effect is +0.07 to +0.14 in all four. House
+Democrats' tone follows House control: higher in every Congress they are in the
+House minority (0.33–0.59) than in any they hold it (0.25–0.31); seen in the
+table, not tested.
+
+---
+
 ## Labels
 
 A second pass that gives each speech a **speech type** and, for policy debate,
