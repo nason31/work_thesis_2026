@@ -1,9 +1,9 @@
-# Comments on Section 4.6 (Validation) under the proposed A5
+# Comments on Section 4.6 (Validation) under A5
 
 For Justus, on `Writing/Methodology.docx` (4.4–4.8 are identical in
 `Methodology_formatted.docx`). Comments only: each item quotes a sentence and
-says why it becomes wrong or unsupported if A5 (`docs/decisions.md`) is
-accepted. The text is not rewritten.
+says why it is wrong or unsupported now that A5 (`docs/decisions.md`) is
+accepted (2026-10-22). The text is not rewritten.
 
 Figures: run `20261018T122536Z` (d100k, DeepSeek alone), labels
 `20261017T182223Z`, from `results/metrics/validation_grid_20261018T122536Z.csv`,

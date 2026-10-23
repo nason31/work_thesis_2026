@@ -174,6 +174,23 @@ def test_each_presidential_term_gets_its_own_label() -> None:
     ]
 
 
+def test_four_year_terms_split_a_two_term_presidency() -> None:
+    """Bush and Obama served two terms each; the years keep the terms apart."""
+    frame = pd.DataFrame(
+        {"congress_number": [107, 108, 109, 114, 119], "party": ["D"] * 5}
+    )
+
+    out = add_presidency(frame)
+
+    assert out["presidential_term"].tolist() == [
+        "Bush 2001-2004",
+        "Bush 2001-2004",
+        "Bush 2005-2008",
+        "Obama 2013-2016",
+        "Trump 2025-2026",
+    ]
+
+
 def test_a_congress_without_a_known_president_is_an_error() -> None:
     with pytest.raises(KeyError, match="130"):
         add_presidency(pd.DataFrame({"congress_number": [130], "party": ["D"]}))

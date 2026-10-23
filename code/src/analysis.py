@@ -168,8 +168,38 @@ def _term_labels() -> dict[int, str]:
     return labels
 
 
+def _four_year_term_labels() -> dict[int, str]:
+    """Congress -> its four-year presidential term, e.g. "Obama 2013-2016".
+
+    A term is the two Congresses from one inauguration to the next: an odd
+    Congress, which begins in an inauguration year, and the even one after
+    it. The years tell a president's terms apart. A term the data cuts short
+    (the 119th alone) runs to the end of its last Congress.
+
+    Raises:
+        ValueError: a term's two Congresses have different presidents.
+    """
+    labels: dict[int, str] = {}
+    for _, group in groupby(sorted(PRESIDENTS_BY_CONGRESS), key=lambda c: (c + 1) // 2):
+        congresses = list(group)
+        names = {PRESIDENTS_BY_CONGRESS[c][0] for c in congresses}
+        if len(names) > 1:
+            raise ValueError(f"Congresses {congresses} form one term but have {names}")
+        (name,) = names
+        first = 1789 + 2 * (congresses[0] - 1)
+        last = 1789 + 2 * (congresses[-1] - 1) + 1
+        for congress in congresses:
+            labels[congress] = f"{name} {first}-{last}"
+    return labels
+
+
 def add_presidency(frame: pd.DataFrame) -> pd.DataFrame:
-    """Add ``president``, ``president_party``, ``term`` and ``in_opposition``.
+    """Add ``president``, ``president_party``, ``term``, ``presidential_term``
+    and ``in_opposition``.
+
+    ``term`` joins consecutive Congresses under one president (Bush
+    2001-2008); ``presidential_term`` is each four-year term (Bush 2001-2004,
+    Bush 2005-2008).
 
     Raises:
         KeyError: a Congress with no entry in PRESIDENTS_BY_CONGRESS.
@@ -185,6 +215,7 @@ def add_presidency(frame: pd.DataFrame) -> pd.DataFrame:
         lambda c: PRESIDENTS_BY_CONGRESS[c][1]
     )
     out["term"] = out["congress_number"].map(_term_labels())
+    out["presidential_term"] = out["congress_number"].map(_four_year_term_labels())
     out["in_opposition"] = out["party"] != out["president_party"]
     return out
 
@@ -631,8 +662,8 @@ def member_means(
     ``min_speeches`` of them: one speech is a noisy reading of a member (P5).
     ``nominate_dim1`` is constant over a career; ``nokken_poole_dim1`` varies by
     Congress, so it is averaged over the member's speeches. A party switcher
-    appears once per party. Exploratory -- the unit of the validation is still
-    open (O9).
+    appears once per party. Exploratory, a career-level view: the validation
+    the thesis reports is member x Congress (A5, `validation_design`).
     """
     data = frame[frame["in_validation"]]
     members = (

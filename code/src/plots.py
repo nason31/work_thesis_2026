@@ -108,13 +108,14 @@ def shade_presidencies(ax, congresses: list[int], names: bool = True) -> None:
         )
 
 
-def mark_source_break(ax, label: bool = True) -> None:
+def mark_source_break(ax, label: bool = True, x: float = SOURCE_BREAK_CONGRESS) -> None:
     """Dashed line at the 114th Congress, where Stanford hands over to govinfo.
 
-    ``label=False`` leaves out the text, for small panels.
+    ``label=False`` leaves out the text, for small panels. ``x`` places the
+    line on an axis that is not in Congresses (e.g. presidential terms).
     """
     ax.plot(
-        [SOURCE_BREAK_CONGRESS, SOURCE_BREAK_CONGRESS],
+        [x, x],
         [0, 1],
         transform=ax.get_xaxis_transform(),
         color=INK_MUTED,
@@ -125,7 +126,7 @@ def mark_source_break(ax, label: bool = True) -> None:
     if not label:
         return
     ax.text(
-        SOURCE_BREAK_CONGRESS + 0.12,
+        x + 0.12,
         0.02,
         "source change\n2016-09-10",
         transform=ax.get_xaxis_transform(),
@@ -223,6 +224,64 @@ def plot_party_positions(
     return fig
 
 
+def plot_party_positions_by_group(
+    cells: pd.DataFrame,
+    group: str,
+    ylabel: str,
+    title: str,
+    subtitle: str | None = None,
+    order: Sequence[str] = (),
+    ylim: tuple[float, float] | None = None,
+) -> Figure:
+    """Each party's mean per Congress, one row per value of ``group``; House | Senate.
+
+    ``cells`` is `analysis.cell_means` by Congress, chamber, ``group`` and
+    party. All panels share one y-axis, so the rows compare directly; each marks
+    the source break and shades the presidencies (named on the top row only).
+    """
+    groups = list(order) or sorted(cells[group].unique())
+    congresses = sorted(cells["congress_number"].unique())
+    height = 3.2 * len(groups) + 1.0
+    fig, axes = plt.subplots(
+        len(groups), 2, figsize=(12, height), sharex=True, sharey=True,
+        facecolor=SURFACE, squeeze=False,
+    )  # fmt: skip
+    fig.suptitle(title, x=0.01, ha="left", va="top", fontsize=12, color=INK, y=0.998)
+    if subtitle:
+        fig.text(
+            0.01, 1 - 0.42 / height, subtitle, ha="left", va="top", fontsize=8.5,
+            color=INK_SECONDARY,
+        )  # fmt: skip
+    for row, value in enumerate(groups):
+        for ax, (chamber, name) in zip(axes[row], CHAMBERS):
+            _style(ax)
+            shade_presidencies(ax, congresses, names=row == 0)
+            for party in ("D", "R"):
+                data = cells[
+                    (cells["chamber"] == chamber)
+                    & (cells["party"] == party)
+                    & (cells[group] == value)
+                ]
+                if not data.empty:
+                    _series(ax, data, "congress_number", "mean",
+                            PARTY_COLORS[party], PARTY_NAMES[party])  # fmt: skip
+            mark_source_break(ax, label=row == len(groups) - 1)
+            ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+            _congress_axis(ax, congresses)
+            if row < len(groups) - 1:
+                ax.set_xlabel("")
+            if ylim:
+                ax.set_ylim(*ylim)
+            ax.set_title(f"{name} · {value}", loc="left", fontsize=10, color=INK,
+                         pad=14 if row == 0 else 6)  # fmt: skip
+        axes[row][0].set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
+    axes[0][1].legend(
+        frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
+    )
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.6 / height))
+    return fig
+
+
 def plot_gap(gaps: pd.DataFrame, title: str, subtitle: str | None = None) -> Figure:
     """R - D per Congress with 95% intervals; House | Senate, one series each."""
     fig, axes = _panels(title, subtitle, "Party gap (R − D)")
@@ -293,6 +352,79 @@ def plot_member_validation(
     if subtitle:
         fig.text(0.02, 0.935, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY)
     ax.legend(frameon=False, fontsize=8, loc="upper left")
+    return fig
+
+
+#: The two rows of `plot_validation`: which columns are drawn, how the r on
+#: the panel is labelled, and which `design_row` statistic it shows.
+VALIDATION_ROWS = (
+    (
+        "score", "bench", "Across parties", "overall_pearson",
+        "Member's mean ideology score", "Nokken-Poole (DW-NOMINATE dim. 1, per Congress)",
+    ),
+    (
+        "score_within", "bench_within", "Within party × chamber × Congress", "within_cell_pearson",
+        "Score relative to party, chamber, Congress", "Nokken-Poole relative to party, chamber, Congress",
+    ),
+)  # fmt: skip
+
+
+def plot_validation(
+    units_by_set: Mapping[str, pd.DataFrame],
+    results_by_set: Mapping[str, Mapping[str, float]],
+    title: str,
+    subtitle: str | None = None,
+) -> Figure:
+    """Member x Congress units against DW-NOMINATE, one column per speech set.
+
+    Top row: each unit's mean score against its benchmark, both parties -- the
+    party gap dominates it. Bottom row: both taken relative to the unit's
+    party x chamber x Congress cell, the validation the thesis reports (A5).
+    ``units_by_set`` holds `validation_design.within_cell` tables (``party``,
+    ``score``, ``bench``, ``score_within``, ``bench_within``); ``results_by_set``
+    the matching `validation_design.design_row` results. The r written on each
+    panel is that result's, with its member-bootstrap interval -- not one
+    recomputed here, so the figure and the reported number cannot drift apart.
+    """
+    n = len(units_by_set)
+    fig, axes = plt.subplots(
+        2, n, figsize=(5.8 * n, 10), sharex="row", sharey="row", facecolor=SURFACE,
+        squeeze=False,
+    )  # fmt: skip
+    fig.suptitle(title, x=0.01, ha="left", va="top", fontsize=12, color=INK, y=0.998)
+    if subtitle:
+        fig.text(
+            0.01, 0.972, subtitle, ha="left", va="top", fontsize=8.5,
+            color=INK_SECONDARY,
+        )  # fmt: skip
+    for col, (name, units) in enumerate(units_by_set.items()):
+        result = results_by_set[name]
+        for row, (y, x, label, stat, ylabel, xlabel) in enumerate(VALIDATION_ROWS):
+            ax = axes[row][col]
+            _style(ax)
+            ax.grid(axis="x", color=GRID, linewidth=0.6)
+            for party in ("D", "R"):
+                data = units[units["party"] == party]
+                ax.scatter(
+                    data[x], data[y], s=9, color=PARTY_COLORS[party], alpha=0.45,
+                    linewidth=0, label=f"{PARTY_NAMES[party]} ({len(data):,} units)",
+                    zorder=2,
+                )  # fmt: skip
+            ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
+            ax.axvline(0, color=BASELINE, linewidth=0.8, zorder=1)
+            ax.set_title(name, loc="left", fontsize=10, color=INK, pad=8)
+            ax.text(
+                0.02, 0.98,
+                f"{label}\nr = {result[stat]:+.2f} "
+                f"[{result[f'{stat}_ci_low']:+.2f}, {result[f'{stat}_ci_high']:+.2f}]",
+                transform=ax.transAxes, va="top", fontsize=8.5, color=INK,
+            )  # fmt: skip
+            ax.set_xlabel(xlabel, color=INK_SECONDARY, fontsize=8)
+            if col == 0:
+                ax.set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
+            if row == 0:
+                ax.legend(frameon=False, fontsize=8, loc="lower right", markerscale=1.6)
+    fig.tight_layout(rect=(0, 0, 1, 0.935))
     return fig
 
 
@@ -578,13 +710,20 @@ def plot_group_means(
     ylabel: str,
     subtitle: str | None = None,
     order: Sequence[str] = (),
+    ticklabels: Mapping[str, str] | None = None,
+    source_break: float | None = None,
 ) -> Figure:
     """Means per group with 95% intervals, one series per party; House | Senate.
 
     ``table`` is `analysis.cell_means` by chamber, party and ``group``; groups
-    run along x in ``order``. Not a time series, so no source break: each
-    point pools every Congress. The parties are set slightly apart so their
-    intervals do not overlap on the page.
+    run along x in ``order``. The parties are set slightly apart so their
+    intervals do not overlap on the page. ``ticklabels`` maps a group to a
+    shorter tick label (a group it leaves out keeps its name).
+
+    Groups that pool every Congress (age, tenure) are not a time series and
+    get no source break. Groups in time order (presidential terms) are, and
+    ``source_break`` gives the x position of the 2016-09-10 break, the first
+    group at 0.
     """
     groups = list(order) or sorted(table[group].unique())
     x = {value: i for i, value in enumerate(groups)}
@@ -608,8 +747,14 @@ def plot_group_means(
                     markeredgecolor=SURFACE, markeredgewidth=0.8,
                     label=PARTY_NAMES[party], zorder=3)  # fmt: skip
         ax.set_xticks(list(x.values()))
-        ax.set_xticklabels(groups, fontsize=8, color=INK_SECONDARY)
+        ax.set_xticklabels(
+            [(ticklabels or {}).get(g, g) for g in groups],
+            fontsize=8,
+            color=INK_SECONDARY,
+        )
         ax.set_xlim(-0.5, len(groups) - 0.5)
+        if source_break is not None:
+            mark_source_break(ax, x=source_break)
     axes[0].set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
     axes[1].legend(frameon=False, fontsize=8, loc="upper left",
                    bbox_to_anchor=(1.0, 1.0))  # fmt: skip

@@ -9,14 +9,15 @@ Needs the run's per-model files in results/scores/, the merged corpus
 (`make corpus`) and the member crosswalk (`make crosswalk`). Makes no API
 calls. Writes results/metrics/validation_<run>.json.
 
-Every combination is reported, because the choices are still open (O9): the
-ensemble and each model; nominate_dim1 and nokken_poole_dim1; all speeches and
-non-procedural ones; both parties together and each alone. Read the
-within-party rows first -- across parties, r mostly re-measures the party gap.
+Every combination is reported at speech level: the ensemble and each model;
+nominate_dim1 and nokken_poole_dim1; all speeches and non-procedural ones;
+both parties together and each alone. Read the within-party rows first --
+across parties, r mostly re-measures the party gap.
 
-Speech level only, and its intervals treat speeches as independent, which
-overstates the evidence (A1). For member units and intervals from a bootstrap
-over members, use validation_grid.py (A5).
+This is the speech-level view, not the thesis's headline. Its intervals treat
+speeches as independent, which overstates the evidence (A1), so do not quote
+them. The headline (A5: member x Congress, within cells, intervals from a
+bootstrap over members) comes from validation_grid.py.
 
 All logic lives in code/src/validation.py; this is only the command line around it.
 """
