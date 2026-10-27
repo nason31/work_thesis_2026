@@ -816,6 +816,33 @@ not dollars); relying on S5's prompt alone (it guards one script).
 
 ---
 
+### E8 — Raw scoring output in `results/scores/` is committed
+**Date:** 2026-10-27 · **Status:** active · reverses the original
+`.gitignore` rule that kept `results/scores/` local
+
+All score files go into git: the pilot, S8 and `d100k` per-model and ensemble
+JSONL files and their manifests, 17 files and 92 MB. Each record holds a
+`speech_id`, the scores, the model's reasoning and token counts; no speech text
+and no keys.
+
+**Why:** the analysis notebooks and the validation scripts read these files, and
+the runs cannot be repeated (S13: S8 is never re-scored; S18: DeepSeek has since
+been repointed). A copy in git means every teammate gets them with a clone, at
+the same commit as the code that reads them.
+
+**Limits:** GitHub refuses a file over 100 MB and warns over 50 MB;
+`d100k_deepseek-flash_20261018T122536Z.jsonl` is 67 MB. A file in history stays
+in every clone even if it is later deleted. A future run whose files pass
+100 MB cannot be committed as is and needs a new decision.
+
+**Rejected:** Git LFS (not installed here, and the free tier's 1 GB a month of
+bandwidth is shared by every clone on the team); gzipping the files (the code
+reads `.jsonl`, so every reader would change); keeping them on the team drive
+only (the earlier rule, which leaves teammates without the inputs the notebooks
+need).
+
+---
+
 ## Scoring
 
 ### S1 — Pilot sample: 200 speeches, stratified party × Congress, seed 42

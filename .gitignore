@@ -230,10 +230,9 @@ data/processed/**
 !data/**/
 !data/**/.gitkeep
 
-# Raw per-model LLM outputs can reach GBs — keep locally / in shared storage.
-# Aggregated metrics and plots in results/ ARE committed on purpose.
-results/scores/**
-# Raw per-call speech labels, likewise (docs/decisions.md L5). The label
+# Raw per-model LLM outputs in results/scores/ ARE committed (docs/decisions.md
+# E8): 92 MB in total, largest file 67 MB. GitHub refuses any file over 100 MB.
+# Raw per-call speech labels are not (docs/decisions.md L5). The label
 # summaries in results/metrics/ are committed.
 results/labels/**
 !results/**/

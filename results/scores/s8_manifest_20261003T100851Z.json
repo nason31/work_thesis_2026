@@ -1,0 +1,117 @@
+{
+  "timestamp": "20261003T100851Z",
+  "label": "s8",
+  "corpus_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+  "corpus_sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704",
+  "prompt_template": "You are a political science researcher analyzing U.S. congressional floor speeches.\n\nScore the following speech on two dimensions:\n\nIDEOLOGY \u2014 the political position expressed in this speech on a left-right spectrum.\n  -1.0 = strongly liberal (e.g. expanding government programs, progressive\n          taxation, social justice, environmental regulation)\n   0.0 = centrist, non-ideological, or purely procedural\n  +1.0 = strongly conservative (e.g. limited government, free markets,\n          traditional values, deregulation, strong national defense)\n\nTONE \u2014 the emotional hostility or partisan combativeness of the language.\n  0.0 = neutral, collegial, non-adversarial\n  1.0 = highly hostile, combative, or inflammatory\n\nRules:\n- Base your scores solely on the content of the speech \u2014 not on any\n  assumptions about who the speaker might be\n- If the speech is purely procedural (e.g. a parliamentary motion, reading\n  a bill title), set both scores to 0.0\n- Scores must be floats within their stated ranges\n\nReturn only a JSON object with this exact structure:\n{\n  \"ideology_score\": <float between -1.0 and 1.0>,\n  \"tone_score\": <float between 0.0 and 1.0>,\n  \"reasoning\": \"<1-2 sentences explaining the ideology score>\"\n}\n\nSPEECH:\n{speech_text}\n",
+  "models": {
+    "deepseek-reasoner": {
+      "model": "deepseek-reasoner",
+      "provider": "openai_compatible",
+      "effective_temperature": "provider default",
+      "max_output_tokens": 8192
+    },
+    "gpt-4o-2024-11-20": {
+      "model": "gpt-4o-2024-11-20",
+      "provider": "openai_compatible",
+      "effective_temperature": "provider default",
+      "max_output_tokens": 1024
+    },
+    "claude-sonnet-4-6": {
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "effective_temperature": "provider default",
+      "max_output_tokens": 1024
+    }
+  },
+  "random_seed": 42,
+  "min_word_count": 50,
+  "stratify_by": [
+    "congress_number",
+    "party",
+    "chamber"
+  ],
+  "prompt_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/code/src/prompts/score_speech.txt",
+  "stages": [
+    {
+      "stage": 1,
+      "started_at": "2026-10-03T10:09:15+00:00",
+      "per_cell": 4,
+      "requested_sample_size": null,
+      "speeches_in_sample": 208,
+      "speeches_to_score": 208,
+      "calls_planned": 624,
+      "retries_planned": 0,
+      "cost_estimate": {
+        "speeches": 208,
+        "calls": 624,
+        "tiktoken_input_tokens": 201291,
+        "per_model": {
+          "deepseek-reasoner": {
+            "speeches": 208,
+            "length_ratio_vs_pilot": 1.071,
+            "prompt_tokens": 206482,
+            "completion_tokens": 117856,
+            "cost_usd": 0.37166973999999997
+          },
+          "gpt-4o-2024-11-20": {
+            "speeches": 208,
+            "length_ratio_vs_pilot": 1.071,
+            "prompt_tokens": 202539,
+            "completion_tokens": 15395,
+            "cost_usd": 0.6602975
+          },
+          "claude-sonnet-4-6": {
+            "speeches": 208,
+            "length_ratio_vs_pilot": 1.071,
+            "prompt_tokens": 261155,
+            "completion_tokens": 20875,
+            "cost_usd": 1.09659
+          }
+        },
+        "estimated_total_usd": 2.12855724
+      }
+    },
+    {
+      "stage": 2,
+      "started_at": "2026-10-03T10:38:32+00:00",
+      "per_cell": 4,
+      "requested_sample_size": null,
+      "speeches_in_sample": 208,
+      "speeches_to_score": 62,
+      "calls_planned": 186,
+      "retries_planned": 0,
+      "cost_estimate": {
+        "speeches": 62,
+        "calls": 186,
+        "tiktoken_input_tokens": 59793,
+        "per_model": {
+          "deepseek-reasoner": {
+            "speeches": 62,
+            "length_ratio_vs_pilot": 1.067,
+            "prompt_tokens": 61335,
+            "completion_tokens": 35009,
+            "cost_usd": 0.11040396
+          },
+          "gpt-4o-2024-11-20": {
+            "speeches": 62,
+            "length_ratio_vs_pilot": 1.067,
+            "prompt_tokens": 60164,
+            "completion_tokens": 4573,
+            "cost_usd": 0.19614
+          },
+          "claude-sonnet-4-6": {
+            "speeches": 62,
+            "length_ratio_vs_pilot": 1.067,
+            "prompt_tokens": 77575,
+            "completion_tokens": 6201,
+            "cost_usd": 0.32574
+          }
+        },
+        "estimated_total_usd": 0.63228396
+      }
+    }
+  ],
+  "per_cell": 4,
+  "sample_size": 208
+}

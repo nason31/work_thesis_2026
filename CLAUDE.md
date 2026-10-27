@@ -478,7 +478,7 @@ work_thesis_2026/
 ├── results/
 │   ├── plots/              ← all figures (named descriptively) — committed
 │   ├── metrics/            ← tables, evaluation summaries (CSV/JSON) — committed
-│   ├── scores/             ← raw per-model LLM output — git-ignored (large)
+│   ├── scores/             ← raw per-model LLM output — committed (E8; GitHub refuses files > 100 MB)
 │   └── labels/             ← raw per-call speech labels — git-ignored
 ├── docs/
 │   └── notes/              ← meeting notes, design decisions, ideas

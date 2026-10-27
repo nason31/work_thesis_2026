@@ -1,0 +1,37 @@
+{
+  "timestamp": "20260923T103556Z",
+  "corpus_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+  "sample_size": 200,
+  "random_seed": 42,
+  "min_word_count": 50,
+  "models": {
+    "deepseek-reasoner": {
+      "model": "deepseek-reasoner",
+      "provider": "openai_compatible",
+      "effective_temperature": "provider default"
+    },
+    "gpt-4o-2024-11-20": {
+      "model": "gpt-4o-2024-11-20",
+      "provider": "openai_compatible",
+      "effective_temperature": "provider default"
+    },
+    "claude-sonnet-4-6": {
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "effective_temperature": "provider default"
+    }
+  },
+  "prompt_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/code/src/prompts/score_speech.txt",
+  "prompt_template": "You are a political science researcher analyzing U.S. congressional floor speeches.\n\nScore the following speech on two dimensions:\n\nIDEOLOGY \u2014 the political position expressed in this speech on a left-right spectrum.\n  -1.0 = strongly liberal (e.g. expanding government programs, progressive\n          taxation, social justice, environmental regulation)\n   0.0 = centrist, non-ideological, or purely procedural\n  +1.0 = strongly conservative (e.g. limited government, free markets,\n          traditional values, deregulation, strong national defense)\n\nTONE \u2014 the emotional hostility or partisan combativeness of the language.\n  0.0 = neutral, collegial, non-adversarial\n  1.0 = highly hostile, combative, or inflammatory\n\nRules:\n- Base your scores solely on the content of the speech \u2014 not on any\n  assumptions about who the speaker might be\n- If the speech is purely procedural (e.g. a parliamentary motion, reading\n  a bill title), set both scores to 0.0\n- Scores must be floats within their stated ranges\n\nReturn only a JSON object with this exact structure:\n{\n  \"ideology_score\": <float between -1.0 and 1.0>,\n  \"tone_score\": <float between 0.0 and 1.0>,\n  \"reasoning\": \"<1-2 sentences explaining the ideology score>\"\n}\n\nSPEECH:\n{speech_text}\n",
+  "cost_estimate": {
+    "speeches": 200,
+    "prompt_tokens_per_model": 180702,
+    "assumed_completion_tokens_per_model": 50000,
+    "estimated_cost_usd": {
+      "deepseek-reasoner": 0.20888610000000002,
+      "gpt-4o-2024-11-20": 0.951755,
+      "claude-sonnet-4-6": 1.292106
+    },
+    "estimated_total_usd": 2.4527471
+  }
+}

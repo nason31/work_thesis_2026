@@ -77,7 +77,7 @@ data/
 results/
   plots/        figures (committed)
   metrics/      tables, evaluation summaries (committed)
-  scores/       raw per-model LLM output (git-ignored, can get large)
+  scores/       raw per-model LLM output (committed, decisions.md E8)
 docs/notes/     meeting notes, design decisions
 thesis/
   chapters/     01_introduction … 07_conclusion
