@@ -479,7 +479,7 @@ work_thesis_2026/
 │   ├── plots/              ← all figures (named descriptively) — committed
 │   ├── metrics/            ← tables, evaluation summaries (CSV/JSON) — committed
 │   ├── scores/             ← raw per-model LLM output — committed (E8; GitHub refuses files > 100 MB)
-│   └── labels/             ← raw per-call speech labels — git-ignored
+│   └── labels/             ← raw per-call speech labels — committed (E9)
 ├── docs/
 │   └── notes/              ← meeting notes, design decisions, ideas
 └── thesis/
@@ -495,7 +495,8 @@ work_thesis_2026/
 - Figures used in the thesis go to `thesis/figures/` (copy from `results/plots/`)
 - Notebooks are for exploration only — production logic belongs in `code/src/`
 - Raw per-model LLM output goes to `results/scores/` before any aggregation
-- Empty folders are held in git by `.gitkeep`; data and model outputs are not committed
+- Empty folders are held in git by `.gitkeep`; data is not committed, raw model
+  output in `results/scores/` and `results/labels/` is (E8, E9)
 
 ---
 

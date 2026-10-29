@@ -78,6 +78,7 @@ results/
   plots/        figures (committed)
   metrics/      tables, evaluation summaries (committed)
   scores/       raw per-model LLM output (committed, decisions.md E8)
+  labels/       raw per-call speech labels (committed, decisions.md E9)
 docs/notes/     meeting notes, design decisions
 thesis/
   chapters/     01_introduction … 07_conclusion

@@ -79,7 +79,7 @@ CROSSWALK_PATH: Path = PROCESSED_DIR / "member_crosswalk.parquet"
 RESULTS_DIR: Path = REPO_ROOT / "results"
 PLOTS_DIR: Path = RESULTS_DIR / "plots"  # committed
 METRICS_DIR: Path = RESULTS_DIR / "metrics"  # committed
-SCORES_DIR: Path = RESULTS_DIR / "scores"  # raw per-model LLM output, git-ignored
+SCORES_DIR: Path = RESULTS_DIR / "scores"  # raw per-model LLM output, committed (E8)
 
 # Corpus build statistics (row counts, drop counts, distributions). Committed,
 # so the numbers quoted in the methodology chapter have a traceable source.
@@ -427,7 +427,7 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 # Codebook prompt, loaded and logged verbatim with every label run.
 LABEL_PROMPT_PATH: Path = PROMPTS_DIR / "label_speech.txt"
 
-# Raw per-call labels, one file per run and model -- git-ignored like SCORES_DIR.
+# Raw per-call labels, one file per run and model -- committed like SCORES_DIR (E9).
 LABELS_DIR: Path = RESULTS_DIR / "labels"
 
 # Hand-coding sheets for the label check. Git-ignored (under data/processed/):

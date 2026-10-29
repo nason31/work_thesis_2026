@@ -1,0 +1,165 @@
+{
+  "timestamp": "20261017T182223Z",
+  "label": "s8",
+  "model": "deepseek-flash",
+  "codebook_version": "v1",
+  "codebook": {
+    "speech_types": [
+      "procedural",
+      "ceremonial",
+      "bill_introduction",
+      "constituent_local",
+      "policy_debate",
+      "other"
+    ],
+    "topics": [
+      "economy_tax_budget",
+      "health",
+      "welfare_labor",
+      "immigration",
+      "social_cultural",
+      "education",
+      "environment_energy",
+      "law_crime",
+      "defense_foreign",
+      "government_process",
+      "other_policy"
+    ]
+  },
+  "prompt_sha256": "8dbf5f1c391cd5942d33a3750f37c16441225cf9a6a67df3411fd5685d5eed54",
+  "corpus_sha256": "f49c7bb2dca17d037ccdbf33b27baf0f73805db943c1400e627694f36a241704",
+  "models": {
+    "deepseek-flash": {
+      "model": "deepseek-flash",
+      "provider": "openai_compatible",
+      "effective_temperature": "provider default",
+      "max_output_tokens": 256,
+      "request_options": {
+        "extra_body": {
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      }
+    }
+  },
+  "prompt_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/code/src/prompts/label_speech.txt",
+  "prompt_template": "You are a political science researcher coding U.S. congressional floor speeches by type and subject.\n\nRead the speech and answer two questions in order.\n\nQUESTION 1: SPEECH TYPE. Choose exactly one:\n  procedural         Parliamentary business: motions, unanimous consent requests, scheduling, yielding time, quorum calls, reading a bill title.\n  ceremonial         Tributes, memorials, congratulations, honors for people, teams or organizations, anniversaries and commemorations.\n  bill_introduction  Announces or describes a bill, resolution, amendment or committee report without mainly arguing a wider policy case.\n  constituent_local  Casework or items specific to one district or state (a local project, a local event, naming a post office) without a wider policy argument.\n  policy_debate      Argues, explains or debates a policy, legislation, a nomination, an investigation or a political issue.\n  other              Fits none of the above.\n\nQUESTION 2: TOPIC. Only if speech_type is policy_debate. Otherwise use null. Choose the one subject that takes up most of the speech:\n  economy_tax_budget  taxes, budget, deficits, debt, federal spending and appropriations, stimulus, banking and financial regulation, jobs and growth\n  health              health care, health insurance, Medicare, Medicaid, public health, drug prices\n  welfare_labor       Social Security, welfare, food assistance, minimum wage, unions, unemployment, pensions\n  immigration         border control, visas, asylum, citizenship, deportation, refugees\n  social_cultural     abortion, civil rights and discrimination, voting rights as a civil-rights matter, LGBT issues, religion, guns\n  education           schools, higher education, student loans\n  environment_energy  climate, pollution, energy production and energy regulation\n  law_crime           policing, criminal justice, crime, drug enforcement\n  defense_foreign     military, wars, national security, terrorism, foreign policy, international affairs\n  government_process  how government and politics work: nominations, filibuster and Senate rules, investigations and oversight, impeachment, election administration, campaign finance, redistricting, congressional conduct\n  other_policy        any other policy area (agriculture, transport, housing, science and technology, trade, public lands and similar)\n\nRules:\n- Label what the speech is ABOUT, not which position it takes. The speaker's stance or tone must not influence the label.\n- Base your answer solely on the text of the speech.\n- If several topics appear, choose the one with the most space. If they are truly even, choose the one named first.\n- Use exactly the label strings above.\n\nReturn only a JSON object with this exact structure:\n{\n  \"speech_type\": \"<one of the six types>\",\n  \"topic\": \"<one of the eleven topics, or null>\",\n  \"reason\": \"<at most 15 words>\"\n}\n\nSPEECH:\n{speech_text}\n",
+  "corpus_path": "/Users/justus/Desktop/Master Thesis/Thesis Code/work_thesis_2026/data/processed/corpus.parquet",
+  "pricing": {
+    "deepseek-flash": {
+      "input": 0.3,
+      "output": 1.2
+    }
+  },
+  "random_seed": 42,
+  "stages": [
+    {
+      "stage": 1,
+      "started_at": "2026-10-17T18:22:24+00:00",
+      "selection": {
+        "from_run": "20261003T110419Z",
+        "ids_file": null,
+        "limit": 200,
+        "strata": [
+          "chamber",
+          "source"
+        ],
+        "seed": 42
+      },
+      "speeches_in_selection": 200,
+      "ids_sha256": "c760d64171f9f06c199d7a3ef94175bfedabc463f36008512d7818658f2267d5",
+      "speeches_to_label": 200,
+      "call_timeout_seconds": 300.0,
+      "cost_estimate": {
+        "speeches": 200,
+        "prompt_tokens": 242627,
+        "completion_tokens": 9000,
+        "cost_usd": 0.08358809999999998,
+        "cost_per_1000_speeches_usd": 0.4179404999999999
+      }
+    },
+    {
+      "stage": 2,
+      "started_at": "2026-10-17T18:37:09+00:00",
+      "selection": {
+        "from_run": "20261003T110419Z",
+        "ids_file": null,
+        "limit": null
+      },
+      "speeches_in_selection": 5200,
+      "ids_sha256": "1e97b1a7debc69762d8d62c8792e99628c8c930132aad1076280defb316aaae7",
+      "speeches_to_label": 5000,
+      "call_timeout_seconds": 300.0,
+      "cost_estimate": {
+        "speeches": 5000,
+        "prompt_tokens": 6273578,
+        "completion_tokens": 225000,
+        "cost_usd": 2.1520734,
+        "cost_per_1000_speeches_usd": 0.43041468
+      }
+    },
+    {
+      "stage": 3,
+      "started_at": "2026-10-18T11:59:17+00:00",
+      "selection": {
+        "from_run": "20261003T110419Z",
+        "ids_file": null,
+        "limit": null
+      },
+      "speeches_in_selection": 5200,
+      "ids_sha256": "1e97b1a7debc69762d8d62c8792e99628c8c930132aad1076280defb316aaae7",
+      "speeches_to_label": 7,
+      "call_timeout_seconds": 300.0,
+      "cost_estimate": {
+        "speeches": 7,
+        "prompt_tokens": 11518,
+        "completion_tokens": 315,
+        "cost_usd": 0.0038334000000000003,
+        "cost_per_1000_speeches_usd": 0.5476285714285715
+      }
+    },
+    {
+      "stage": 4,
+      "started_at": "2026-10-19T05:16:57+00:00",
+      "selection": {
+        "from_run": "20261018T122536Z",
+        "ids_file": null,
+        "limit": null
+      },
+      "speeches_in_selection": 99996,
+      "ids_sha256": "391bbc6a82dfc8c0c9bb5cdc613cfc9ed14ff25af0952f95b3d0e1fa3e59d625",
+      "speeches_to_label": 94797,
+      "call_timeout_seconds": 300.0,
+      "concurrency": 10,
+      "cost_estimate": {
+        "speeches": 94797,
+        "prompt_tokens": 118791820,
+        "completion_tokens": 4265865,
+        "cost_usd": 40.756584,
+        "cost_per_1000_speeches_usd": 0.429935377701826
+      }
+    },
+    {
+      "stage": 5,
+      "started_at": "2026-10-19T17:40:00+00:00",
+      "selection": {
+        "from_run": "20261018T122536Z",
+        "ids_file": null,
+        "limit": null
+      },
+      "speeches_in_selection": 99996,
+      "ids_sha256": "391bbc6a82dfc8c0c9bb5cdc613cfc9ed14ff25af0952f95b3d0e1fa3e59d625",
+      "speeches_to_label": 188,
+      "call_timeout_seconds": 300.0,
+      "concurrency": 10,
+      "cost_estimate": {
+        "speeches": 188,
+        "prompt_tokens": 252322,
+        "completion_tokens": 8460,
+        "cost_usd": 0.0858486,
+        "cost_per_1000_speeches_usd": 0.4566414893617021
+      }
+    }
+  ]
+}

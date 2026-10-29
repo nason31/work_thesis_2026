@@ -841,6 +841,31 @@ reads `.jsonl`, so every reader would change); keeping them on the team drive
 only (the earlier rule, which leaves teammates without the inputs the notebooks
 need).
 
+### E9 — Raw label output in `results/labels/` is committed
+**Date:** 2026-10-29 · **Status:** active · **Decided by:** Justus · reverses
+the part of [L5] that kept `results/labels/` git-ignored
+
+The label run `20261017T182223Z` goes into git: its manifest and its
+`label_s8_deepseek-flash_…jsonl`, 100,192 attempts covering the S8 and `d100k`
+speeches, 42 MB. Each record holds a `speech_id`, the speech type and topic, a
+reason of at most 15 words, token counts, served model and fingerprint; no
+speech text and no keys. The manifest holds the prompt text and local paths,
+as the score manifests do.
+
+**Why:** the same as [E8]. Notebooks 06 and 07 read the labels, and they decide
+which speeches the analysis keeps ([A3]), so a clone without them cannot
+reproduce a single figure. A re-run would be a new paid API run ([E7]) and need
+not give the same labels, since DeepSeek is repointed in place ([S18]). The
+trigger: on 2026-10-29 Konsti had the scores from git but no labels, and they
+had to be sent by hand.
+
+**Limits:** as [E8]. With the scores, `results/` now holds 134 MB of raw model
+output in git. A label file over 100 MB cannot be committed as is and needs a
+new decision.
+
+**Rejected:** sending the labels on the team drive only (the [L5] rule, which
+is what left Konsti without them); Git LFS (as [E8]).
+
 ---
 
 ## Scoring
@@ -2427,8 +2452,9 @@ and labels, prompt path, hash and full text, corpus path and hash, per-model
 settings and pricing, seed, and per stage the selection, id count and id-list
 hash. `results/metrics/label_summary_<label>_<run>.json` holds counts, shares,
 failures, tokens, cost, served models and fingerprints. `results/labels/` is
-git-ignored like `results/scores/`. A resume labels only speeches without valid
-labels and **refuses** if the codebook version, the codebook labels, the
+committed ([E9]; git-ignored until 2026-10-29). A resume labels only
+speeches without valid labels and **refuses** if the codebook version, the
+codebook labels, the
 prompt hash, the corpus hash or the model's settings changed, or if a new
 selection drops speeches already labelled. A bare `--resume` repeats the last
 selection and refuses if its ids changed (e.g. an edited ids file).

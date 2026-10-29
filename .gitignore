@@ -230,13 +230,9 @@ data/processed/**
 !data/**/
 !data/**/.gitkeep
 
-# Raw per-model LLM outputs in results/scores/ ARE committed (docs/decisions.md
-# E8): 92 MB in total, largest file 67 MB. GitHub refuses any file over 100 MB.
-# Raw per-call speech labels are not (docs/decisions.md L5). The label
-# summaries in results/metrics/ are committed.
-results/labels/**
-!results/**/
-!results/**/.gitkeep
+# Raw LLM output in results/ IS committed: per-model scores in results/scores/
+# (docs/decisions.md E8, 92 MB) and per-call speech labels in results/labels/
+# (E9, 42 MB). Largest file 67 MB; GitHub refuses any file over 100 MB.
 
 # LaTeX build artifacts
 *.aux
