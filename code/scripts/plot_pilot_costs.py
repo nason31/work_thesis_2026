@@ -1,7 +1,7 @@
-"""Figure: what the two three-model pilots (P1: 200 speeches, P6: 208) cost per model.
+"""Figure: what the 208-speech three-model pilot (P6, run 20261003T100851Z) cost per model.
 
-Reads only the committed pilot summaries; no API calls. Costs are at the prices
-configured when each pilot ran, so DeepSeek is overstated in P6 (docs/decisions.md M3b).
+Reads only the committed run summary; no API calls. Costs are at the prices
+configured when the pilot ran, so DeepSeek is overstated (docs/decisions.md M3b).
 """
 import json
 import sys
@@ -17,7 +17,7 @@ from src.plots import (  # noqa: E402
 )
 
 METRICS = ROOT / "results" / "metrics"
-RUNS = ("pilot_summary_20260923T103556Z.json", "s8_summary_20261003T100851Z.json")
+RUNS = ("s8_summary_20261003T100851Z.json",)  # the 208-speech run keeps the s8 file prefix
 MODELS = (
     ("deepseek-reasoner", "DeepSeek", MODEL_PALETTE[0]),
     ("gpt-4o-2024-11-20", "GPT-4o", MODEL_PALETTE[1]),
@@ -48,8 +48,5 @@ for side in ("top", "right", "left"):
     ax.spines[side].set_visible(False)
 ax.spines["bottom"].set_color(BASELINE)
 fig.suptitle(f"What the {speeches} pilot speeches cost, by model", x=0.01, ha="left", color=INK)
-fig.text(0.01, 0.89, f"Total ${total:.2f}; each speech scored by all three models. Prices as configured "
-         "when each pilot ran;\nDeepSeek is overstated in the second pilot.",
-         ha="left", va="top", color=INK_SECONDARY, fontsize=8.5)
-fig.subplots_adjust(top=0.72)
+fig.subplots_adjust(top=0.86)
 print(save_figure(fig, "pilot_costs_by_model"), {k: round(v, 3) for k, v in cost.items()}, round(total, 3), speeches)

@@ -1,7 +1,6 @@
-"""Figure: how closely the three models agree on the 407 pilot speeches all three scored.
+"""Figure: how closely the three models agree on the 208 pilot speeches all three scored.
 
-Pairwise scatter of ideology scores (pilot 1: run 20260923T103556Z, pilot 2:
-20261003T100851Z). Reads the raw per-model scores in results/scores/ (on the
+Pairwise scatter of ideology scores (run 20261003T100851Z). Reads the raw per-model scores in results/scores/ (on the
 model-development branch); makes no API calls.
 
     python code/scripts/plot_pilot_agreement.py [--scores-dir DIR]
@@ -22,7 +21,6 @@ from src.plots import (  # noqa: E402
 )
 
 RUNS = (
-    ("pilot", "20260923T103556Z", {"deepseek-reasoner": "DeepSeek", "gpt-4o-2024-11-20": "GPT-4o", "claude-sonnet-4-6": "Sonnet 4.6"}),
     ("s8", "20261003T100851Z", {"deepseek-reasoner": "DeepSeek", "gpt-4o-2024-11-20": "GPT-4o", "claude-sonnet-4-6": "Sonnet 4.6"}),
 )
 NAMES = ("DeepSeek", "GPT-4o", "Sonnet 4.6")
@@ -46,7 +44,7 @@ for prefix, run, models in RUNS:
             frame = frame.join(part, how="inner")
     frames.append(frame)
 data = pd.concat(frames)
-assert data.index.is_unique, "the two pilots share a speech"
+assert data.index.is_unique
 
 fig, axes = plt.subplots(1, 3, figsize=(13, 4.6), facecolor=SURFACE, sharex=True, sharey=True)
 for ax, (x, y) in zip(axes, itertools.combinations(NAMES, 2)):
@@ -71,8 +69,5 @@ for ax, (x, y) in zip(axes, itertools.combinations(NAMES, 2)):
         ax.spines[side].set_color(BASELINE)
 axes[0].legend(loc="lower right", frameon=False)
 fig.suptitle("The three models score the pilot speeches almost alike", x=0.01, ha="left", color=INK)
-fig.text(0.01, 0.915, f"{len(data)} speeches scored by all three models (pilot 1: 199, pilot 2: 208). "
-         "Line = perfect agreement. Ideology from −1 liberal to +1 conservative. Preliminary.",
-         ha="left", color=INK_SECONDARY, fontsize=9)
-fig.subplots_adjust(top=0.82)
+fig.subplots_adjust(top=0.88)
 print(save_figure(fig, "pilot_model_agreement"))
