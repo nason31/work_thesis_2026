@@ -1,0 +1,9 @@
+chamber,party,term,n_members,n_identifying,n_speeches_identifying
+H,D,opposition,580,378,18013
+H,D,chamber_minority,580,357,18011
+H,R,opposition,695,402,15252
+H,R,chamber_minority,695,385,15253
+S,D,opposition,123,86,15790
+S,D,chamber_minority,123,102,16486
+S,R,opposition,132,85,13870
+S,R,chamber_minority,132,114,15805

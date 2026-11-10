@@ -1,0 +1,8 @@
+list,n_checked,n_correct,precision,status
+cooperation,50,43,0.86,used
+deficit,50,49,0.98,used
+other_party,50,49,0.98,used
+undo,50,48,0.96,used
+hostility,50,28,0.56,"failed, replaced by hostility_v2"
+presidential_power,50,18,0.36,"failed, dropped"
+hostility_v2,50,40,0.8,used

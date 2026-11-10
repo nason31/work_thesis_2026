@@ -1,0 +1,7 @@
+event,date,topics,congress_number,days,before_from,after_to,truncated,too_short
+9/11,2001-09-11,defense_foreign,107,182,2001-03-13,2002-03-12,False,False
+Iraq War,2003-03-20,defense_foreign,108,76,2003-01-03,2003-06-04,True,True
+Lehman collapse,2008-09-15,economy_tax_budget,110,110,2008-05-28,2009-01-03,True,False
+ACA signed,2010-03-23,health,111,182,2009-09-22,2010-09-21,False,False
+Covid emergency,2020-03-13,"health, economy_tax_budget",116,182,2019-09-13,2020-09-11,False,False
+Dobbs decision,2022-06-24,social_cultural,117,182,2021-12-24,2022-12-23,False,False

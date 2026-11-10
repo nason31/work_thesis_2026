@@ -1,0 +1,17 @@
+congress_number,senate_from,house_majority,senate_majority,president,president_party,constellation,note
+107,2001-01-03,R,D,Bush,R,one chamber,president as the constant gives the Congress; the outgoing president served to 20 January
+107,2001-01-20,R,R,Bush,R,unified,
+107,2001-06-06,R,D,Bush,R,one chamber,
+108,,R,R,Bush,R,unified,
+109,,R,R,Bush,R,unified,
+110,,D,D,Bush,R,none,
+111,,D,D,Obama,D,unified,
+112,,R,D,Obama,D,one chamber,
+113,,R,D,Obama,D,one chamber,
+114,,R,R,Obama,D,none,
+115,,R,R,Trump,R,unified,
+116,,D,R,Trump,R,one chamber,
+117,2021-01-03,D,R,Biden,D,one chamber,president as the constant gives the Congress; the outgoing president served to 20 January
+117,2021-01-20,D,D,Biden,D,unified,
+118,,R,D,Biden,D,one chamber,
+119,,R,R,Trump,R,unified,

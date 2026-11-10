@@ -1,0 +1,17 @@
+chamber,party,power_level,n,n_members,n_units,congresses,n_members_varying,small
+H,D,full power,2944,358,428,"111, 117",416,False
+H,D,White House only,6229,352,751,"112, 113, 114, 118",416,False
+H,D,chamber only,2994,370,444,"110, 116",416,False
+H,D,nothing,7762,457,944,"107, 108, 109, 115, 119",416,False
+H,R,full power,6747,574,1056,"107, 108, 109, 115, 119",459,False
+H,R,White House only,2803,333,369,"110, 116",459,False
+H,R,chamber only,5803,453,888,"112, 113, 114, 118",459,False
+H,R,nothing,2960,333,365,"111, 117",459,False
+S,D,full power,5574,98,275,"111, 112, 113, 117, 118",103,False
+S,D,White House only,1458,46,55,"114, 117",103,False
+S,D,chamber only,2076,66,103,"107, 110",103,False
+S,D,nothing,7684,110,287,"107, 108, 109, 115, 116, 119",103,False
+S,R,full power,5727,124,312,"107, 108, 109, 115, 116, 119",117,False
+S,R,White House only,2413,67,99,"107, 110",117,False
+S,R,chamber only,1035,56,63,"114, 117",117,False
+S,R,nothing,6912,90,234,"111, 112, 113, 117, 118",117,False
