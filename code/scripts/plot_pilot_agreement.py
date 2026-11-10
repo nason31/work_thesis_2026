@@ -5,6 +5,7 @@ model-development branch); makes no API calls.
 
     python code/scripts/plot_pilot_agreement.py [--scores-dir DIR]
 """
+
 import argparse
 import itertools
 import sys
@@ -13,15 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "code"))
 
-import matplotlib.pyplot as plt  # noqa: E402
-import pandas as pd  # noqa: E402
+import matplotlib.pyplot as plt
+import pandas as pd
 
-from src.plots import (  # noqa: E402
-    BASELINE, GRID, INK, INK_SECONDARY, PARTY_COLORS, PARTY_NAMES, SURFACE, save_figure,
+from src.plots import (
+    BASELINE,
+    GRID,
+    INK,
+    INK_SECONDARY,
+    PARTY_COLORS,
+    PARTY_NAMES,
+    SURFACE,
+    save_figure,
 )
 
 RUNS = (
-    ("s8", "20261003T100851Z", {"deepseek-reasoner": "DeepSeek", "gpt-4o-2024-11-20": "GPT-4o", "claude-sonnet-4-6": "Sonnet 4.6"}),
+    (
+        "s8",
+        "20261003T100851Z",
+        {
+            "deepseek-reasoner": "DeepSeek",
+            "gpt-4o-2024-11-20": "GPT-4o",
+            "claude-sonnet-4-6": "Sonnet 4.6",
+        },
+    ),
 )
 NAMES = ("DeepSeek", "GPT-4o", "Sonnet 4.6")
 
@@ -46,16 +62,33 @@ for prefix, run, models in RUNS:
 data = pd.concat(frames)
 assert data.index.is_unique
 
-fig, axes = plt.subplots(1, 3, figsize=(13, 4.6), facecolor=SURFACE, sharex=True, sharey=True)
+fig, axes = plt.subplots(
+    1, 3, figsize=(13, 4.6), facecolor=SURFACE, sharex=True, sharey=True
+)
 for ax, (x, y) in zip(axes, itertools.combinations(NAMES, 2)):
     ax.set_facecolor(SURFACE)
     ax.plot([-1, 1], [-1, 1], color=BASELINE, lw=1, zorder=1)
     for party in ("D", "R"):
         sub = data[data["party"] == party]
-        ax.scatter(sub[x], sub[y], s=16, alpha=0.5, color=PARTY_COLORS[party],
-                   edgecolor="none", label=PARTY_NAMES[party], zorder=2)
-    ax.text(0.04, 0.95, f"r = {data[x].corr(data[y]):.3f}", transform=ax.transAxes,
-            va="top", color=INK, fontsize=11)
+        ax.scatter(
+            sub[x],
+            sub[y],
+            s=16,
+            alpha=0.5,
+            color=PARTY_COLORS[party],
+            edgecolor="none",
+            label=PARTY_NAMES[party],
+            zorder=2,
+        )
+    ax.text(
+        0.04,
+        0.95,
+        f"r = {data[x].corr(data[y]):.3f}",
+        transform=ax.transAxes,
+        va="top",
+        color=INK,
+        fontsize=11,
+    )
     ax.set_xlabel(f"{x} ideology score", color=INK_SECONDARY)
     ax.set_ylabel(f"{y} ideology score", color=INK_SECONDARY)
     ax.set_xlim(-1.05, 1.05)
@@ -68,6 +101,11 @@ for ax, (x, y) in zip(axes, itertools.combinations(NAMES, 2)):
     for side in ("left", "bottom"):
         ax.spines[side].set_color(BASELINE)
 axes[0].legend(loc="lower right", frameon=False)
-fig.suptitle("The three models score the pilot speeches almost alike", x=0.01, ha="left", color=INK)
+fig.suptitle(
+    "The three models score the pilot speeches almost alike",
+    x=0.01,
+    ha="left",
+    color=INK,
+)
 fig.subplots_adjust(top=0.88)
 print(save_figure(fig, "pilot_model_agreement"))

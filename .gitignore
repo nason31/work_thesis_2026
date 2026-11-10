@@ -245,3 +245,6 @@ data/processed/**
 *.out
 *.synctex.gz
 *.toc
+
+# macOS Finder metadata
+.DS_Store
