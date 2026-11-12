@@ -1,0 +1,6 @@
+case,before,after,chamber,loses,gains,president_party,status,note
+107→108,107,108,S,D,R,R,robustness,
+111→112,111,112,H,D,R,D,main,
+113→114,113,114,S,D,R,D,main,
+115→116,115,116,H,R,D,R,main,
+117→118,117,118,H,D,R,D,main,control chamber (Senate) changed hands within the 117th

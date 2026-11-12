@@ -142,5 +142,5 @@ carries a `source` column; mark the break in every time-series plot.
 - Pilot on 100–500 speeches before any full API run; log tokens and cost.
 - Save raw per-model scores to `results/scores/` *before* aggregating.
 - Name the 2016-09-10 source break (Stanford → govinfo) alongside every time-series
-  figure; the figures do not draw it (docs/decisions.md A7).
+  figure; the figures do not draw it (docs/decisions.md A10).
 - Format with `black`, lint with `ruff`.

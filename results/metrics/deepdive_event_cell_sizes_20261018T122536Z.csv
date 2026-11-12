@@ -1,0 +1,97 @@
+chamber,party,period,group,n,n_members,event,days,below_min
+H,D,before,event,51,39,9/11,182,False
+H,D,before,other,402,137,9/11,182,False
+H,D,after,event,129,83,9/11,182,False
+H,D,after,other,283,126,9/11,182,False
+H,R,before,event,60,41,9/11,182,False
+H,R,before,other,335,149,9/11,182,False
+H,R,after,event,115,73,9/11,182,False
+H,R,after,other,254,118,9/11,182,False
+S,D,before,event,24,16,9/11,182,True
+S,D,before,other,292,45,9/11,182,False
+S,D,after,event,65,29,9/11,182,False
+S,D,after,other,189,46,9/11,182,False
+S,R,before,event,37,19,9/11,182,False
+S,R,before,other,348,48,9/11,182,False
+S,R,after,event,63,29,9/11,182,False
+S,R,after,other,251,44,9/11,182,False
+H,D,before,event,13,11,Iraq War,76,True
+H,D,before,other,87,61,Iraq War,76,False
+H,D,after,event,34,28,Iraq War,76,False
+H,D,after,other,180,93,Iraq War,76,False
+H,R,before,event,14,9,Iraq War,76,True
+H,R,before,other,80,53,Iraq War,76,False
+H,R,after,event,49,37,Iraq War,76,False
+H,R,after,other,157,91,Iraq War,76,False
+S,D,before,event,32,19,Iraq War,76,False
+S,D,before,other,138,39,Iraq War,76,False
+S,D,after,event,45,24,Iraq War,76,False
+S,D,after,other,114,35,Iraq War,76,False
+S,R,before,event,16,9,Iraq War,76,True
+S,R,before,other,119,37,Iraq War,76,False
+S,R,after,event,32,22,Iraq War,76,False
+S,R,after,other,83,32,Iraq War,76,False
+H,D,before,event,30,26,Lehman collapse,110,False
+H,D,before,other,144,79,Lehman collapse,110,False
+H,D,after,event,41,33,Lehman collapse,110,False
+H,D,after,other,57,44,Lehman collapse,110,False
+H,R,before,event,11,11,Lehman collapse,110,True
+H,R,before,other,168,77,Lehman collapse,110,False
+H,R,after,event,38,32,Lehman collapse,110,False
+H,R,after,other,72,49,Lehman collapse,110,False
+S,D,before,event,21,14,Lehman collapse,110,True
+S,D,before,other,129,39,Lehman collapse,110,False
+S,D,after,event,32,20,Lehman collapse,110,False
+S,D,after,other,23,14,Lehman collapse,110,True
+S,R,before,event,35,18,Lehman collapse,110,False
+S,R,before,other,172,38,Lehman collapse,110,False
+S,R,after,event,33,15,Lehman collapse,110,False
+S,R,after,other,31,19,Lehman collapse,110,False
+H,D,before,event,131,81,ACA signed,182,False
+H,D,before,other,187,116,ACA signed,182,False
+H,D,after,event,24,21,ACA signed,182,True
+H,D,after,other,361,146,ACA signed,182,False
+H,R,before,event,176,70,ACA signed,182,False
+H,R,before,other,237,89,ACA signed,182,False
+H,R,after,event,50,35,ACA signed,182,False
+H,R,after,other,347,110,ACA signed,182,False
+S,D,before,event,81,31,ACA signed,182,False
+S,D,before,other,134,44,ACA signed,182,False
+S,D,after,event,28,17,ACA signed,182,True
+S,D,after,other,294,57,ACA signed,182,False
+S,R,before,event,266,35,ACA signed,182,False
+S,R,before,other,177,37,ACA signed,182,False
+S,R,after,event,57,20,ACA signed,182,False
+S,R,after,other,275,39,ACA signed,182,False
+H,D,before,event,106,65,Covid emergency,182,False
+H,D,before,other,378,149,Covid emergency,182,False
+H,D,after,event,80,58,Covid emergency,182,False
+H,D,after,other,129,91,Covid emergency,182,False
+H,R,before,event,94,48,Covid emergency,182,False
+H,R,before,other,320,127,Covid emergency,182,False
+H,R,after,event,71,55,Covid emergency,182,False
+H,R,after,other,93,70,Covid emergency,182,False
+S,D,before,event,69,23,Covid emergency,182,False
+S,D,before,other,275,43,Covid emergency,182,False
+S,D,after,event,116,31,Covid emergency,182,False
+S,D,after,other,184,38,Covid emergency,182,False
+S,R,before,event,66,26,Covid emergency,182,False
+S,R,before,other,209,48,Covid emergency,182,False
+S,R,after,event,112,33,Covid emergency,182,False
+S,R,after,other,171,45,Covid emergency,182,False
+H,D,before,event,81,53,Dobbs decision,182,False
+H,D,before,other,271,113,Dobbs decision,182,False
+H,D,after,event,57,43,Dobbs decision,182,False
+H,D,after,other,264,110,Dobbs decision,182,False
+H,R,before,event,24,17,Dobbs decision,182,True
+H,R,before,other,323,110,Dobbs decision,182,False
+H,R,after,event,35,25,Dobbs decision,182,False
+H,R,after,other,245,97,Dobbs decision,182,False
+S,D,before,event,49,23,Dobbs decision,182,False
+S,D,before,other,220,43,Dobbs decision,182,False
+S,D,after,event,19,15,Dobbs decision,182,True
+S,D,after,other,172,37,Dobbs decision,182,False
+S,R,before,event,18,12,Dobbs decision,182,True
+S,R,before,other,288,42,Dobbs decision,182,False
+S,R,after,event,21,13,Dobbs decision,182,True
+S,R,after,other,212,42,Dobbs decision,182,False

@@ -1,0 +1,241 @@
+chamber,party,period,topic_block,n,n_members,event,days,below_min
+H,D,before,economic,266,111,9/11,182,False
+H,D,before,social_cultural,65,45,9/11,182,False
+H,D,before,security_foreign,64,50,9/11,182,False
+H,D,before,governance,18,17,9/11,182,True
+H,D,before,other,40,32,9/11,182,False
+H,D,after,economic,134,80,9/11,182,False
+H,D,after,social_cultural,34,29,9/11,182,False
+H,D,after,security_foreign,148,91,9/11,182,False
+H,D,after,governance,42,30,9/11,182,False
+H,D,after,other,54,41,9/11,182,False
+H,R,before,economic,231,121,9/11,182,False
+H,R,before,social_cultural,45,34,9/11,182,False
+H,R,before,security_foreign,72,48,9/11,182,False
+H,R,before,governance,3,3,9/11,182,True
+H,R,before,other,44,35,9/11,182,False
+H,R,after,economic,131,75,9/11,182,False
+H,R,after,social_cultural,23,18,9/11,182,True
+H,R,after,security_foreign,130,76,9/11,182,False
+H,R,after,governance,28,19,9/11,182,True
+H,R,after,other,57,48,9/11,182,False
+S,D,before,economic,170,42,9/11,182,False
+S,D,before,social_cultural,53,27,9/11,182,False
+S,D,before,security_foreign,30,19,9/11,182,False
+S,D,before,governance,38,16,9/11,182,False
+S,D,before,other,25,16,9/11,182,True
+S,D,after,economic,93,37,9/11,182,False
+S,D,after,social_cultural,24,19,9/11,182,True
+S,D,after,security_foreign,76,32,9/11,182,False
+S,D,after,governance,28,15,9/11,182,True
+S,D,after,other,33,15,9/11,182,False
+S,R,before,economic,169,45,9/11,182,False
+S,R,before,social_cultural,67,27,9/11,182,False
+S,R,before,security_foreign,48,22,9/11,182,False
+S,R,before,governance,74,23,9/11,182,False
+S,R,before,other,27,14,9/11,182,True
+S,R,after,economic,115,38,9/11,182,False
+S,R,after,social_cultural,29,17,9/11,182,True
+S,R,after,security_foreign,77,32,9/11,182,False
+S,R,after,governance,46,19,9/11,182,False
+S,R,after,other,47,22,9/11,182,False
+H,D,before,economic,62,49,Iraq War,76,False
+H,D,before,social_cultural,5,5,Iraq War,76,True
+H,D,before,security_foreign,19,17,Iraq War,76,True
+H,D,before,governance,10,8,Iraq War,76,True
+H,D,before,other,4,4,Iraq War,76,True
+H,D,after,economic,119,67,Iraq War,76,False
+H,D,after,social_cultural,20,18,Iraq War,76,True
+H,D,after,security_foreign,46,38,Iraq War,76,False
+H,D,after,governance,19,14,Iraq War,76,True
+H,D,after,other,10,9,Iraq War,76,True
+H,R,before,economic,48,37,Iraq War,76,False
+H,R,before,social_cultural,8,7,Iraq War,76,True
+H,R,before,security_foreign,16,10,Iraq War,76,True
+H,R,before,governance,14,9,Iraq War,76,True
+H,R,before,other,8,8,Iraq War,76,True
+H,R,after,economic,102,63,Iraq War,76,False
+H,R,after,social_cultural,29,24,Iraq War,76,True
+H,R,after,security_foreign,57,42,Iraq War,76,False
+H,R,after,governance,4,3,Iraq War,76,True
+H,R,after,other,14,12,Iraq War,76,True
+S,D,before,economic,72,28,Iraq War,76,False
+S,D,before,social_cultural,19,14,Iraq War,76,True
+S,D,before,security_foreign,37,20,Iraq War,76,False
+S,D,before,governance,35,13,Iraq War,76,False
+S,D,before,other,7,7,Iraq War,76,True
+S,D,after,economic,81,31,Iraq War,76,False
+S,D,after,social_cultural,6,5,Iraq War,76,True
+S,D,after,security_foreign,49,24,Iraq War,76,False
+S,D,after,governance,18,12,Iraq War,76,True
+S,D,after,other,5,4,Iraq War,76,True
+S,R,before,economic,40,21,Iraq War,76,False
+S,R,before,social_cultural,21,11,Iraq War,76,True
+S,R,before,security_foreign,20,12,Iraq War,76,True
+S,R,before,governance,48,21,Iraq War,76,False
+S,R,before,other,6,6,Iraq War,76,True
+S,R,after,economic,55,26,Iraq War,76,False
+S,R,after,social_cultural,5,4,Iraq War,76,True
+S,R,after,security_foreign,38,24,Iraq War,76,False
+S,R,after,governance,16,10,Iraq War,76,True
+S,R,after,other,1,1,Iraq War,76,True
+H,D,before,economic,115,69,Lehman collapse,110,False
+H,D,before,social_cultural,8,7,Lehman collapse,110,True
+H,D,before,security_foreign,20,17,Lehman collapse,110,True
+H,D,before,governance,9,6,Lehman collapse,110,True
+H,D,before,other,22,19,Lehman collapse,110,True
+H,D,after,economic,67,46,Lehman collapse,110,False
+H,D,after,social_cultural,12,11,Lehman collapse,110,True
+H,D,after,security_foreign,9,9,Lehman collapse,110,True
+H,D,after,governance,1,1,Lehman collapse,110,True
+H,D,after,other,9,9,Lehman collapse,110,True
+H,R,before,economic,128,58,Lehman collapse,110,False
+H,R,before,social_cultural,9,8,Lehman collapse,110,True
+H,R,before,security_foreign,24,18,Lehman collapse,110,True
+H,R,before,governance,7,7,Lehman collapse,110,True
+H,R,before,other,11,10,Lehman collapse,110,True
+H,R,after,economic,74,53,Lehman collapse,110,False
+H,R,after,social_cultural,14,9,Lehman collapse,110,True
+H,R,after,security_foreign,8,8,Lehman collapse,110,True
+H,R,after,governance,7,7,Lehman collapse,110,True
+H,R,after,other,7,6,Lehman collapse,110,True
+S,D,before,economic,98,35,Lehman collapse,110,False
+S,D,before,social_cultural,4,4,Lehman collapse,110,True
+S,D,before,security_foreign,22,16,Lehman collapse,110,True
+S,D,before,governance,18,12,Lehman collapse,110,True
+S,D,before,other,8,8,Lehman collapse,110,True
+S,D,after,economic,37,24,Lehman collapse,110,False
+S,D,after,social_cultural,2,1,Lehman collapse,110,True
+S,D,after,security_foreign,10,8,Lehman collapse,110,True
+S,D,after,governance,2,2,Lehman collapse,110,True
+S,D,after,other,4,4,Lehman collapse,110,True
+S,R,before,economic,159,38,Lehman collapse,110,False
+S,R,before,social_cultural,6,5,Lehman collapse,110,True
+S,R,before,security_foreign,17,9,Lehman collapse,110,True
+S,R,before,governance,21,10,Lehman collapse,110,True
+S,R,before,other,4,4,Lehman collapse,110,True
+S,R,after,economic,43,21,Lehman collapse,110,False
+S,R,after,social_cultural,3,3,Lehman collapse,110,True
+S,R,after,security_foreign,7,4,Lehman collapse,110,True
+S,R,after,governance,3,1,Lehman collapse,110,True
+S,R,after,other,8,8,Lehman collapse,110,True
+H,D,before,economic,230,124,ACA signed,182,False
+H,D,before,social_cultural,18,15,ACA signed,182,True
+H,D,before,security_foreign,49,35,ACA signed,182,False
+H,D,before,governance,6,6,ACA signed,182,True
+H,D,before,other,15,13,ACA signed,182,True
+H,D,after,economic,245,117,ACA signed,182,False
+H,D,after,social_cultural,25,20,ACA signed,182,True
+H,D,after,security_foreign,63,44,ACA signed,182,False
+H,D,after,governance,20,17,ACA signed,182,True
+H,D,after,other,32,29,ACA signed,182,False
+H,R,before,economic,301,105,ACA signed,182,False
+H,R,before,social_cultural,27,18,ACA signed,182,True
+H,R,before,security_foreign,36,22,ACA signed,182,False
+H,R,before,governance,32,20,ACA signed,182,False
+H,R,before,other,17,16,ACA signed,182,True
+H,R,after,economic,273,100,ACA signed,182,False
+H,R,after,social_cultural,25,16,ACA signed,182,True
+H,R,after,security_foreign,52,31,ACA signed,182,False
+H,R,after,governance,20,11,ACA signed,182,True
+H,R,after,other,27,17,ACA signed,182,True
+S,D,before,economic,158,43,ACA signed,182,False
+S,D,before,social_cultural,5,5,ACA signed,182,True
+S,D,before,security_foreign,22,13,ACA signed,182,True
+S,D,before,governance,21,15,ACA signed,182,True
+S,D,before,other,9,7,ACA signed,182,True
+S,D,after,economic,234,51,ACA signed,182,False
+S,D,after,social_cultural,10,9,ACA signed,182,True
+S,D,after,security_foreign,29,18,ACA signed,182,True
+S,D,after,governance,43,23,ACA signed,182,False
+S,D,after,other,6,3,ACA signed,182,True
+S,R,before,economic,365,40,ACA signed,182,False
+S,R,before,social_cultural,11,7,ACA signed,182,True
+S,R,before,security_foreign,14,11,ACA signed,182,True
+S,R,before,governance,36,16,ACA signed,182,False
+S,R,before,other,17,12,ACA signed,182,True
+S,R,after,economic,241,38,ACA signed,182,False
+S,R,after,social_cultural,24,11,ACA signed,182,True
+S,R,after,security_foreign,24,13,ACA signed,182,True
+S,R,after,governance,36,18,ACA signed,182,False
+S,R,after,other,7,5,ACA signed,182,True
+H,D,before,economic,171,99,Covid emergency,182,False
+H,D,before,social_cultural,72,59,Covid emergency,182,False
+H,D,before,security_foreign,88,59,Covid emergency,182,False
+H,D,before,governance,114,51,Covid emergency,182,False
+H,D,before,other,39,31,Covid emergency,182,False
+H,D,after,economic,100,67,Covid emergency,182,False
+H,D,after,social_cultural,17,17,Covid emergency,182,True
+H,D,after,security_foreign,47,39,Covid emergency,182,False
+H,D,after,governance,16,13,Covid emergency,182,True
+H,D,after,other,29,26,Covid emergency,182,True
+H,R,before,economic,158,79,Covid emergency,182,False
+H,R,before,social_cultural,38,33,Covid emergency,182,False
+H,R,before,security_foreign,80,52,Covid emergency,182,False
+H,R,before,governance,92,57,Covid emergency,182,False
+H,R,before,other,46,28,Covid emergency,182,False
+H,R,after,economic,88,65,Covid emergency,182,False
+H,R,after,social_cultural,10,8,Covid emergency,182,True
+H,R,after,security_foreign,34,29,Covid emergency,182,False
+H,R,after,governance,21,18,Covid emergency,182,True
+H,R,after,other,11,11,Covid emergency,182,True
+S,D,before,economic,109,28,Covid emergency,182,False
+S,D,before,social_cultural,49,21,Covid emergency,182,False
+S,D,before,security_foreign,64,23,Covid emergency,182,False
+S,D,before,governance,97,33,Covid emergency,182,False
+S,D,before,other,25,15,Covid emergency,182,True
+S,D,after,economic,149,34,Covid emergency,182,False
+S,D,after,social_cultural,48,20,Covid emergency,182,False
+S,D,after,security_foreign,67,28,Covid emergency,182,False
+S,D,after,governance,27,16,Covid emergency,182,True
+S,D,after,other,9,7,Covid emergency,182,True
+S,R,before,economic,88,31,Covid emergency,182,False
+S,R,before,social_cultural,33,17,Covid emergency,182,False
+S,R,before,security_foreign,61,25,Covid emergency,182,False
+S,R,before,governance,65,28,Covid emergency,182,False
+S,R,before,other,28,19,Covid emergency,182,True
+S,R,after,economic,144,36,Covid emergency,182,False
+S,R,after,social_cultural,22,16,Covid emergency,182,True
+S,R,after,security_foreign,69,33,Covid emergency,182,False
+S,R,after,governance,21,13,Covid emergency,182,True
+S,R,after,other,27,11,Covid emergency,182,True
+H,D,before,economic,135,74,Dobbs decision,182,False
+H,D,before,social_cultural,91,60,Dobbs decision,182,False
+H,D,before,security_foreign,84,47,Dobbs decision,182,False
+H,D,before,governance,17,16,Dobbs decision,182,True
+H,D,before,other,25,22,Dobbs decision,182,True
+H,D,after,economic,121,76,Dobbs decision,182,False
+H,D,after,social_cultural,74,51,Dobbs decision,182,False
+H,D,after,security_foreign,74,39,Dobbs decision,182,False
+H,D,after,governance,30,18,Dobbs decision,182,False
+H,D,after,other,22,18,Dobbs decision,182,True
+H,R,before,economic,153,68,Dobbs decision,182,False
+H,R,before,social_cultural,68,39,Dobbs decision,182,False
+H,R,before,security_foreign,81,51,Dobbs decision,182,False
+H,R,before,governance,28,22,Dobbs decision,182,True
+H,R,before,other,17,13,Dobbs decision,182,True
+H,R,after,economic,115,58,Dobbs decision,182,False
+H,R,after,social_cultural,61,39,Dobbs decision,182,False
+H,R,after,security_foreign,52,35,Dobbs decision,182,False
+H,R,after,governance,30,24,Dobbs decision,182,False
+H,R,after,other,22,20,Dobbs decision,182,True
+S,D,before,economic,67,28,Dobbs decision,182,False
+S,D,before,social_cultural,58,24,Dobbs decision,182,False
+S,D,before,security_foreign,63,28,Dobbs decision,182,False
+S,D,before,governance,69,33,Dobbs decision,182,False
+S,D,before,other,12,9,Dobbs decision,182,True
+S,D,after,economic,102,30,Dobbs decision,182,False
+S,D,after,social_cultural,28,18,Dobbs decision,182,True
+S,D,after,security_foreign,28,13,Dobbs decision,182,True
+S,D,after,governance,26,17,Dobbs decision,182,True
+S,D,after,other,7,6,Dobbs decision,182,True
+S,R,before,economic,79,29,Dobbs decision,182,False
+S,R,before,social_cultural,38,22,Dobbs decision,182,False
+S,R,before,security_foreign,97,29,Dobbs decision,182,False
+S,R,before,governance,79,31,Dobbs decision,182,False
+S,R,before,other,13,11,Dobbs decision,182,True
+S,R,after,economic,105,32,Dobbs decision,182,False
+S,R,after,social_cultural,45,20,Dobbs decision,182,False
+S,R,after,security_foreign,63,24,Dobbs decision,182,False
+S,R,after,governance,11,7,Dobbs decision,182,True
+S,R,after,other,9,9,Dobbs decision,182,True

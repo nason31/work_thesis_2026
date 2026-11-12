@@ -1,0 +1,25 @@
+election,election_day,congress_number,election_type,chamber,loser,winner,status,white_house_changed
+2002,2002-11-05,107,midterm,H,,,no change,False
+2002,2002-11-05,107,midterm,S,D,R,loser,False
+2004,2004-11-02,108,presidential,H,D,R,loser,False
+2004,2004-11-02,108,presidential,S,D,R,loser,False
+2006,2006-11-07,109,midterm,H,R,D,loser,False
+2006,2006-11-07,109,midterm,S,R,D,loser,False
+2008,2008-11-04,110,presidential,H,R,D,loser,True
+2008,2008-11-04,110,presidential,S,R,D,loser,True
+2010,2010-11-02,111,midterm,H,D,R,loser,False
+2010,2010-11-02,111,midterm,S,,,no change,False
+2012,2012-11-06,112,presidential,H,R,D,loser,False
+2012,2012-11-06,112,presidential,S,R,D,loser,False
+2014,2014-11-04,113,midterm,H,,,no change,False
+2014,2014-11-04,113,midterm,S,D,R,loser,False
+2016,2016-11-08,114,presidential,H,D,R,loser,True
+2016,2016-11-08,114,presidential,S,D,R,loser,True
+2018,2018-11-06,115,midterm,H,R,D,loser,False
+2018,2018-11-06,115,midterm,S,,,no change,False
+2020,2020-11-03,116,presidential,H,R,D,loser,True
+2020,2020-11-03,116,presidential,S,R,D,loser,True
+2022,2022-11-08,117,midterm,H,D,R,loser,False
+2022,2022-11-08,117,midterm,S,,,no change,False
+2024,2024-11-05,118,presidential,H,D,R,loser,True
+2024,2024-11-05,118,presidential,S,D,R,loser,True

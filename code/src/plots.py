@@ -2,7 +2,7 @@
 
 In every time-series panel House and Senate are drawn side by side, never
 pooled (O8), and presidential terms are shaded behind the data. The 2016-09-10
-source break is not drawn (docs/decisions.md A7): the 114th Congress, which
+source break is not drawn (docs/decisions.md A10): the 114th Congress, which
 holds both sources, is named in the text that accompanies a figure instead.
 
 Colours follow the dataviz method (validated for colour-blind readers, all

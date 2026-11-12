@@ -1,7 +1,7 @@
 """Tests for the analysis plots: the contract CLAUDE.md sets for time series.
 
 House and Senate are drawn apart in every time-series panel, and the 2016-09-10
-source break is not drawn (docs/decisions.md A7). Rendering details are
+source break is not drawn (docs/decisions.md A10). Rendering details are
 matplotlib's business; these tests check only what the thesis depends on.
 """
 
