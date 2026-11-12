@@ -1,8 +1,8 @@
 """Tests for the analysis plots: the contract CLAUDE.md sets for time series.
 
-Every time-series panel must mark the 2016-09-10 source break, and House and
-Senate are drawn apart. Rendering details are matplotlib's business; these
-tests check only what the thesis depends on.
+House and Senate are drawn apart in every time-series panel, and the 2016-09-10
+source break is not drawn (docs/decisions.md A7). Rendering details are
+matplotlib's business; these tests check only what the thesis depends on.
 """
 
 from __future__ import annotations
@@ -74,12 +74,12 @@ def _gaps() -> pd.DataFrame:
     ],
     ids=["positions", "gap", "models"],
 )
-def test_every_time_series_panel_marks_the_source_break(figure) -> None:
+def test_time_series_panels_keep_chambers_apart_and_draw_no_break(figure) -> None:
     fig = figure()
 
     panels = [ax for ax in fig.axes if ax.get_lines()]
     assert len(panels) == 2  # House and Senate, never pooled
-    assert all(_marks_the_break(ax) for ax in panels)
+    assert not any(_marks_the_break(ax) for ax in panels)
 
 
 def test_position_panels_are_titled_by_chamber() -> None:
@@ -172,26 +172,7 @@ def test_group_means_can_relabel_the_ticks() -> None:
     assert [t.get_text() for t in fig.axes[0].get_xticklabels()] == ["Bush\n2001-2004"]
 
 
-def test_group_means_over_time_can_mark_the_source_break() -> None:
-    """Presidential terms run in time order, so the break is drawn between them."""
-    table = pd.DataFrame(
-        {
-            "chamber": ["H", "H", "S", "S"] * 2,
-            "party": ["D", "R"] * 4,
-            "term": ["Obama 2013-2016"] * 4 + ["Trump 2017-2020"] * 4,
-            "mean": [-0.3, 0.3] * 4,
-            "ci_low": [-0.4, 0.2] * 4,
-            "ci_high": [-0.2, 0.4] * 4,
-        }
-    )
-
-    fig = plot_group_means(table, "term", "t", "y", source_break=0.42)
-
-    for ax in fig.axes[:2]:
-        assert any(list(line.get_xdata()) == [0.42, 0.42] for line in ax.get_lines())
-
-
-def test_positions_by_group_draw_one_row_per_group_each_marking_the_break() -> None:
+def test_positions_by_group_draw_one_row_per_group() -> None:
     """A row per topic block, House | Senate in each, never pooled."""
     cells = pd.concat(
         [_cells(topic_block="economic"), _cells(topic_block="governance")]
@@ -202,7 +183,7 @@ def test_positions_by_group_draw_one_row_per_group_each_marking_the_break() -> N
     )
 
     assert len(fig.axes) == 4
-    assert all(_marks_the_break(ax) for ax in fig.axes)
+    assert not any(_marks_the_break(ax) for ax in fig.axes)
     assert [ax.get_title(loc="left") for ax in fig.axes] == [
         "House · economic",
         "Senate · economic",

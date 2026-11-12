@@ -420,8 +420,9 @@ LLM-derived scores must be cross-checked against DW-NOMINATE (voting-based ideol
   (Stanford stops 2016-09-09, govinfo takes over — D15). govinfo yields about
   20% fewer House and 38% fewer Senate speeches per year (O8). It must be
   addressed in the methodology
-  section — flag it in code comments and make it visible in every time-series
-  plot (e.g. a vertical dashed line). `SOURCE_BREAK_DATE`, `SOURCE_BREAK_YEAR`
+  section and flagged in code comments. **It is not drawn in the figures**
+  (`docs/decisions.md` A7, 2026-11-12: Justus); the text accompanying a
+  time-series figure names it instead. `SOURCE_BREAK_DATE`, `SOURCE_BREAK_YEAR`
   (2016) and `SOURCE_BREAK_CONGRESS` (114, the mixed-source point on a
   per-Congress axis) live in `code/src/config.py`.
 - Every row in the merged corpus carries a `source` column, so the break is
@@ -454,7 +455,7 @@ work_thesis_2026/
 │   │   ├── validation.py   ← a run's scores vs DW-NOMINATE, speech level
 │   │   ├── validation_design.py ← the validation the thesis reports (A5): units, within-cell r, member bootstrap
 │   │   ├── analysis.py     ← a run → one row per speech; clustered means, gaps, trends
-│   │   ├── plots.py        ← analysis figures (chambers apart, source break marked)
+│   │   ├── plots.py        ← analysis figures (chambers apart; no source-break line, A7)
 │   │   ├── labeling.py     ← speech type + topic labels: calls, codebook checks, runs (L1–L5)
 │   │   ├── label_eval.py   ← label hand check: sheet, kappa/F1, checks against S8
 │   │   └── prompts/        ← prompt templates as files, logged with every run
@@ -580,7 +581,8 @@ work_thesis_2026/
 - Flag in a comment when a methodological decision is still open
 - Log all key parameters and results to `results/metrics/`
 - Write modular, reusable code in `src/` that scripts in `scripts/` call
-- Mark the 2016-09-10 source break visibly in all time-series plots
+- Name the 2016-09-10 source break in the text that accompanies a time-series
+  figure (the figures themselves no longer draw it — A7)
 - Always save raw per-model scores before aggregating into an ensemble score
 - Validate LLM scores against DW-NOMINATE as part of every scoring experiment
 - Prefer clarity over cleverness — this is academic code, not production software
@@ -603,7 +605,8 @@ work_thesis_2026/
 - Output binary classifications as the final scoring result — the goal is continuous scores
 - Fragment speeches into short chunks unless a model's context window genuinely requires it
 - Generate thesis text — students write first; AI polishes at the end only
-- Ignore the 2016-09-10 source break — flag it explicitly in outputs and plots
+- Ignore the 2016-09-10 source break — flag it explicitly in outputs and in the
+  methodology
 - Score the full corpus through an LLM API — ruled out (S11); and never run a
   sample larger than the decided one without a pilot first and a new decision
 - Commit API keys or large raw data files to git

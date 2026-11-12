@@ -1,9 +1,9 @@
 """Figures for the analysis of a scoring run.
 
-Every time-series panel follows two rules from CLAUDE.md: House and Senate are
-drawn side by side, never pooled (O8), and the 2016-09-10 source break is
-marked as a dashed line at the 114th Congress -- the Congress that holds both
-sources. Presidential terms are shaded behind the data.
+In every time-series panel House and Senate are drawn side by side, never
+pooled (O8), and presidential terms are shaded behind the data. The 2016-09-10
+source break is not drawn (docs/decisions.md A7): the 114th Congress, which
+holds both sources, is named in the text that accompanies a figure instead.
 
 Colours follow the dataviz method (validated for colour-blind readers, all
 pairs): Democrats blue and Republicans red; the two models orange and violet,
@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
-from src.config import PLOTS_DIR, PRESIDENTS_BY_CONGRESS, SOURCE_BREAK_CONGRESS
+from src.config import PLOTS_DIR, PRESIDENTS_BY_CONGRESS
 
 PARTY_COLORS = {"D": "#2a78d6", "R": "#e34948"}
 PARTY_NAMES = {"D": "Democrats", "R": "Republicans"}
@@ -108,34 +108,6 @@ def shade_presidencies(ax, congresses: list[int], names: bool = True) -> None:
         )
 
 
-def mark_source_break(ax, label: bool = True, x: float = SOURCE_BREAK_CONGRESS) -> None:
-    """Dashed line at the 114th Congress, where Stanford hands over to govinfo.
-
-    ``label=False`` leaves out the text, for small panels. ``x`` places the
-    line on an axis that is not in Congresses (e.g. presidential terms).
-    """
-    ax.plot(
-        [x, x],
-        [0, 1],
-        transform=ax.get_xaxis_transform(),
-        color=INK_MUTED,
-        linestyle=(0, (4, 3)),
-        linewidth=1,
-        zorder=1,
-    )
-    if not label:
-        return
-    ax.text(
-        x + 0.12,
-        0.02,
-        "source change\n2016-09-10",
-        transform=ax.get_xaxis_transform(),
-        fontsize=7,
-        color=INK_MUTED,
-        va="bottom",
-    )
-
-
 def _panels(title: str, subtitle: str | None, ylabel: str) -> tuple[Figure, list]:
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharey=True, facecolor=SURFACE)
     fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.02)
@@ -212,7 +184,6 @@ def plot_party_positions(
             _series(ax, data, "congress_number", "mean", PARTY_COLORS[party],
                     PARTY_NAMES[party])  # fmt: skip
             ends.append(_line_end(data, "congress_number", "mean", PARTY_NAMES[party]))
-        mark_source_break(ax)
         ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
         _congress_axis(ax, congresses)
         if ylim:
@@ -236,8 +207,8 @@ def plot_party_positions_by_group(
     """Each party's mean per Congress, one row per value of ``group``; House | Senate.
 
     ``cells`` is `analysis.cell_means` by Congress, chamber, ``group`` and
-    party. All panels share one y-axis, so the rows compare directly; each marks
-    the source break and shades the presidencies (named on the top row only).
+    party. All panels share one y-axis, so the rows compare directly; each shades the
+    presidencies (named on the top row only).
     """
     groups = list(order) or sorted(cells[group].unique())
     congresses = sorted(cells["congress_number"].unique())
@@ -265,7 +236,6 @@ def plot_party_positions_by_group(
                 if not data.empty:
                     _series(ax, data, "congress_number", "mean",
                             PARTY_COLORS[party], PARTY_NAMES[party])  # fmt: skip
-            mark_source_break(ax, label=row == len(groups) - 1)
             ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
             _congress_axis(ax, congresses)
             if row < len(groups) - 1:
@@ -290,7 +260,6 @@ def plot_gap(gaps: pd.DataFrame, title: str, subtitle: str | None = None) -> Fig
         shade_presidencies(ax, congresses)
         data = gaps[gaps["chamber"] == chamber]
         _series(ax, data, "congress_number", "gap", INK_SECONDARY, "R − D")
-        mark_source_break(ax)
         ax.set_ylim(0, max(1.0, gaps["ci_high"].max() + 0.05))
         _congress_axis(ax, congresses)
     return fig
@@ -315,7 +284,6 @@ def plot_models(
                         model if party == "D" else None)  # fmt: skip
                 ends.append(_line_end(data, "congress_number", "mean",
                                       f"{model.split('-')[0]} · {party}"))  # fmt: skip
-        mark_source_break(ax)
         ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
         _congress_axis(ax, congresses)
         _direct_labels(ax, ends)
@@ -471,7 +439,6 @@ def plot_label_shares(
                 zorder=3,
             )  # fmt: skip
             ends.append(_line_end(data, "congress_number", "share", speech_type))
-        mark_source_break(ax)
         _congress_axis(ax, congresses)
         ax.set_ylim(0, 1)
         _direct_labels(ax, ends)
@@ -523,7 +490,6 @@ def plot_gap_by_group(
                 markeredgecolor=SURFACE, markeredgewidth=0.8, label=value, zorder=3,
             )  # fmt: skip
             ends.append(_line_end(data, "congress_number", "gap", value))
-        mark_source_break(ax)
         ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
         _congress_axis(ax, congresses)
         _direct_labels(ax, ends)
@@ -599,8 +565,8 @@ def plot_member_trajectories(
     ``trajectories`` is `analysis.member_trajectories`; ``members`` maps ICPSR to
     the panel title, in panel order. The member's line carries a 95% band; the
     dashed line is their party's mean in their chamber that Congress. A
-    member recorded under two parties gets both, each in its colour. The
-    source break is marked; presidential terms are shaded, unnamed.
+    member recorded under two parties gets both, each in its colour. Presidential
+    terms are shaded, unnamed.
     """
     rows = math.ceil(len(members) / ncols)
     fig, axes = plt.subplots(
@@ -616,7 +582,6 @@ def plot_member_trajectories(
     for ax, (icpsr, name) in zip(flat, members.items()):
         _style(ax)
         shade_presidencies(ax, congresses, names=False)
-        mark_source_break(ax, label=False)
         ax.axhline(0, color=BASELINE, linewidth=0.8, zorder=1)
         member = trajectories[trajectories["icpsr"] == icpsr]
         for party, data in member.groupby("party"):
@@ -711,7 +676,6 @@ def plot_group_means(
     subtitle: str | None = None,
     order: Sequence[str] = (),
     ticklabels: Mapping[str, str] | None = None,
-    source_break: float | None = None,
 ) -> Figure:
     """Means per group with 95% intervals, one series per party; House | Senate.
 
@@ -719,11 +683,6 @@ def plot_group_means(
     run along x in ``order``. The parties are set slightly apart so their
     intervals do not overlap on the page. ``ticklabels`` maps a group to a
     shorter tick label (a group it leaves out keeps its name).
-
-    Groups that pool every Congress (age, tenure) are not a time series and
-    get no source break. Groups in time order (presidential terms) are, and
-    ``source_break`` gives the x position of the 2016-09-10 break, the first
-    group at 0.
     """
     groups = list(order) or sorted(table[group].unique())
     x = {value: i for i, value in enumerate(groups)}
@@ -753,8 +712,6 @@ def plot_group_means(
             color=INK_SECONDARY,
         )
         ax.set_xlim(-0.5, len(groups) - 0.5)
-        if source_break is not None:
-            mark_source_break(ax, x=source_break)
     axes[0].set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
     axes[1].legend(frameon=False, fontsize=8, loc="upper left",
                    bbox_to_anchor=(1.0, 1.0))  # fmt: skip

@@ -405,7 +405,7 @@ def test_the_evaluation_runs_end_to_end(tmp_path: Path, monkeypatch) -> None:
     assert (metrics / "label_eval_L1.json").exists()
 
 
-def test_the_label_share_figure_keeps_chambers_apart_and_marks_the_break() -> None:
+def test_the_label_share_figure_keeps_chambers_apart() -> None:
     from src.plots import plot_label_shares
 
     shares = label_shares(_scored_frame().assign(chamber=["H", "S"] * 3),
@@ -415,7 +415,7 @@ def test_the_label_share_figure_keeps_chambers_apart_and_marks_the_break() -> No
 
     house, senate = fig.axes[:2]
     for ax in (house, senate):
-        assert any(
+        assert not any(
             list(line.get_xdata()) == [SOURCE_BREAK_CONGRESS, SOURCE_BREAK_CONGRESS]
             for line in ax.get_lines()
         )

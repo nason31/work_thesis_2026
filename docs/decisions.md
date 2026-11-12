@@ -2270,6 +2270,28 @@ table, not tested.
 
 ---
 
+### A7 — The figures no longer draw the source-break line
+**Date:** 2026-11-12 · **Status:** active · **Decided by:** Justus
+
+The dashed "source change 2016-09-10" line at the 114th Congress is removed
+from every figure (`plots.mark_source_break` and `plot_group_means`'s
+`source_break` argument are gone; notebooks 04–07 re-run, figures regenerated).
+This reverses the plotting part of the CLAUDE.md rule; the rest stands: the
+break is still flagged in code comments, the `source` column keeps it in the
+data, the 114th is still the mixed-source Congress in tables
+(`mixed_source`), House and Senate are still never pooled (O8), and the
+methodology must still address it. The text that accompanies a time-series
+figure (caption, notebook prose) names the break instead.
+**Rejected:** keeping the line. **Consequence:** a reader of a bare figure no
+longer sees where the source changes, so captions carry that.
+
+Re-running notebook 04 also picked up one S8 speech labelled after the notebook
+last ran (label run `20261017T182223Z` was extended, L8): the 113th Senate has
+200 labelled speeches, not 199, and its policy-only gap moves from +0.87 to
++0.86. Not caused by the plot change.
+
+---
+
 ## Labels
 
 A second pass that gives each speech a **speech type** and, for policy debate,

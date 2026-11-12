@@ -141,5 +141,6 @@ carries a `source` column; mark the break in every time-series plot.
 - `data/raw/` is read-only. Scripts never write there.
 - Pilot on 100–500 speeches before any full API run; log tokens and cost.
 - Save raw per-model scores to `results/scores/` *before* aggregating.
-- Mark the 2016-09-10 source break (Stanford → govinfo) in every time-series plot.
+- Name the 2016-09-10 source break (Stanford → govinfo) alongside every time-series
+  figure; the figures do not draw it (docs/decisions.md A7).
 - Format with `black`, lint with `ruff`.

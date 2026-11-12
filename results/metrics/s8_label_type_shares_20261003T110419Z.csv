@@ -57,10 +57,10 @@ congress_number,chamber,speech_type,n,share,mixed_source
 113,H,ceremonial,12,0.06,False
 113,H,policy_debate,160,0.8,False
 113,H,procedural,23,0.115,False
-113,S,bill_introduction,7,0.035175879396984924,False
-113,S,ceremonial,36,0.18090452261306533,False
-113,S,policy_debate,109,0.5477386934673367,False
-113,S,procedural,47,0.23618090452261306,False
+113,S,bill_introduction,7,0.035,False
+113,S,ceremonial,36,0.18,False
+113,S,policy_debate,110,0.55,False
+113,S,procedural,47,0.235,False
 114,H,bill_introduction,1,0.005,True
 114,H,ceremonial,24,0.12,True
 114,H,policy_debate,159,0.795,True

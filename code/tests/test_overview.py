@@ -155,7 +155,7 @@ def _marks_the_break(ax) -> bool:
     )
 
 
-def test_the_topic_gap_figure_keeps_chambers_apart_and_marks_the_break() -> None:
+def test_the_topic_gap_figure_keeps_chambers_apart() -> None:
     gaps = pd.DataFrame(
         [
             {"congress_number": c, "chamber": ch, "topic_block": b, "gap": 0.5,
@@ -167,11 +167,11 @@ def test_the_topic_gap_figure_keeps_chambers_apart_and_marks_the_break() -> None
     fig = plot_gap_by_group(gaps, "topic_block", "t", order=("economic", "other"))
 
     house, senate = fig.axes[:2]
-    assert _marks_the_break(house) and _marks_the_break(senate)
+    assert not (_marks_the_break(house) or _marks_the_break(senate))
     assert house.get_title(loc="left") == "House"
 
 
-def test_member_panels_mark_the_break_and_hide_spare_panels() -> None:
+def test_member_panels_hide_spare_panels() -> None:
     trajectories = member_trajectories(
         _member_frame().assign(congress_number=lambda f: f["congress_number"] + 6),
         min_speeches=10,
@@ -182,7 +182,7 @@ def test_member_panels_mark_the_break_and_hide_spare_panels() -> None:
 
     visible = [ax for ax in fig.axes if ax.get_visible() and ax.get_title(loc="left")]
     assert [ax.get_title(loc="left") for ax in visible] == ["One", "Two", "Three"]
-    assert all(_marks_the_break(ax) for ax in visible)
+    assert not any(_marks_the_break(ax) for ax in visible)
     assert sum(not ax.get_visible() for ax in fig.axes) == 1
 
 
