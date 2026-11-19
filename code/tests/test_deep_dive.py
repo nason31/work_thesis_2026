@@ -2509,3 +2509,370 @@ def test_the_4b_and_4c_figures_draw() -> None:
     for figure in figures:
         assert isinstance(figure, Figure)
         matplotlib.pyplot.close(figure)
+
+
+# =================================================================================
+# The final run (A11): escalation, the days before an inauguration, keyword lists,
+# headers and the thesis versions of the figures
+# =================================================================================
+
+from src.deep_dive import (
+    JANUARY_VARIANTS,
+    NEW_PRESIDENT_YEARS,
+    congress_days,
+    drop_pre_inauguration,
+    january_robustness,
+    keyword_list_table,
+    opposition_escalation,
+    power_estimates,
+    pre_inauguration,
+    presidencies,
+)
+from src.deep_dive_plots import place_header, wrap_header, wrap_text
+
+
+def test_presidencies_number_a_returning_president() -> None:
+    table = presidencies()
+    first = table.drop_duplicates("presidency").set_index("presidency")
+    assert list(first.index) == ["Bush", "Obama", "Trump I", "Biden", "Trump II"]
+    assert first.loc["Trump I", "congress_number"] == 115
+    assert first.loc["Trump II", "congress_number"] == 119
+    assert table.groupby("presidency").size().to_dict() == {
+        "Bush": 4, "Obama": 4, "Trump I": 2, "Biden": 2, "Trump II": 1,
+    }  # fmt: skip
+
+
+def test_the_new_president_years_are_the_first_years_of_each_presidency() -> None:
+    firsts = presidencies().drop_duplicates("presidency")["congress_number"]
+    assert tuple(congress_days(int(c))[0].year for c in firsts) == NEW_PRESIDENT_YEARS
+    assert set(JANUARY_VARIANTS["A: 2001, 2021"]) <= set(NEW_PRESIDENT_YEARS)
+
+
+def _tone_cells() -> pd.DataFrame:
+    """Tone per Congress, chamber and party: the party out of the White House
+    at 0.5 + Congress/1000, the governing party at 0.3."""
+    rows = []
+    for congress in (115, 116, 117):
+        white_house = "R" if congress < 117 else "D"
+        for chamber in ("H", "S"):
+            for party in ("D", "R"):
+                out = party != white_house
+                rows.append({"congress_number": congress, "chamber": chamber, "party": party,
+                             "mean": 0.5 + congress / 1000 if out else 0.3, "n": 100})  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def test_opposition_escalation_is_the_unweighted_mean_per_presidency() -> None:
+    cells = _tone_cells()
+    # weights must not matter: give the 115th far more speeches
+    cells.loc[cells["congress_number"] == 115, "n"] = 10_000
+    out = opposition_escalation(cells).set_index(["chamber", "presidency"])
+    trump = out.loc[("H", "Trump I")]
+    assert trump["opposition_party"] == "D" and trump["governing_party"] == "R"
+    assert trump["n_congresses"] == 2
+    # (0.615 + 0.616) / 2 = 0.6155, unweighted
+    assert trump["opposition_tone"] == pytest.approx(0.6155)
+    assert trump["governing_tone"] == pytest.approx(0.3)
+    assert trump["difference"] == pytest.approx(0.3155)
+    biden = out.loc[("S", "Biden")]
+    assert biden["opposition_party"] == "R" and biden[
+        "opposition_tone"
+    ] == pytest.approx(0.617)
+    assert list(out.index.get_level_values("presidency")[:2]) == ["Trump I", "Biden"]
+
+
+def test_opposition_escalation_stops_without_both_parties() -> None:
+    cells = _tone_cells()
+    with pytest.raises(ValueError, match="lacks a party"):
+        opposition_escalation(cells.drop(index=0))
+
+
+def test_the_days_before_the_inauguration_are_3_to_19_january() -> None:
+    frame = pd.DataFrame({"date": ["2001-01-02", "2001-01-03", "2001-01-19", "2001-01-20",
+                                   "2009-01-10", "2021-01-19", "2003-01-10"]})  # fmt: skip
+    assert pre_inauguration(frame, (2001, 2021)).tolist() == [
+        False, True, True, False, False, True, False,
+    ]  # fmt: skip
+    assert pre_inauguration(frame, NEW_PRESIDENT_YEARS).tolist() == [
+        False, True, True, False, True, True, False,
+    ]  # fmt: skip
+    assert drop_pre_inauguration(frame, (2001,))["date"].tolist() == [
+        "2001-01-02", "2001-01-20", "2009-01-10", "2021-01-19", "2003-01-10",
+    ]  # fmt: skip
+
+
+def _power_frame() -> pd.DataFrame:
+    """House and Senate, 113th-116th Congress (Obama -> Trump): members whose
+    chamber status varies; some 115th speeches fall on 3-19 January 2017."""
+    rng = np.random.default_rng(21)
+    rows = []
+    for chamber in ("H", "S"):
+        for member in range(12):
+            party = "D" if member < 6 else "R"
+            for congress in (113, 114, 115, 116):
+                minority = int(rng.integers(2))
+                opposition = float((party == "D") == (congress >= 115))
+                start = congress_days(congress)[0]
+                for i in range(6):
+                    day = start + dt.timedelta(days=7 + 30 * i)
+                    rows.append({
+                        "speech_id": f"{chamber}{member}-{congress}-{i}",
+                        "member_key": f"{chamber}{member}", "party": party,
+                        "chamber": chamber, "congress_number": congress,
+                        "date": pd.Timestamp(day), "in_opposition": bool(opposition),
+                        "opposition": opposition, "chamber_minority": minority,
+                        "extremity": 0.02 * member + 0.1 * opposition + 0.05 * minority
+                        + rng.normal(0, 0.02),
+                        "tone": 0.3 + 0.1 * opposition + rng.normal(0, 0.02),
+                    })  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def test_power_estimates_stack_the_three_analyses() -> None:
+    out = power_estimates(_power_frame())
+    assert set(out["analysis"]) == {
+        "model C",
+        "power ladder",
+        "White House event study",
+    }
+    assert set(out["outcome"]) == {"extremity", "tone"}
+    c = out[(out["analysis"] == "model C") & (out["outcome"] == "tone")]
+    assert set(c["term"]) == {"opposition", "chamber_minority"} and len(c) == 8
+    opposition = c[c["term"] == "opposition"]["estimate"]
+    assert opposition.to_numpy() == pytest.approx([0.1] * 4, abs=0.02)
+    ladder = out[out["analysis"] == "power ladder"]
+    assert set(ladder["term"]) == {
+        "White House only", "chamber only", "nothing",
+        "nothing − White House only − chamber only",
+    }  # fmt: skip
+    study = out[out["analysis"] == "White House event study"]
+    assert set(study["term"]) == {"k = -2", "k = +0", "k = +1"}
+    assert (study["party"] == "losing − winning").all()
+    assert not out.duplicated(["analysis", "term", "party", "chamber", "outcome"]).any()
+
+
+def test_january_robustness_puts_each_variant_beside_the_main_estimate() -> None:
+    frame = _power_frame()
+    main = power_estimates(frame)
+    out = january_robustness(frame, {"none": (1999,), "2017": (2017,)}, main=main)
+    # one speech per member falls on 3-19 January 2017 (start + 7 days = 10 January)
+    expected = int(pre_inauguration(frame, (2017,)).sum())
+    assert expected == 24
+    assert (out.loc[out["variant"] == "2017", "n_dropped"] == expected).all()
+    assert (out.loc[out["variant"] == "2017", "n_dropped_chamber"] == 12).all()
+    none = out[out["variant"] == "none"]
+    assert (none["n_dropped"] == 0).all()
+    assert np.allclose(none["estimate"], none["main_estimate"], rtol=0, atol=1e-12)
+    assert len(none) == len(main)
+    changed = out[out["variant"] == "2017"]
+    assert not np.allclose(changed["estimate"], changed["main_estimate"], atol=1e-12)
+
+
+def test_the_keyword_lists_as_a_table() -> None:
+    table = keyword_list_table()
+    assert list(table.columns) == ["list", "term"]
+    assert len(table) == sum(len(t) for t in KEYWORD_LISTS.values())
+    assert table.iloc[0].tolist() == ["cooperation", "bipartisan"]
+    assert list(dict.fromkeys(table["list"])) == list(KEYWORD_LISTS)
+
+
+def test_wrap_text_keeps_lines_within_the_width() -> None:
+    fig = matplotlib.pyplot.figure(figsize=(6, 2))
+    renderer = fig.canvas.get_renderer()
+    text = " ".join(["polarization"] * 30)
+    wrapped = wrap_text(text, 200.0, renderer, 8.5)
+    lines = wrapped.split("\n")
+    assert len(lines) > 1 and " ".join(lines) == text
+    font = matplotlib.font_manager.FontProperties(size=8.5)
+    widths = [renderer.get_text_width_height_descent(line, font, ismath=False)[0]
+              for line in lines]  # fmt: skip
+    assert max(widths) <= 200.0
+    assert wrap_text("a\nb", 200.0, renderer, 8.5) == "a\nb"
+    matplotlib.pyplot.close(fig)
+
+
+def _header_layout(fig: Figure) -> tuple:
+    renderer = fig.canvas.get_renderer()
+    panels = matplotlib.transforms.Bbox.union(
+        [ax.get_tightbbox(renderer) for ax in fig.axes]
+    )
+    title = fig._suptitle.get_window_extent(renderer)
+    subtitle = next(t for t in fig.texts if t is not fig._suptitle).get_window_extent(
+        renderer
+    )
+    return panels, title, subtitle
+
+
+def test_the_header_sits_above_the_panels_and_is_no_wider() -> None:
+    long = " ".join(["A long subtitle that would run far past the panels."] * 6)
+    fig, _ = matplotlib.pyplot.subplots(1, 2, figsize=(8, 3))
+    place_header(fig, "Title", long)
+    panels, title, subtitle = _header_layout(fig)
+    assert subtitle.y0 >= panels.y1 and title.y0 >= subtitle.y1
+    assert subtitle.width <= panels.width + 1e-6
+    assert abs(subtitle.x0 - panels.x0) < 1.0
+    matplotlib.pyplot.close(fig)
+
+    fig, _ = matplotlib.pyplot.subplots(1, 2, figsize=(8, 3))
+    fig.suptitle("Title", y=1.02)
+    fig.text(0.01, 0.95, long)
+    wrap_header(fig, long)
+    panels, title, subtitle = _header_layout(fig)
+    assert subtitle.y0 >= panels.y1 and subtitle.width <= panels.width + 1e-6
+    with pytest.raises(ValueError, match="no text equal"):
+        wrap_header(fig, "another subtitle")
+    matplotlib.pyplot.close(fig)
+
+
+def test_the_thesis_versions_of_the_figures_draw() -> None:
+    models = pd.concat(
+        [pd.DataFrame([{"chamber": c, "party": p, "term": t, "model": m, "value": v,
+                        "coef": 0.1, "ci_low": 0.0, "ci_high": 0.2}
+                       for c in ("H", "S") for p in ("D", "R")
+                       for t in ("opposition", "chamber_minority") for m in ("A", "B", "C")])
+         for v in ("tone", "extremity")],
+        ignore_index=True,
+    )  # fmt: skip
+    model_c = plot_opposition_models(models, "C", "s", models_shown=("C",),
+                                     rows=[("tone", "Tone"), ("extremity", "Extremity")])  # fmt: skip
+    assert len(model_c.axes) == 4 and not model_c.axes[1].get_legend()
+    assert model_c.axes[0].get_title(loc="left") == "Tone · Out of the White House"
+    default = plot_opposition_models(models[models["value"] == "tone"], "ABC", "s")
+    assert len(default.axes) == 2 and default.axes[-1].get_legend() is not None
+
+    ground = pd.DataFrame(
+        [{"congress_number": n, "chamber": c, "topic_block": b, "measure": m,
+          "value": 0.2, "ci_low": 0.1, "ci_high": 0.3} for n in (113, 114, 115)
+         for c in ("H", "S") for b in ("all", "economic", "governance")
+         for m in ("d_right_of_r_median", "r_left_of_d_median", "overlap")]
+    )  # fmt: skip
+    overlap = plot_common_ground(ground, ["all", "economic", "governance"], "t", "s",
+                                 overlap_only=True)  # fmt: skip
+    assert len(overlap.axes) == 2
+    assert len(overlap.axes[0].get_lines()) == 3  # all + two blocks, no crossing shares
+    full = plot_common_ground(ground, ["all", "economic"], "t", "s")
+    assert len(full.axes) == 4 and len(full.legends) == 1
+
+    data = wh_event_study_data(
+        _event_study_frame().assign(tone=lambda f: f["extremity"])
+    )
+    effects = pd.concat([wh_event_study(data, v) for v in ("extremity", "tone")])
+    paths = pd.concat([party_own_paths(data, v) for v in ("extremity", "tone")])
+    tone_only = plot_event_study(effects, paths, "t", "s", values=["tone"])
+    assert len(tone_only.axes) == 2
+    assert tone_only.axes[0].get_title(loc="left").endswith("tone")
+    assert len(plot_event_study(effects, paths, "t", "s").axes) == 4
+
+    coefficients = pd.DataFrame(
+        [{"chamber": c, "party": p, "term": "x", "coef": 0.1, "ci_low": 0.0,
+          "ci_high": 0.2, "value": v} for c in ("H", "S") for p in ("D", "R")
+         for v in ("extremity", "tone")]
+    )  # fmt: skip
+    terms = plot_term_coefficients(coefficients, "x", "t", "s")
+    terms.canvas.draw()
+    assert all(t.get_text() for t in terms.axes[0].get_yticklabels())
+    assert not any(t.get_visible() for t in terms.axes[1].get_yticklabels())
+
+    yearly = pd.DataFrame(
+        [{"year": y, "chamber": c, "party": p, "list": "other_party", "mean": 0.1,
+          "ci_low": 0.05, "ci_high": 0.15} for y in (2015, 2016) for c in ("H", "S")
+         for p in ("D", "R")]
+    )  # fmt: skip
+    single = plot_yearly_keyword_lines(yearly, ["other_party"], "t", "s")
+    assert all(ax.get_legend() is None for ax in single.axes)
+
+    by_opposition = pd.DataFrame(
+        [{"chamber": c, "party": p, "in_opposition": o, "list": n, "mean": 0.1,
+          "ci_low": 0.05, "ci_high": 0.15} for c in ("H", "S") for p in ("D", "R")
+         for o in (False, True) for n in ("deficit", "undo")]
+    )  # fmt: skip
+    deficit = plot_keyword_by_opposition(by_opposition, ["deficit"], "t", "s")
+    assert [t.get_text() for t in deficit.axes[0].get_xticklabels()] == ["deficit"]
+
+    for fig in (model_c, default, overlap, full, tone_only, terms, single, deficit):
+        matplotlib.pyplot.close(fig)
+
+
+# --- the A11 follow-up --------------------------------------------------------------------
+
+from src.deep_dive import (
+    HOUSE_MAJORITY,
+    majority_minority_tone,
+    save_tables,
+    table_difference,
+)
+from src.deep_dive_plots import (
+    TOPIC_LABELS,
+    plot_majority_minority,
+    topic_label,
+    with_topic_labels,
+)
+
+
+def _block_values() -> pd.DataFrame:
+    """House tone per party in two blocks, 117th-119th: D at 0.4, R at 0.3."""
+    return pd.DataFrame(
+        [{"congress_number": c, "chamber": "H", "topic_block": b, "party": p,
+          "mean": 0.4 if p == "D" else 0.3, "ci_low": 0.0, "ci_high": 1.0}
+         for c in (117, 118, 119) for b in ("economic", "health") for p in ("D", "R")]
+    )  # fmt: skip
+
+
+def test_majority_minority_follows_the_house_majority() -> None:
+    out = majority_minority_tone(_block_values())
+    # HOUSE_MAJORITY: 117th D, 118th R, 119th R
+    roles = out.set_index(["congress_number", "role"])["party"]
+    assert roles[(117, "majority")] == HOUSE_MAJORITY[117] == "D"
+    assert roles[(118, "majority")] == "R" and roles[(118, "minority")] == "D"
+    assert len(out) == 6 and set(out["role"]) == {"majority", "minority"}
+    harsher = out.pivot(index="congress_number", columns="role", values="mean")
+    assert (harsher["minority"] > harsher["majority"]).tolist() == [False, True, True]
+
+
+def test_majority_minority_stops_without_a_majority_or_a_party() -> None:
+    values = _block_values()
+    with pytest.raises(ValueError, match="no majority"):
+        majority_minority_tone(values, majority={117: "D", 118: "R"})
+    with pytest.raises(ValueError, match="lacks a party"):
+        majority_minority_tone(values.drop(index=0))
+
+
+def test_save_tables_never_rewrites_and_stops_beyond_noise(tmp_path) -> None:
+    table = pd.DataFrame({"name": ["a", "b"], "value": [0.1, 0.2]})
+    same, noisy, new = (
+        tmp_path / "same.csv",
+        tmp_path / "noisy.csv",
+        tmp_path / "new.csv",
+    )
+    table.to_csv(same, index=False)
+    table.assign(value=[0.1 + 1e-17, 0.2]).to_csv(noisy, index=False)
+    before = noisy.read_bytes()
+    out = save_tables({same: table, noisy: table, new: table}).set_index("file")
+    assert out["status"].to_dict() == {
+        "same.csv": "identical", "noisy.csv": "noise", "new.csv": "written",
+    }  # fmt: skip
+    assert noisy.read_bytes() == before and new.exists()
+    assert table_difference(noisy, table) is not None
+
+    other = tmp_path / "other.csv"
+    with pytest.raises(RuntimeError, match="noisy.csv"):
+        save_tables({other: table, noisy: table.assign(value=[0.5, 0.2])})
+    assert not other.exists()  # nothing written when a table differs
+    assert table_difference(noisy, table.assign(name=["a", "c"])) is None
+
+
+def test_topic_labels_are_display_only() -> None:
+    assert topic_label("security_foreign") == "Security & foreign policy"
+    assert topic_label("all") == "all"
+    assert set(TOPIC_LABELS) == {"economic", "governance", "security_foreign",
+                                 "social_cultural", "other"}  # fmt: skip
+    frame = pd.DataFrame({"topic_block": ["economic", "other"], "x": [1, 2]})
+    shown = with_topic_labels(frame)
+    assert shown["topic_block"].tolist() == ["Economy", "Other"]
+    assert frame["topic_block"].tolist() == ["economic", "other"]
+
+
+def test_the_follow_up_figures_draw() -> None:
+    fig = plot_majority_minority(majority_minority_tone(_block_values()), "t", "s")
+    assert len(fig.axes) == 1 and len(fig.legends) == 1
+    matplotlib.pyplot.close(fig)

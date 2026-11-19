@@ -1,0 +1,16 @@
+chamber,vote_result,n_rollcalls
+H,Failed,8
+H,Passed,70
+S,Bill Passed,3
+S,Cloture Motion Rejected,1
+S,Joint Resolution Defeated,12
+S,Joint Resolution Passed,74
+S,Motion Agreed to,2
+S,Motion Rejected,6
+S,Motion to Adjourn Rejected,1
+S,Motion to Proceed Agreed to,38
+S,Motion to Proceed Rejected,12
+S,Motion to Table Agreed to,2
+S,Motion to Table Failed,1
+S,Point of Order Sustained,2
+S,Veto Sustained,5

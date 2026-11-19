@@ -2716,6 +2716,104 @@ last ran (label run `20261017T182223Z` was extended, L8): the 113th Senate has
 
 ---
 
+### A11 — The final run of notebooks 07–10: thesis figures, two checks, appendix tables
+**Date:** 2026-11-19 · **Status:** active · **Decided by:** Konstantin (what the
+thesis shows, the checks, the saving rules); implementation by the agent
+
+Last run of notebooks 07–10 before the thesis is finished. **No number changes:**
+every table that already existed is identical to its committed version, or equal
+to floating-point noise under [A9]'s rule (relative 1e-12, absolute 1e-15, same
+text, columns and shape) and then restored from git. Only new tables are added.
+
+- **Figure texts.** "Preliminary." and "Labels not yet hand-checked." are gone
+  from every title and subtitle (notebook 10's `SUB` constant is removed), and
+  so is every mention of the source break on a figure ("114→115 coincides with
+  the source break", "114th Congress Stanford speeches only", "Roll calls are
+  not affected by the speech source change"). This completes [A10]: the
+  break is named in the notebooks' prose, the code comments and the methodology,
+  not on a figure. Notebook 07 (Justus's, [A6]) changed in its subtitle strings
+  only. Note: the committed PNGs of notebooks 09 and 10 still showed the dashed
+  line, because [A10] changed the code but 10 never overwrote a figure; this run
+  regenerates them.
+- **Subtitles are wrapped to the panels.** `deep_dive_plots.place_header` (and
+  `wrap_header` for a figure drawn by `plots.py`) puts the title and subtitle
+  above the laid-out panels and wraps the subtitle to the width of the panels,
+  tick labels and legends, so a figure is no wider than its content.
+  `plots.py` is unchanged. **Rejected:** shorter subtitles (they carry the
+  design); line breaks by hand (they break again with every new text).
+- **Layout fixes, content unchanged:** `plot_term_coefficients` shares the rows
+  (labels once, on the left; `deepdive_last_congress`,
+  `deepdive_names_other_party_power`); `plot_yearly_keyword_lines` drops the
+  legend for a single list (`deepdive_names_other_party`); the cohort axis shows
+  Congress numbers (`deepdive_cohort_vs_continuing`); `plot_rollcall_undo` and
+  `plot_common_ground` put one legend below the panels; the constellation ticks of
+  `deepdive_control_cells_*` break onto three lines, so neighbouring labels no
+  longer run into each other.
+- **Thesis versions** (new files; optional parameters whose defaults leave the
+  existing figures as they were): `deepdive_common_ground_overlap` (the overlap
+  coefficient only: all substantive speech bold with its band, the four policy
+  blocks thin, no crossing shares, no "other"); `deepdive_opposition_models_model_c`
+  (model C only, tone above extremity); `deepdive_wh_event_study_tone` (main
+  text) and `deepdive_wh_event_study_extremity` (appendix, its pre-trend check
+  fails, [A9]); `deepdive_power_words_deficit` (deficit words only).
+- **The opposition's tone per presidency** (`opposition_escalation`, notebook
+  10 section 11): per chamber and presidency (`presidencies`: Bush, Obama,
+  Trump I, Biden, Trump II), each party's tone as the **unweighted** mean of its
+  per-Congress means from `findings_tone_cells`. **Rejected:** speech-weighted
+  means (the sample has the same quota per Congress, but the 119th is one year).
+  Reproduces the values in the text, by assert. Table
+  `deepdive_opposition_escalation`.
+- **Robustness: the days before the inauguration** (notebook 10 section 12).
+  The president is assigned per Congress, so from the start of a new Congress to
+  19 January `in_opposition` follows the incoming president. Days dropped:
+  **3 to 19 January**, not [A9]'s 3 to 20: the presidency changes at noon on
+  the 20th and the Senate usually sits after the inauguration that day.
+  Variant A (as decided) drops them in 2001 and 2021, variant B in all five
+  years with a new president (2001, 2009, 2017, 2021, 2025). Re-estimated with
+  the existing functions and their defaults (`power_estimates`): model C, the
+  power ladder, the White House event study, tone and extremity; the main
+  estimates reproduce the committed tables by assert. Table
+  `deepdive_robustness_january`. Result: A drops 101 substantive speeches (House 81, Senate 20), B 634 (393, 241). Of 60 estimates per variant none changes sign; the largest shift is 0.008 (A) and 0.009 (B), the mean 0.001 and 0.003. One significance changes, at the 5% line: in B the tone of Senate Republicans holding only their chamber (out of the White House, majority kept) goes from +0.032 [−0.001, +0.066] to +0.034 [+0.000, +0.068]. The event study's tone jump at k = 0 grows slightly (House +0.142 → +0.145 / +0.148, Senate +0.184 → +0.190 / +0.193), its tone pre-trend stays at zero, and the extremity pre-trend still fails (House −0.042, Senate +0.067 / +0.066). The misassigned January days do not drive the findings; if anything they dampen them slightly.
+- **Appendix tables:** the two CRA tables notebook 10 only displayed
+  (`deepdive_rollcall_cra_per_congress`, `deepdive_rollcall_cra_results`), and
+  `KEYWORD_LISTS` as `deepdive_keyword_lists.csv` (list, term). Inventory of the
+  appendix material: `docs/notes/2026-11-19_appendix_inventory.md`.
+- **Saving rules for this run:** notebook 10 overwrites a figure that differs
+  and lists it; existing tables keep [A9]'s rule and are never rewritten (a
+  table beyond noise stops the run before anything is written). Notebooks
+  07–09 write their tables directly; afterwards each is compared with its
+  committed version under the same rule and restored with `git checkout` when
+  within noise. **Outcome:** 11 tables of 07–09 were within noise and restored.
+  Three tables of notebook 07 (`findings_party_trends`,
+  `findings_party_trends_by_topic_block`, `findings_tone_trends`) differed beyond
+  the rule in `se`, `ci_low`, `ci_high` and `p` only, by at most 6e-11 relative
+  (1.1e-12 absolute); estimates, text, columns and shape were identical.
+  Konstantin decided (2026-11-19) to treat them as floating-point noise and
+  restore them too. Every committed table is byte-identical after the run.
+
+**Follow-up, 2026-11-19** (decided by Konstantin; implementation by the agent).
+Notebooks 08–10 re-run under the saving rules above; 07 not touched. 08 and 09
+now save through `deep_dive.save_tables` ([A9]'s rule, nothing written if a
+table differs beyond it), so no existing table is rewritten.
+
+1. **Majority against minority:** `deepdive_tone_majority_minority.png`
+   (notebook 10, section 13) — House, economic debates, from
+   `deepdive_tone_by_topic`; roles from `HOUSE_MAJORITY`
+   (`majority_minority_tone`); one line per role, points in the colour of the
+   party in that role. Assert: the minority is harsher in 12 of 13 Congresses,
+   the exception is the 118th.
+2. **Gap decomposition, 107th → 118th only:**
+   `deepdive_gap_decomposition_107_118.png`, from the existing table
+   (`plot_gap_decomposition` with `comparisons=("107→118",)`).
+3. **Turnover, 2001–2025 only:** `deepdive_turnover_2001_2025.png`
+   (`plot_turnover` with `windows=("2001–2025 (107th–119th)",)`).
+4. **Readable topic labels on the figures of notebooks 08–10:** Economy,
+   Governance, Security & foreign policy, Social & cultural, Other
+   (`deep_dive_plots.TOPIC_LABELS`). Display only: every table keeps the codes
+   of `config.TOPIC_BLOCKS`.
+
+---
+
 ## Labels
 
 A second pass that gives each speech a **speech type** and, for policy debate,

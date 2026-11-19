@@ -1,10 +1,17 @@
-"""Figures for the deep dive (notebook 08), beside those in `plots.py`.
+"""Figures for the deep dive (notebooks 08-10), beside those in `plots.py`.
 
 The same rules and furniture as `plots.py`, imported rather than copied:
 House and Senate side by side, never pooled (O8), presidential terms shaded;
-the 2016-09-10 source break is not drawn (docs/decisions.md A10). Chamber
+the 2016-09-10 source break is not drawn and not named on a figure
+(docs/decisions.md A10, A11) -- the accompanying text names it. Chamber
 control is drawn as a thin strip along the top of each panel, coloured by the
 majority party, so presidency and chamber majority stay readable in one figure.
+
+Every figure here ends with `place_header` (or `wrap_header` for a figure made
+by `plots.py`): the title and subtitle sit above the panels once they are laid
+out, and the subtitle is wrapped to the width of the panels and their legends,
+so a long subtitle no longer makes the saved figure wider than its content
+(A11).
 """
 
 from __future__ import annotations
@@ -15,7 +22,10 @@ from collections.abc import Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
+from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
+from matplotlib.text import Text
+from matplotlib.transforms import Bbox
 
 from src.config import PRESIDENTS_BY_CONGRESS, TOPIC_BLOCKS
 from src.deep_dive import (
@@ -71,6 +81,132 @@ COMPONENT_COLORS = {
     "replacement": "#eda100",
     "unmatched": INK_MUTED,
 }
+
+#: How a topic block is named on a figure (A11 follow-up). Display only: the
+#: tables keep the codes of `config.TOPIC_BLOCKS`.
+TOPIC_LABELS: dict[str, str] = {
+    "economic": "Economy",
+    "governance": "Governance",
+    "security_foreign": "Security & foreign policy",
+    "social_cultural": "Social & cultural",
+    "other": "Other",
+}
+
+
+def topic_label(block: str) -> str:
+    """The figure label of a topic block (`TOPIC_LABELS`); other values, such
+    as "all", are returned unchanged."""
+    return TOPIC_LABELS.get(block, block)
+
+
+def with_topic_labels(frame: pd.DataFrame, column: str = "topic_block") -> pd.DataFrame:
+    """A copy of ``frame`` with ``column`` in figure labels, for the `plots.py`
+    functions that print a group's value as it is. ``frame`` is not changed."""
+    return frame.assign(**{column: frame[column].map(topic_label)})
+
+
+def _grid_label(block: str) -> str:
+    """`topic_label` broken at the ampersand, for narrow grid columns."""
+    return topic_label(block).replace(" & ", " &\n")
+
+
+#: Title and subtitle as in `plots.py`, and the space (in points) between the
+#: panels and the subtitle, and between the subtitle and the title.
+TITLE_SIZE = 12
+SUBTITLE_SIZE = 8.5
+HEADER_PAD = (10.0, 5.0)
+
+
+# --- titles and subtitles ------------------------------------------------------------
+
+
+def _renderer(fig: Figure):
+    """The figure's renderer (Agg, also under the notebooks' inline backend)."""
+    get = getattr(fig.canvas, "get_renderer", None)
+    return get() if get is not None else fig._get_renderer()
+
+
+def wrap_text(text: str, width: float, renderer, font: FontProperties | float) -> str:
+    """``text`` broken at spaces into lines no wider than ``width`` pixels,
+    measured in ``font`` (a font, or a size in points of the default font).
+
+    Existing line breaks are kept; a single word wider than ``width`` stays on
+    its own line rather than being split.
+    """
+    if not isinstance(font, FontProperties):
+        font = FontProperties(size=font)
+    lines = []
+    for paragraph in text.split("\n"):
+        line = ""
+        for word in paragraph.split(" "):
+            trial = f"{line} {word}" if line else word
+            measured, _, _ = renderer.get_text_width_height_descent(
+                trial, font, ismath=False
+            )
+            if line and measured > width:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _content_box(fig: Figure, renderer) -> Bbox:
+    """Where the panels sit, with their titles, tick labels and legends."""
+    boxes = [ax.get_tightbbox(renderer) for ax in fig.axes if ax.get_visible()]
+    boxes += [legend.get_window_extent(renderer) for legend in fig.legends]
+    return Bbox.union([b for b in boxes if b is not None and b.width > 0])
+
+
+def _position_header(
+    fig: Figure, title: Text | None, subtitle: Text | None, text: str | None
+) -> Figure:
+    """Put ``subtitle`` (wrapped from ``text``) just above the panels and
+    ``title`` above it, both flush with the panels' left edge."""
+    renderer = _renderer(fig)
+    box = _content_box(fig, renderer)
+    width, height = fig.bbox.width, fig.bbox.height
+    points = fig.dpi / 72
+    top = box.y1 + HEADER_PAD[0] * points
+    if subtitle is not None and text:
+        font = subtitle.get_fontproperties()
+        subtitle.set_text(wrap_text(text, box.width, renderer, font))
+        subtitle.set_position((box.x0 / width, top / height))
+        subtitle.set_horizontalalignment("left")
+        subtitle.set_verticalalignment("bottom")
+        top = subtitle.get_window_extent(renderer).y1 + HEADER_PAD[1] * points
+    if title is not None:
+        title.set_position((box.x0 / width, top / height))
+        title.set_horizontalalignment("left")
+        title.set_verticalalignment("bottom")
+    return fig
+
+
+def place_header(fig: Figure, title: str, subtitle: str | None = None) -> Figure:
+    """Add the title and the subtitle above the laid-out panels (call last).
+
+    The subtitle is wrapped to the width of the panels, their tick labels and
+    legends, so the figure is as wide as its content.
+    """
+    title_text = fig.suptitle(title, x=0, ha="left", fontsize=TITLE_SIZE, color=INK)
+    subtitle_text = None
+    if subtitle:
+        subtitle_text = fig.text(
+            0, 0, subtitle, fontsize=SUBTITLE_SIZE, color=INK_SECONDARY
+        )
+    return _position_header(fig, title_text, subtitle_text, subtitle)
+
+
+def wrap_header(fig: Figure, subtitle: str | None = None) -> Figure:
+    """`place_header` for a figure that already has its title and subtitle,
+    such as one drawn by `plots.py`: both are moved above the panels and the
+    subtitle -- the figure text equal to ``subtitle`` -- is wrapped."""
+    title = getattr(fig, "_suptitle", None)
+    match = [t for t in fig.texts if subtitle and t.get_text() == subtitle]
+    if subtitle and not match:
+        raise ValueError("the figure has no text equal to the subtitle")
+    return _position_header(fig, title, match[0] if match else None, subtitle)
 
 
 def _congress_days(congress: int) -> tuple[dt.date, dt.date]:
@@ -142,7 +278,7 @@ def plot_positions_with_control(
         handles, labels, frameon=False, fontsize=8, loc="upper center",
         bbox_to_anchor=(0.5, -0.02), ncols=len(handles),
     )  # fmt: skip
-    return fig
+    return wrap_header(fig, subtitle)
 
 
 def plot_opposition_models(
@@ -153,64 +289,75 @@ def plot_opposition_models(
         ("opposition", "Out of the White House"),
         ("chamber_minority", "Minority in own chamber"),
     ),
+    models_shown: Sequence[str] = tuple(MODEL_STYLES),
+    rows: Sequence[tuple[str, str]] | None = None,
 ) -> Figure:
     """Coefficients of models A-C with 95% intervals, one panel per term.
 
     ``models`` is `deep_dive.opposition_models` for one value. Rows are party x
     chamber; the models sit side by side within a row, in ink shades, so a
     model is never mistaken for a party. A term a model leaves out is absent.
+
+    ``models_shown`` picks the models (e.g. ``("C",)``; with one model there
+    is no legend). ``rows`` -- (value, label) pairs -- draws one row of panels
+    per value of a table holding several (``value`` column), e.g. tone above
+    extremity; by default one row for the single value in ``models``.
     """
     groups = [(c, p) for c, _ in CHAMBERS for p in ("D", "R")]
     names = dict(CHAMBERS)
     y = {group: len(groups) - 1 - i for i, group in enumerate(groups)}
-    offsets = {"A": 0.22, "B": 0.0, "C": -0.22}
+    shown = {m: MODEL_STYLES[m] for m in models_shown}
+    offsets = (
+        {"A": 0.22, "B": 0.0, "C": -0.22}
+        if len(shown) > 1
+        else dict.fromkeys(shown, 0.0)
+    )
+    panel_rows = list(rows) if rows else [(None, "")]
+    height = 0.75 * len(groups) * len(panel_rows) + 1.6 + 0.8 * (len(panel_rows) - 1)
     fig, axes = plt.subplots(
-        1, len(terms), figsize=(5.2 * len(terms), 0.75 * len(groups) + 1.6),
-        sharey=True, facecolor=SURFACE,
+        len(panel_rows), len(terms), figsize=(5.2 * len(terms), height),
+        sharey=True, facecolor=SURFACE, squeeze=False,
     )  # fmt: skip
-    axes = list(axes) if len(terms) > 1 else [axes]
-    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.03)
-    if subtitle:
-        fig.text(0.01, 0.975, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY,
-                 va="top")  # fmt: skip
-    for ax, (term, label) in zip(axes, terms):
-        _style(ax)
-        ax.grid(axis="x", color=GRID, linewidth=0.6)
-        ax.grid(axis="y", visible=False)
-        ax.axvline(0, color=BASELINE, linewidth=0.8, zorder=1)
-        ax.set_title(label, loc="left", fontsize=10, color=INK, pad=8)
-        for model, (color, marker) in MODEL_STYLES.items():
-            data = models[(models["term"] == term) & (models["model"] == model)]
-            for _, row in data.iterrows():
-                at = y[(row["chamber"], row["party"])] + offsets[model]
-                ax.plot([row["ci_low"], row["ci_high"]], [at, at], color=color,
-                        linewidth=2, alpha=0.45, solid_capstyle="round",
-                        zorder=2)  # fmt: skip
-                ax.plot(row["coef"], at, marker=marker, color=color, linestyle="none",
-                        markersize=MARKER_SIZE + 1, markeredgecolor=SURFACE,
-                        markeredgewidth=0.8, zorder=3)  # fmt: skip
-        ax.set_xlabel("Coefficient (95% interval, clustered by member)",
-                      color=INK_SECONDARY, fontsize=8)  # fmt: skip
-    axes[0].set_yticks(list(y.values()))
-    axes[0].set_yticklabels(
+    for r, (value, row_label) in enumerate(panel_rows):
+        data_row = models if value is None else models[models["value"] == value]
+        for ax, (term, label) in zip(axes[r], terms):
+            _style(ax)
+            ax.grid(axis="x", color=GRID, linewidth=0.6)
+            ax.grid(axis="y", visible=False)
+            ax.axvline(0, color=BASELINE, linewidth=0.8, zorder=1)
+            heading = label if value is None else f"{row_label} · {label}"
+            ax.set_title(heading, loc="left", fontsize=10, color=INK, pad=8)
+            for model, (color, marker) in shown.items():
+                data = data_row[
+                    (data_row["term"] == term) & (data_row["model"] == model)
+                ]
+                for _, row in data.iterrows():
+                    at = y[(row["chamber"], row["party"])] + offsets[model]
+                    ax.plot([row["ci_low"], row["ci_high"]], [at, at], color=color,
+                            linewidth=2, alpha=0.45, solid_capstyle="round",
+                            zorder=2)  # fmt: skip
+                    ax.plot(row["coef"], at, marker=marker, color=color, linestyle="none",
+                            markersize=MARKER_SIZE + 1, markeredgecolor=SURFACE,
+                            markeredgewidth=0.8, zorder=3)  # fmt: skip
+            if r == len(panel_rows) - 1:
+                ax.set_xlabel("Coefficient (95% interval, clustered by member)",
+                              color=INK_SECONDARY, fontsize=8)  # fmt: skip
+    axes[0][0].set_yticks(list(y.values()))
+    axes[0][0].set_yticklabels(
         [f"{names[c]} {PARTY_NAMES[p]}" for c, p in y], fontsize=8, color=INK_SECONDARY
     )
-    axes[0].set_ylim(-0.6, len(groups) - 0.4)
-    legend = [
-        plt.Line2D(
-            [],
-            [],
-            color=color,
-            marker=marker,
-            linestyle="none",
-            markersize=MARKER_SIZE + 1,
-            label=f"Model {model}",
-        )
-        for model, (color, marker) in MODEL_STYLES.items()
-    ]
-    axes[-1].legend(handles=legend, frameon=False, fontsize=8, loc="upper left",
-                    bbox_to_anchor=(1.0, 1.0))  # fmt: skip
-    return fig
+    axes[0][0].set_ylim(-0.6, len(groups) - 0.4)
+    if len(shown) > 1:
+        legend = [
+            plt.Line2D([], [], color=color, marker=marker, linestyle="none",
+                       markersize=MARKER_SIZE + 1, label=f"Model {model}")
+            for model, (color, marker) in shown.items()
+        ]  # fmt: skip
+        axes[0][-1].legend(handles=legend, frameon=False, fontsize=8, loc="upper left",
+                           bbox_to_anchor=(1.0, 1.0))  # fmt: skip
+    if len(panel_rows) > 1:
+        fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def _value(table: pd.DataFrame, **match: str) -> pd.DataFrame:
@@ -268,13 +415,9 @@ def plot_gap_decomposition(
         b for b in decomposition["topic_block"].unique() if b != "all"
     ]
     fig, axes = plt.subplots(
-        2, len(comparisons), figsize=(5.6 * len(comparisons), 8.4),
+        2, len(comparisons), figsize=(max(5.6 * len(comparisons), 8.5), 8.4),
         facecolor=SURFACE, squeeze=False, gridspec_kw={"height_ratios": (1, 1.3)},
     )  # fmt: skip
-    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.02)
-    if subtitle:
-        fig.text(0.01, 0.985, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY,
-                 va="top")  # fmt: skip
     chambers = [c for c, _ in CHAMBERS]
     names = dict(CHAMBERS)
     for column, comparison in enumerate(comparisons):
@@ -322,7 +465,7 @@ def plot_gap_decomposition(
                 bottom.hlines(at + offset, r["ci_low"], r["ci_high"], color=INK,
                               linewidth=1, zorder=3)  # fmt: skip
         bottom.set_yticks(list(y.values()))
-        bottom.set_yticklabels([f"{b} · {names[c]}" for b, c in y], fontsize=7.5,
+        bottom.set_yticklabels([f"{topic_label(b)} · {names[c]}" for b, c in y], fontsize=7.5,
                                color=INK_SECONDARY)  # fmt: skip
         bottom.set_xlabel("Contribution to the change in the gap (R − D)",
                           color=INK_SECONDARY, fontsize=8)  # fmt: skip
@@ -331,8 +474,8 @@ def plot_gap_decomposition(
     )
     axes[0][-1].legend(frameon=False, fontsize=8, loc="upper left",
                        bbox_to_anchor=(1.0, 1.0))  # fmt: skip
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_turnover(
@@ -349,9 +492,6 @@ def plot_turnover(
     """
     windows = list(windows) or list(cumulative["window"].unique())
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharey=True, facecolor=SURFACE)
-    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=1.03)
-    if subtitle:
-        fig.text(0.01, 0.965, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY)
     slots = [(p, w) for p in ("D", "R") for w in windows]
     for ax, (chamber, name) in zip(axes, CHAMBERS):
         _style(ax)
@@ -388,7 +528,7 @@ def plot_turnover(
     keep = dict(zip(labels, handles))
     axes[1].legend(list(keep.values()), list(keep), frameon=False, fontsize=8,
                    loc="upper left", bbox_to_anchor=(1.0, 1.0))  # fmt: skip
-    return fig
+    return place_header(fig, title, subtitle)
 
 
 # =================================================================================
@@ -412,13 +552,6 @@ MEASURE_STYLES = {
 ROWS = [(c, p) for c, _ in CHAMBERS for p in ("D", "R")]
 
 
-def _header(fig: Figure, title: str, subtitle: str | None, y: float = 1.02) -> None:
-    fig.suptitle(title, x=0.01, ha="left", fontsize=12, color=INK, y=y)
-    if subtitle:
-        fig.text(0.01, y - 0.045, subtitle, ha="left", fontsize=8.5, color=INK_SECONDARY,
-                 va="top")  # fmt: skip
-
-
 def plot_event_effects(
     effects: pd.DataFrame, measure: str, title: str, subtitle: str | None = None
 ) -> Figure:
@@ -440,7 +573,6 @@ def plot_event_effects(
     step = 0.6 / max(len(slots) - 1, 1)
     fig, axes = plt.subplots(1, 2, figsize=(12, 0.7 * len(events) + 1.8), sharey=True,
                              facecolor=SURFACE)  # fmt: skip
-    _header(fig, title, subtitle, y=1.06)
     for ax, (chamber, name) in zip(axes, CHAMBERS):
         _style(ax)
         ax.grid(axis="x", color=GRID, linewidth=0.6)
@@ -478,7 +610,7 @@ def plot_event_effects(
     if "small_cell" in data and data["small_cell"].any():
         fig.text(0.01, -0.02, "† rests on a cell with fewer than 30 speeches (see the table).",
                  fontsize=8, color=INK_SECONDARY, va="top")  # fmt: skip
-    return fig
+    return place_header(fig, title, subtitle)
 
 
 def plot_event_quarterly(
@@ -497,7 +629,6 @@ def plot_event_quarterly(
     data = quarterly[quarterly["value"] == value]
     fig, axes = plt.subplots(len(events), 2, figsize=(12, 2.6 * len(events) + 1), sharex=True,
                              sharey=True, facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.0 + 0.02 * 6 / max(len(events), 1))
     for row, event in enumerate(events):
         for ax, (chamber, name) in zip(axes[row], CHAMBERS):
             _style(ax)
@@ -523,19 +654,22 @@ def plot_event_quarterly(
     axes[0][1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_term_coefficients(
     fits: pd.DataFrame, term: str, title: str, subtitle: str | None = None
 ) -> Figure:
     """One coefficient per chamber and party, with its 95% interval; one panel
-    per ``value`` in ``fits`` (a `within_cell_ols` table with ``value``)."""
+    per ``value`` in ``fits`` (a `within_cell_ols` table with ``value``).
+
+    The panels share the rows, so the row labels stand once, on the left, and
+    never run into the panel beside them.
+    """
     values = list(dict.fromkeys(fits["value"]))
     fig, axes = plt.subplots(1, len(values), figsize=(5.6 * len(values), 3.4), facecolor=SURFACE,
-                             squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.08)
+                             sharey=True, squeeze=False)  # fmt: skip
     names = dict(CHAMBERS)
     for ax, value in zip(axes[0], values):
         _style(ax)
@@ -553,12 +687,13 @@ def plot_term_coefficients(
             )
             ax.plot(r["coef"], [y], "o", color=PARTY_COLORS[party], markersize=MARKER_SIZE + 1,
                     markeredgecolor=SURFACE)  # fmt: skip
-        ax.set_yticks(range(len(ROWS)))
-        ax.set_yticklabels([f"{names[c]} · {PARTY_NAMES[p]}" for c, p in ROWS[::-1]],
-                           fontsize=8.5, color=INK_SECONDARY)  # fmt: skip
         ax.set_title(value, loc="left", fontsize=10, color=INK)
         ax.set_xlabel("Coefficient (95% interval)", color=INK_SECONDARY, fontsize=8)
-    return fig
+    axes[0][0].set_yticks(range(len(ROWS)))
+    axes[0][0].set_yticklabels([f"{names[c]} · {PARTY_NAMES[p]}" for c, p in ROWS[::-1]],
+                               fontsize=8.5, color=INK_SECONDARY)  # fmt: skip
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def shade_presidencies_years(ax, years: Sequence[int]) -> None:
@@ -597,13 +732,13 @@ def plot_yearly_keyword_lines(
     """Share of speeches with a hit per year, one line per list.
 
     ``shares`` is `deep_dive.keyword_shares` by year, chamber and party. Rows
-    are the parties, columns the chambers; presidencies shaded, the source
-    break marked, an incomplete last year hatched.
+    are the parties, columns the chambers; presidencies shaded, an incomplete
+    last year hatched. With a single list the legend is left out: the title
+    and the panels already say what the line is.
     """
     years = sorted(shares["year"].unique())
     fig, axes = plt.subplots(2, 2, figsize=(12, 7.4), sharex=True, sharey=True,
                              facecolor=SURFACE)  # fmt: skip
-    _header(fig, title, subtitle, y=1.03)
     for row, party in enumerate(("D", "R")):
         for ax, (chamber, name) in zip(axes[row], CHAMBERS):
             _style(ax)
@@ -622,11 +757,12 @@ def plot_yearly_keyword_lines(
         axes[row][0].set_ylabel(
             "Speeches with a hit (%)", color=INK_SECONDARY, fontsize=8.5
         )
-    axes[0][1].legend(
-        frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    if len(lists) > 1:
+        axes[0][1].legend(
+            frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
+        )
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_keyword_by_opposition(
@@ -637,7 +773,6 @@ def plot_keyword_by_opposition(
     `deep_dive.keyword_shares` by chamber, party and ``in_opposition``.
     Solid bars: party holds the White House; hatched: in opposition."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.4), sharey=True, facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.05)
     slots = [(p, o) for p in ("D", "R") for o in (False, True)]
     width = 0.8 / len(slots)
     for ax, (chamber, name) in zip(axes, CHAMBERS):
@@ -665,7 +800,7 @@ def plot_keyword_by_opposition(
     axes[1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    return fig
+    return place_header(fig, title, subtitle)
 
 
 def plot_swing_states(
@@ -676,7 +811,6 @@ def plot_swing_states(
     first table of `deep_dive.swing_state_effects`."""
     values = list(dict.fromkeys(means["value"]))
     fig, axes = plt.subplots(1, len(values), figsize=(11, 4.2), facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.05)
     x = {t: i for i, t in enumerate(MARGIN_TERCILES)}
     for ax, value in zip(axes, values):
         _style(ax)
@@ -698,21 +832,39 @@ def plot_swing_states(
     axes[-1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    return fig
+    return place_header(fig, title, subtitle)
+
+
+def _legend_below(fig: Figure, handles: list, labels: list, ncols: int) -> None:
+    """One legend for the whole figure, centred below the panels (after the
+    layout, so the panels keep their width)."""
+    fig.legend(handles, labels, frameon=False, fontsize=8, loc="upper center",
+               bbox_to_anchor=(0.5, 0.0), ncols=ncols)  # fmt: skip
 
 
 def plot_common_ground(
-    table: pd.DataFrame, groups: Sequence[str], title: str, subtitle: str | None = None
+    table: pd.DataFrame,
+    groups: Sequence[str],
+    title: str,
+    subtitle: str | None = None,
+    overlap_only: bool = False,
 ) -> Figure:
     """Crossing shares and overlap per Congress, one row per ``group`` value
     of ``topic_block``; House | Senate. ``table`` is
     `deep_dive.bootstrap_common_ground` output with a ``topic_block`` column
-    ("all" for every substantive speech)."""
+    ("all" for every substantive speech).
+
+    ``overlap_only`` draws the overlap coefficient alone in one panel per
+    chamber: "all" as a bold line with its 95% band, every other group in
+    ``groups`` as a thin line in its block colour (`BLOCK_COLORS`), no
+    crossing shares.
+    """
+    if overlap_only:
+        return _plot_overlap_by_block(table, groups, title, subtitle)
     congresses = sorted(table["congress_number"].unique())
-    height = 2.8 * len(groups) + 1.2
+    height = 2.5 * len(groups) + 0.8
     fig, axes = plt.subplots(len(groups), 2, figsize=(12, height), sharex=True, sharey=True,
                              facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.0 + 0.3 / height)
     for row, group in enumerate(groups):
         for ax, (chamber, name) in zip(axes[row], CHAMBERS):
             _style(ax)
@@ -729,14 +881,48 @@ def plot_common_ground(
             ax.set_xticks(congresses)
             ax.set_xticklabels([f"{c}\n{congress_year(c)}" for c in congresses], fontsize=7.5,
                                color=INK_SECONDARY)  # fmt: skip
-            ax.set_title(f"{name} · {group}", loc="left", fontsize=10, color=INK,
-                         pad=14 if row == 0 else 6)  # fmt: skip
+            ax.set_title(f"{name} · {topic_label(group)}", loc="left", fontsize=10, color=INK,
+                         pad=14 if row == 0 else 4)  # fmt: skip
         axes[row][0].set_ylabel("Share", color=INK_SECONDARY, fontsize=8.5)
-    axes[0][1].legend(
-        frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
-    )
-    fig.tight_layout(rect=(0, 0, 1, 1 - 0.5 / height))
-    return fig
+    fig.tight_layout(h_pad=1.2, w_pad=2.0)
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    _legend_below(fig, handles, labels, ncols=len(labels))
+    return place_header(fig, title, subtitle)
+
+
+def _plot_overlap_by_block(
+    table: pd.DataFrame, groups: Sequence[str], title: str, subtitle: str | None
+) -> Figure:
+    """`plot_common_ground` with ``overlap_only``: see there."""
+    congresses = sorted(table["congress_number"].unique())
+    overlap = table[table["measure"] == "overlap"]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharey=True, facecolor=SURFACE)
+    for ax, (chamber, name) in zip(axes, CHAMBERS):
+        _style(ax)
+        shade_presidencies(ax, congresses)
+        for group in groups:
+            part = _value(overlap, topic_block=group, chamber=chamber)
+            part = part.sort_values("congress_number")
+            if group == "all":
+                ax.fill_between(part["congress_number"], part["ci_low"], part["ci_high"],
+                                color=INK, alpha=0.12, linewidth=0, zorder=2)  # fmt: skip
+                ax.plot(part["congress_number"], part["value"], color=INK, linewidth=2.6,
+                        marker="o", markersize=MARKER_SIZE, markeredgecolor=SURFACE,
+                        label="all substantive speech (band: 95%)", zorder=4)  # fmt: skip
+            else:
+                ax.plot(part["congress_number"], part["value"], color=BLOCK_COLORS[group],
+                        linewidth=1.2, marker="o", markersize=MARKER_SIZE - 3,
+                        label=f"{topic_label(group)} (policy debates)", zorder=3)  # fmt: skip
+        ax.set_xticks(congresses)
+        ax.set_xticklabels([f"{c}\n{congress_year(c)}" for c in congresses], fontsize=7.5,
+                           color=INK_SECONDARY)  # fmt: skip
+        ax.set_title(name, loc="left", fontsize=10, color=INK, pad=14)
+    axes[0].set_ylabel("Overlap of the two parties' speeches", color=INK_SECONDARY,
+                       fontsize=8.5)  # fmt: skip
+    fig.tight_layout(w_pad=2.0)
+    handles, labels = axes[0].get_legend_handles_labels()
+    _legend_below(fig, handles, labels, ncols=min(len(labels), 3))
+    return place_header(fig, title, subtitle)
 
 
 def plot_laws_and_gap(
@@ -747,7 +933,6 @@ def plot_laws_and_gap(
     hatched. ``table`` holds ``congress_number``, ``chamber``, ``gap`` with
     ``ci_low``/``ci_high``, ``public_laws`` and ``complete``."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.05)
     congresses = sorted(table["congress_number"].unique())
     for ax, (chamber, name) in zip(axes, CHAMBERS):
         _style(ax)
@@ -773,8 +958,8 @@ def plot_laws_and_gap(
                            color=INK_SECONDARY)  # fmt: skip
         ax.set_title(name, loc="left", fontsize=10, color=INK, pad=14)
         ax.set_ylabel("Party gap, R − D (line)", color=INK_SECONDARY, fontsize=8.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_keyword_lines_by_congress(
@@ -789,7 +974,6 @@ def plot_keyword_lines_by_congress(
     congresses = sorted(shares["congress_number"].unique())
     fig, axes = plt.subplots(2, 2, figsize=(12, 7.4), sharex=True, sharey=True,
                              facecolor=SURFACE)  # fmt: skip
-    _header(fig, title, subtitle, y=1.03)
     for row, party in enumerate(("D", "R")):
         for ax, (chamber, name) in zip(axes[row], CHAMBERS):
             _style(ax)
@@ -815,8 +999,8 @@ def plot_keyword_lines_by_congress(
     axes[0][1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 # =================================================================================
@@ -864,7 +1048,6 @@ def plot_block_differences(
     """
     fig, axes = plt.subplots(len(rows), 2, figsize=(12, 2.4 * len(rows) + 1.2), sharey=True,
                              facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.0 + 0.25 / len(rows))
     names = dict(CHAMBERS)
     for row, (measure, party) in enumerate(rows):
         data = tests[(tests["measure"] == measure) & (tests["party"] == party)]
@@ -899,13 +1082,14 @@ def plot_block_differences(
             ax.set_title(f"{names[chamber]} · {who}{test}", loc="left", fontsize=9.5,
                          color=INK)  # fmt: skip
             ax.set_yticks(range(len(blocks)))
-            ax.set_yticklabels(blocks[::-1], fontsize=8.5, color=INK_SECONDARY)
+            ax.set_yticklabels([topic_label(b) for b in blocks[::-1]], fontsize=8.5,
+                               color=INK_SECONDARY)  # fmt: skip
             if row == len(rows) - 1:
                 ax.set_xlabel("Change (95% interval)", color=INK_SECONDARY, fontsize=8)
         axes[row][1].legend(frameon=False, fontsize=8, loc="upper left",
                             bbox_to_anchor=(1.0, 1.0))  # fmt: skip
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_steps_decomposition(
@@ -921,7 +1105,6 @@ def plot_steps_decomposition(
     the White House falls on the boundary of the shaded presidencies.
     """
     fig, axes = plt.subplots(2, 1, figsize=(12, 8.6), sharex=True, facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.03)
     congresses = sorted(
         {c for c in steps["congress_from"]} | {c + 1 for c in steps["congress_from"]}
     )
@@ -946,7 +1129,7 @@ def plot_steps_decomposition(
             for i, value in enumerate(values):
                 base = up[i] if value >= 0 else down[i]
                 label = (
-                    f"positions: {block}"
+                    f"positions: {topic_label(block)}"
                     if component == "positions"
                     else "agenda (all blocks)"
                 )
@@ -972,8 +1155,8 @@ def plot_steps_decomposition(
     axes[0].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_did_cases(
@@ -996,7 +1179,6 @@ def plot_did_cases(
     step = 0.6 / max(len(variants) - 1, 1)
     fig, axes = plt.subplots(1, len(values), figsize=(5.8 * len(values), 0.55 * len(cases) + 2),
                              sharey=True, facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.08)
     for ax, value in zip(axes[0], values):
         _forest_axis(ax)
         for i, variant in enumerate(variants):
@@ -1013,7 +1195,7 @@ def plot_did_cases(
     axes[0][-1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    return fig
+    return place_header(fig, title, subtitle)
 
 
 def plot_event_study(
@@ -1022,6 +1204,7 @@ def plot_event_study(
     title: str,
     subtitle: str | None = None,
     reference: int = -1,
+    values: Sequence[str] | None = None,
 ) -> Figure:
     """Event study around the changes of the White House.
 
@@ -1030,11 +1213,12 @@ def plot_event_study(
     are the values, columns the chambers. Black: the losing party's change
     beyond the winning party's, with its 95% interval; thin lines: each
     side's own change. Everything is relative to k = ``reference`` (zero).
+    ``values`` draws only those rows (e.g. ``["tone"]``); by default every
+    value in ``effects``.
     """
-    values = list(dict.fromkeys(effects["value"]))
+    values = list(values) if values else list(dict.fromkeys(effects["value"]))
     fig, axes = plt.subplots(len(values), 2, figsize=(12, 3.3 * len(values) + 1), sharex=True,
                              facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.0 + 0.2 / len(values))
     sides = (
         ("loses White House", INK_SECONDARY, "-"),
         ("gains White House", INK_MUTED, "--"),
@@ -1075,8 +1259,8 @@ def plot_event_study(
     axes[0][1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_own_margin(
@@ -1087,7 +1271,6 @@ def plot_own_margin(
     ``means`` is the first table of `deep_dive.own_margin_effects`."""
     values = list(dict.fromkeys(means["value"]))
     fig, axes = plt.subplots(1, len(values), figsize=(11, 4.2), facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.05)
     x = {t: i for i, t in enumerate(OWN_MARGIN_TERCILES)}
     labels = ("leans to the\nother party", "middle", "stronghold of\nthe own party")
     for ax, value in zip(axes, values):
@@ -1109,7 +1292,7 @@ def plot_own_margin(
     axes[-1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    return fig
+    return place_header(fig, title, subtitle)
 
 
 def plot_event_block_grid(
@@ -1130,7 +1313,6 @@ def plot_event_block_grid(
     scale = 100 if measure == "agenda" else 1
     fig, axes = plt.subplots(2, 1, figsize=(max(9, 1.15 * len(columns) + 2), 1.05 * len(events) * 2 + 2.4),
                              facecolor=SURFACE)  # fmt: skip
-    _header(fig, title, subtitle, y=1.02)
     for ax, (chamber, name) in zip(axes, CHAMBERS):
         ax.set_xlim(-0.5, len(columns) - 0.5)
         ax.set_ylim(len(events) - 0.5, -0.5)
@@ -1163,7 +1345,10 @@ def plot_event_block_grid(
         ax.set_yticklabels(events, fontsize=8.5, color=INK_SECONDARY)
         ax.set_xticks(range(len(columns)))
         ax.set_xticklabels(
-            [b if p == "R−D" else f"{b}\n{p}" for b, p in columns],
+            [
+                _grid_label(b) if p == "R−D" else f"{_grid_label(b)}\n{p}"
+                for b, p in columns
+            ],
             fontsize=7.5,
             color=INK_SECONDARY,
         )
@@ -1172,8 +1357,8 @@ def plot_event_block_grid(
     fig.text(0.01, -0.01, "Bold on a tint: 95% interval excludes zero (purple up, amber down). "
              "† rests on a cell under 30 speeches. – no speeches in a cell.",
              fontsize=8, color=INK_SECONDARY, va="top")  # fmt: skip
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_rollcall_lines(
@@ -1202,7 +1387,6 @@ def plot_rollcall_lines(
     styles = dict(zip(variants, ("-", "--", ":", "-.")))
     congresses = sorted(summary["congress_number"].unique())
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharey=True, facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.06)
     for ax, (chamber, name) in zip(axes, CHAMBERS):
         _style(ax)
         shade_presidencies(ax, congresses)
@@ -1223,8 +1407,8 @@ def plot_rollcall_lines(
     axes[1].legend(
         frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
 
 
 def plot_rollcall_undo(
@@ -1239,7 +1423,6 @@ def plot_rollcall_undo(
     first after a change of the White House is ringed."""
     congresses = sorted(undo["congress_number"].unique())
     fig, axes = plt.subplots(2, 2, figsize=(12, 7.2), sharex=True, facecolor=SURFACE)
-    _header(fig, title, subtitle, y=1.03)
     for column, (chamber, name) in enumerate(CHAMBERS):
         part = undo[undo["chamber"] == chamber].sort_values("congress_number")
         first = part[part["first_after_wh_change"]]
@@ -1265,14 +1448,16 @@ def plot_rollcall_undo(
     axes[1][0].set_ylabel(
         "Congressional Review Act votes", color=INK_SECONDARY, fontsize=8.5
     )
-    axes[0][1].legend(
-        frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
-    )
-    axes[1][1].legend(
-        frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0)
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    # One legend below the panels, so they keep the figure's width and the
+    # Congress labels along the bottom do not run into each other.
+    fig.tight_layout(w_pad=2.0)
+    handles, labels = [], []
+    for ax in (axes[0][1], axes[1][1]):
+        for handle, label in zip(*ax.get_legend_handles_labels()):
+            handles.append(handle)
+            labels.append(label)
+    _legend_below(fig, handles, labels, ncols=len(labels))
+    return place_header(fig, title, subtitle)
 
 
 # --- notebook 10, 4b and 4c ------------------------------------------------------------------
@@ -1330,7 +1515,6 @@ def plot_post_election(
     years = sorted({int(e) for e in effects["election"] if e.isdigit()})
     fig, axes = plt.subplots(len(values), 2, figsize=(12, 3.3 * len(values) + 1), sharex=True,
                              sharey="row", facecolor=SURFACE, squeeze=False)  # fmt: skip
-    _header(fig, title, subtitle, y=1.03)
     for row, value in enumerate(values):
         for ax, (chamber, name) in zip(axes[row], CHAMBERS):
             _style(ax)
@@ -1378,5 +1562,51 @@ def plot_post_election(
                 labels.append(label)
     axes[0][1].legend(handles, labels, frameon=False, fontsize=8, loc="upper left",
                       bbox_to_anchor=(1.0, 1.0))  # fmt: skip
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig
+    fig.tight_layout()
+    return place_header(fig, title, subtitle)
+
+
+# --- the A11 follow-up --------------------------------------------------------------------
+
+#: The two roles in a chamber: ink shades, so the party colours stay on the
+#: points, which show who held the role.
+ROLE_STYLES = {
+    "minority": (INK, "-", "chamber minority"),
+    "majority": (INK_MUTED, "--", "chamber majority"),
+}
+
+
+def plot_majority_minority(
+    table: pd.DataFrame, title: str, subtitle: str | None = None, ylabel: str = "Tone"
+) -> Figure:
+    """One chamber's minority against its majority, per Congress.
+
+    ``table`` is `deep_dive.majority_minority_tone` output. One line per role
+    (`ROLE_STYLES`) with its 95% band; each point in the colour of the party
+    that held the role in that Congress. Presidencies shaded.
+    """
+    congresses = sorted(table["congress_number"].unique())
+    fig, ax = plt.subplots(figsize=(8.5, 4.6), facecolor=SURFACE)
+    _style(ax)
+    shade_presidencies(ax, congresses)
+    for role, (color, style, label) in ROLE_STYLES.items():
+        part = table[table["role"] == role].sort_values("congress_number")
+        ax.fill_between(part["congress_number"], part["ci_low"], part["ci_high"],
+                        color=color, alpha=0.10, linewidth=0, zorder=2)  # fmt: skip
+        ax.plot(part["congress_number"], part["mean"], color=color, linestyle=style,
+                linewidth=1.8, zorder=3, label=label)  # fmt: skip
+        ax.scatter(part["congress_number"], part["mean"],
+                   c=[PARTY_COLORS[p] for p in part["party"]], s=42, edgecolors=color,
+                   linewidths=1.0, zorder=4)  # fmt: skip
+    _congress_ticks(ax, congresses)
+    ax.set_ylabel(ylabel, color=INK_SECONDARY, fontsize=8.5)
+    handles, labels = ax.get_legend_handles_labels()
+    handles += [
+        plt.Line2D([], [], marker="o", linestyle="none", markersize=7,
+                   markerfacecolor=PARTY_COLORS[p], markeredgecolor=SURFACE)
+        for p in ("D", "R")
+    ]  # fmt: skip
+    labels += [f"{PARTY_NAMES[p]} in that role" for p in ("D", "R")]
+    fig.tight_layout()
+    _legend_below(fig, handles, labels, ncols=len(labels))
+    return place_header(fig, title, subtitle)

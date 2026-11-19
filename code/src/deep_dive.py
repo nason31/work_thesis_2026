@@ -29,6 +29,7 @@ hand-checked (L4).
 from __future__ import annotations
 
 import datetime as dt
+import io
 import re
 from collections.abc import Callable, Mapping, Sequence
 from itertools import combinations, pairwise
@@ -3951,3 +3952,313 @@ def flag_small_election_cells(
         notes.append("; ".join(f"{r['party']} {r['period']}: n={r['n']}, {r['n_members']} members"
                                for r in small.to_dict("records")))  # fmt: skip
     return effects.assign(small_cell=flags, small_cells=notes)
+
+
+# =================================================================================
+# The final run (docs/decisions.md A11): the opposition's tone per presidency, the
+# days before an inauguration, the keyword lists as a table
+# =================================================================================
+
+_NUMERALS = ("I", "II", "III", "IV")
+
+
+def presidencies() -> pd.DataFrame:
+    """One row per Congress of `PRESIDENTS_BY_CONGRESS`, with its presidency.
+
+    A presidency is a run of consecutive Congresses under one president; a
+    president who returns after another gets a numeral ("Trump I", "Trump
+    II"), one who does not keeps the bare name ("Bush"). Columns
+    ``congress_number``, ``presidency``, ``president_party`` and ``order``
+    (the presidency's position in time).
+    """
+    runs: list[dict[str, object]] = []
+    for congress in sorted(PRESIDENTS_BY_CONGRESS):
+        name, party = PRESIDENTS_BY_CONGRESS[congress]
+        last = runs[-1] if runs else None
+        if last and last["name"] == name and last["congresses"][-1] == congress - 1:
+            last["congresses"].append(congress)
+        else:
+            runs.append({"name": name, "party": party, "congresses": [congress]})
+    total = {
+        name: sum(r["name"] == name for r in runs) for name in {r["name"] for r in runs}
+    }
+    seen: dict[str, int] = {}
+    rows = []
+    for order, run in enumerate(runs):
+        name = str(run["name"])
+        seen[name] = seen.get(name, 0) + 1
+        label = name if total[name] == 1 else f"{name} {_NUMERALS[seen[name] - 1]}"
+        rows += [
+            {"congress_number": c, "presidency": label,
+             "president_party": run["party"], "order": order}
+            for c in run["congresses"]
+        ]  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def opposition_escalation(tone_cells: pd.DataFrame) -> pd.DataFrame:
+    """The tone of the party out of the White House and of the governing
+    party, per chamber and presidency (`presidencies`).
+
+    ``tone_cells`` is `analysis.cell_means` of tone by Congress, chamber and
+    party (notebook 07's ``findings_tone_cells``). Each party's tone in a
+    presidency is the **unweighted** mean of its per-Congress means, so every
+    Congress counts once whatever its speech count. Stops if a Congress lacks
+    a party in a chamber or is not in `PRESIDENTS_BY_CONGRESS`.
+    """
+    cells = tone_cells.merge(
+        presidencies(), on="congress_number", how="left", validate="many_to_one"
+    )
+    if cells["presidency"].isna().any():
+        missing = sorted(
+            cells.loc[cells["presidency"].isna(), "congress_number"].unique()
+        )
+        raise ValueError(f"Congresses without a president: {missing}")
+    parties = cells.groupby(["congress_number", "chamber"])["party"].agg(frozenset)
+    if (parties != frozenset(_PARTIES)).any():
+        raise ValueError("a Congress lacks a party in a chamber")
+    cells["role"] = np.where(
+        cells["party"] == cells["president_party"], "governing", "opposition"
+    )
+    rows = []
+    keys = ["chamber", "order", "presidency"]
+    for (chamber, _, presidency), part in cells.groupby(keys, sort=True):
+        row: dict[str, object] = {
+            "chamber": chamber,
+            "presidency": presidency,
+            "first_congress": int(part["congress_number"].min()),
+            "last_congress": int(part["congress_number"].max()),
+            "n_congresses": int(part["congress_number"].nunique()),
+        }
+        for role in ("opposition", "governing"):
+            side = part[part["role"] == role]
+            row[f"{role}_party"] = side["party"].iloc[0]
+            row[f"{role}_tone"] = float(side["mean"].mean())
+        row["difference"] = row["opposition_tone"] - row["governing_tone"]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+#: The days of a new Congress before the inauguration at noon on 20 January:
+#: 3 to 19 January (inclusive). `PRESIDENTS_BY_CONGRESS` gives a Congress one
+#: president, so on these days ``in_opposition`` already follows the incoming
+#: one. The 20th is kept: the presidency changes at noon and the Senate
+#: usually sits after the inauguration that day.
+PRE_INAUGURATION_DAYS: tuple[int, int] = (3, 19)
+#: The years in which a new president took office.
+NEW_PRESIDENT_YEARS: tuple[int, ...] = (2001, 2009, 2017, 2021, 2025)
+#: The January robustness check (A11): A drops the days in the two years A9
+#: names (2001, 2021: the White House and the Senate majority change in the
+#: same weeks); B in every year with a new president.
+JANUARY_VARIANTS: dict[str, tuple[int, ...]] = {
+    "A: 2001, 2021": (2001, 2021),
+    "B: 2001, 2009, 2017, 2021, 2025": NEW_PRESIDENT_YEARS,
+}
+
+
+def pre_inauguration(frame: pd.DataFrame, years: Sequence[int]) -> pd.Series:
+    """True for a speech dated 3-19 January (`PRE_INAUGURATION_DAYS`) of one
+    of ``years``."""
+    dates = pd.to_datetime(frame["date"])
+    first, last = PRE_INAUGURATION_DAYS
+    return (
+        dates.dt.year.isin(list(years))
+        & (dates.dt.month == 1)
+        & dates.dt.day.between(first, last)
+    )
+
+
+def drop_pre_inauguration(frame: pd.DataFrame, years: Sequence[int]) -> pd.DataFrame:
+    """``frame`` without the speeches of `pre_inauguration` in ``years``."""
+    return frame[~pre_inauguration(frame, years)]
+
+
+#: The estimates the January check repeats, and the term each reports.
+_INTERACTION_TERM = "nothing − White House only − chamber only"
+_ESTIMATE_KEY = ["analysis", "term", "party", "chamber", "outcome"]
+
+
+def power_estimates(
+    frame: pd.DataFrame, values: Sequence[str] = VALUES
+) -> pd.DataFrame:
+    """Model C, the power ladder and the White House event study, stacked.
+
+    The existing functions with their defaults: `opposition_models` (model C,
+    ``opposition`` and ``chamber_minority``), `power_ladder` (each level
+    against full power, and the interaction) and `wh_event_study` (losing
+    minus winning party at each k), for every value in ``values``. One row per
+    estimate: ``analysis``, ``term`` (the term, level or "k = ..."), ``party``
+    ("losing − winning" in the event study), ``chamber``, ``outcome``,
+    ``estimate``, ``ci_low``, ``ci_high``, ``p``, ``n``, ``n_members``.
+    """
+    columns = [*_ESTIMATE_KEY, "estimate", "ci_low", "ci_high", "p", "n", "n_members"]
+    parts = []
+    levels = add_power_level(frame)
+    stacked = wh_event_study_data(frame)
+    for value in values:
+        models = opposition_models(frame, value)
+        c = models[(models["model"] == "C")
+                   & models["term"].isin(["opposition", "chamber_minority"])]  # fmt: skip
+        parts.append(c.assign(analysis="model C"))
+        ladder = power_ladder(levels, value)
+        steps = ladder[(ladder["model"] == "ladder") & ladder["power_level"].notna()]
+        parts.append(steps.assign(analysis="power ladder", term=steps["power_level"]))
+        interaction = ladder[ladder["model"] == "interaction"]
+        parts.append(
+            interaction.assign(analysis="power ladder", term=_INTERACTION_TERM)
+        )
+        study = wh_event_study(stacked, value)
+        study = study[study["term"].str.startswith("treated")]
+        parts.append(study.assign(
+            analysis="White House event study", party="losing − winning",
+            term=[f"k = {int(k):+d}" for k in study["k"]],
+        ))  # fmt: skip
+    out = pd.concat(parts, ignore_index=True)
+    out = out.assign(outcome=out["value"], estimate=out["coef"])
+    return out[columns].reset_index(drop=True)
+
+
+def january_robustness(
+    frame: pd.DataFrame,
+    variants: Mapping[str, Sequence[int]] = JANUARY_VARIANTS,
+    values: Sequence[str] = VALUES,
+    main: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """`power_estimates` without the days before an inauguration, beside the
+    main estimates.
+
+    Per variant (name -> years for `drop_pre_inauguration`): every estimate,
+    with ``main_estimate``, ``main_ci_low``, ``main_ci_high`` and ``main_p``
+    from all speeches (``main``, computed if not given), ``n_dropped`` (the
+    variant's dropped speeches) and ``n_dropped_chamber`` (those in the row's
+    chamber).
+    """
+    main = power_estimates(frame, values) if main is None else main
+    reference = main[[*_ESTIMATE_KEY, "estimate", "ci_low", "ci_high", "p"]].rename(
+        columns={c: f"main_{c}" for c in ("estimate", "ci_low", "ci_high", "p")}
+    )
+    parts = []
+    for name, years in variants.items():
+        dropped = pre_inauguration(frame, years)
+        by_chamber = frame.loc[dropped, "chamber"].value_counts()
+        estimates = power_estimates(frame[~dropped], values)
+        merged = estimates.merge(
+            reference, on=_ESTIMATE_KEY, how="outer", validate="one_to_one"
+        )
+        merged.insert(0, "variant", name)
+        merged["n_dropped"] = int(dropped.sum())
+        merged["n_dropped_chamber"] = (
+            merged["chamber"].map(by_chamber).fillna(0).astype(int)
+        )
+        parts.append(merged)
+    return pd.concat(parts, ignore_index=True)
+
+
+def keyword_list_table(
+    lists: Mapping[str, Sequence[str]] = KEYWORD_LISTS,
+) -> pd.DataFrame:
+    """The keyword lists (`KEYWORD_LISTS`) as a table: one row per list and
+    term, in the lists' order."""
+    return pd.DataFrame(
+        [
+            {"list": name, "term": term}
+            for name, terms in lists.items()
+            for term in terms
+        ]
+    )
+
+
+# --- the A11 follow-up: majority against minority, saving tables ----------------------
+
+
+def majority_minority_tone(
+    values: pd.DataFrame,
+    chamber: str = "H",
+    topic_block: str = "economic",
+    majority: Mapping[int, str] = HOUSE_MAJORITY,
+) -> pd.DataFrame:
+    """Each party's tone in one block and chamber, labelled by its role there.
+
+    ``values`` is `topic_party_values` output (``congress_number``,
+    ``chamber``, ``topic_block``, ``party``, ``mean``, ``ci_low``,
+    ``ci_high``; notebook 09's ``deepdive_tone_by_topic``). ``majority`` maps a
+    Congress to the party holding the chamber (`HOUSE_MAJORITY` for the House;
+    a Senate that changed hands within a Congress has no single majority, so
+    pass a mapping only for Congresses where it held). One row per Congress and
+    role (``minority``, ``majority``) with the ``party`` in that role. Stops if
+    a Congress lacks a party or has no majority in ``majority``.
+    """
+    part = values[
+        (values["chamber"] == chamber) & (values["topic_block"] == topic_block)
+    ].copy()
+    missing = sorted(set(part["congress_number"]) - set(majority))
+    if missing:
+        raise ValueError(f"no majority for Congresses {missing}")
+    if (part.groupby("congress_number")["party"].nunique() != len(_PARTIES)).any():
+        raise ValueError("a Congress lacks a party")
+    part["role"] = np.where(
+        part["party"] == part["congress_number"].map(majority), "majority", "minority"
+    )
+    columns = ["congress_number", "role", "party", "mean", "ci_low", "ci_high"]
+    return part[columns].sort_values(["congress_number", "role"]).reset_index(drop=True)
+
+
+#: [A9]'s rule for an existing table: equal columns, shape and text, and every
+#: number within these tolerances.
+TABLE_RTOL: float = 1e-12
+TABLE_ATOL: float = 1e-15
+
+
+def table_difference(path: Path, table: pd.DataFrame) -> float | None:
+    """The largest absolute difference between ``table`` and the CSV at
+    ``path`` under [A9]'s rule, or None if they differ beyond it (other
+    columns, shape, dtypes or text, or a number outside `TABLE_RTOL` /
+    `TABLE_ATOL`). ``table`` is compared as it would be written."""
+    disk = pd.read_csv(path)
+    new = pd.read_csv(io.StringIO(table.to_csv(index=False)))
+    numeric = list(disk.select_dtypes("number").columns)
+    if list(disk.columns) != list(new.columns) or disk.shape != new.shape:
+        return None
+    if list(new.select_dtypes("number").columns) != numeric:
+        return None
+    text = [c for c in disk.columns if c not in numeric]
+    if not disk[text].astype(str).equals(new[text].astype(str)):
+        return None
+    a, b = disk[numeric].to_numpy(float), new[numeric].to_numpy(float)
+    if not np.isclose(a, b, rtol=TABLE_RTOL, atol=TABLE_ATOL, equal_nan=True).all():
+        return None
+    gaps = np.abs(a - b)
+    return float(np.nanmax(gaps)) if np.isfinite(gaps).any() else 0.0
+
+
+def save_tables(tables: Mapping[Path, pd.DataFrame]) -> pd.DataFrame:
+    """Write the tables that do not exist yet; never rewrite an existing one.
+
+    Every existing file is compared first: byte-identical, or equal under
+    [A9]'s rule (`table_difference`), and it is left as it is. If any
+    differs beyond that, nothing is written and the error names the files.
+    Returns one row per path: ``status`` (``identical``, ``noise``,
+    ``written``) and ``max_abs_diff``.
+    """
+    rows, beyond, pending = [], [], []
+    for path, table in tables.items():
+        path = Path(path)
+        if not path.exists():
+            pending.append((path, table))
+            rows.append({"path": path, "status": "written", "max_abs_diff": np.nan})
+        elif path.read_bytes() == table.to_csv(index=False).encode():
+            rows.append({"path": path, "status": "identical", "max_abs_diff": 0.0})
+        else:
+            gap = table_difference(path, table)
+            if gap is None:
+                beyond.append(path.name)
+            rows.append({"path": path, "status": "noise", "max_abs_diff": gap})
+    if beyond:
+        raise RuntimeError(
+            f"these tables differ beyond A9's rule, nothing written: {beyond}"
+        )
+    for path, table in pending:
+        table.to_csv(path, index=False)
+    return pd.DataFrame(rows).assign(
+        file=lambda f: f["path"].map(lambda p: Path(p).name)
+    )
